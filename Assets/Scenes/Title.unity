@@ -425,7 +425,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   startScreen: {fileID: 803461246}
   quitScreen: {fileID: 1922579045}
-  StartLevel: Overworld
+  LevelName: Overworld
 --- !u!1 &803461246
 GameObject:
   m_ObjectHideFlags: 0
