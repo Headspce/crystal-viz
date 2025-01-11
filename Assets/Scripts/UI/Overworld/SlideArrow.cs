@@ -1,12 +1,10 @@
 using UnityEngine;
-using UnityEngine.SceneManagement;
 
 public class SlideArrows : MonoBehaviour
 {
     public GameObject leftArrow;
     public GameObject rightArrow;
     public GameObject[] levelOptions; // Array of level option GameObjects
-    public string[] levelNames; // Array of scene names corresponding to each level option
     public float slideDistance = 10f; // Distance to slide
     public float slideSpeed = 1f;     // Speed of the slide
     public float scaleFactor = 1.2f;  // Scale factor for the size increase
@@ -87,15 +85,11 @@ public class SlideArrows : MonoBehaviour
         {
             if (currentArrow == rightArrow)
             {
-                StartCoroutine(SlideAwayAndIn(currentIndex, -slideAwayDistance, true));
+                StartCoroutine(SlideAwayAndIn(currentIndex, -slideAwayDistance));
             }
             else if (currentArrow == leftArrow)
             {
-                StartCoroutine(SlideAwayAndIn(currentIndex, slideAwayDistance, false));
-            }
-            else
-            {
-                LoadSelectedLevel();
+                StartCoroutine(SlideAwayAndIn(currentIndex, slideAwayDistance));
             }
         }
     }
@@ -174,11 +168,10 @@ public class SlideArrows : MonoBehaviour
         isInCooldown = false;
     }
 
-    System.Collections.IEnumerator SlideAwayAndIn(int currentIndex, float distance, bool forward)
+    System.Collections.IEnumerator SlideAwayAndIn(int currentIndex, float distance)
     {
         GameObject currentObject = levelOptions[currentIndex];
-        int nextIndex = forward ? (currentIndex + 1) % levelOptions.Length : (currentIndex - 1 + levelOptions.Length) % levelOptions.Length;
-        GameObject nextObject = levelOptions[nextIndex];
+        GameObject nextObject = levelOptions[(currentIndex + 1) % levelOptions.Length];
 
         Vector3 startPosition = currentObject.transform.localPosition;
         Vector3 endPosition = startPosition + new Vector3(distance, 0, 0);
@@ -221,23 +214,11 @@ public class SlideArrows : MonoBehaviour
         nextObject.transform.localPosition = endPosition;
         nextObject.transform.localScale = endScaleNext;
 
-        this.currentIndex = nextIndex;
+        this.currentIndex = (this.currentIndex + 1) % levelOptions.Length;
     }
 
     void ResetPosition(GameObject arrow, Vector3 originalPosition)
     {
         arrow.transform.localPosition = originalPosition;
-    }
-
-    void LoadSelectedLevel()
-    {
-        if (currentIndex >= 0 && currentIndex < levelNames.Length)
-        {
-            SceneManager.LoadScene(levelNames[currentIndex]);
-        }
-        else
-        {
-            Debug.LogError("Invalid level index or level name not assigned.");
-        }
     }
 }
