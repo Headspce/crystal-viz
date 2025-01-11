@@ -85,11 +85,11 @@ public class SlideArrows : MonoBehaviour
         {
             if (currentArrow == rightArrow)
             {
-                StartCoroutine(SlideAwayAndIn(currentIndex, -slideAwayDistance));
+                StartCoroutine(SlideAwayAndIn(currentIndex, -slideAwayDistance, true));
             }
             else if (currentArrow == leftArrow)
             {
-                StartCoroutine(SlideAwayAndIn(currentIndex, slideAwayDistance));
+                StartCoroutine(SlideAwayAndIn(currentIndex, slideAwayDistance, false));
             }
         }
     }
@@ -168,10 +168,11 @@ public class SlideArrows : MonoBehaviour
         isInCooldown = false;
     }
 
-    System.Collections.IEnumerator SlideAwayAndIn(int currentIndex, float distance)
+    System.Collections.IEnumerator SlideAwayAndIn(int currentIndex, float distance, bool moveForward)
     {
         GameObject currentObject = levelOptions[currentIndex];
-        GameObject nextObject = levelOptions[(currentIndex + 1) % levelOptions.Length];
+        int nextIndex = moveForward ? (currentIndex + 1) % levelOptions.Length : (currentIndex - 1 + levelOptions.Length) % levelOptions.Length;
+        GameObject nextObject = levelOptions[nextIndex];
 
         Vector3 startPosition = currentObject.transform.localPosition;
         Vector3 endPosition = startPosition + new Vector3(distance, 0, 0);
@@ -214,7 +215,7 @@ public class SlideArrows : MonoBehaviour
         nextObject.transform.localPosition = endPosition;
         nextObject.transform.localScale = endScaleNext;
 
-        this.currentIndex = (this.currentIndex + 1) % levelOptions.Length;
+        this.currentIndex = nextIndex;
     }
 
     void ResetPosition(GameObject arrow, Vector3 originalPosition)
