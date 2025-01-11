@@ -1,10 +1,12 @@
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 public class SlideArrows : MonoBehaviour
 {
     public GameObject leftArrow;
     public GameObject rightArrow;
     public GameObject[] levelOptions; // Array of level option GameObjects
+    public string[] levelNames; // Array of scene names corresponding to each level option
     public float slideDistance = 10f; // Distance to slide
     public float slideSpeed = 1f;     // Speed of the slide
     public float scaleFactor = 1.2f;  // Scale factor for the size increase
@@ -90,6 +92,10 @@ public class SlideArrows : MonoBehaviour
             else if (currentArrow == leftArrow)
             {
                 StartCoroutine(SlideAwayAndIn(currentIndex, slideAwayDistance, false));
+            }
+            else
+            {
+                LoadSelectedLevel();
             }
         }
     }
@@ -221,5 +227,17 @@ public class SlideArrows : MonoBehaviour
     void ResetPosition(GameObject arrow, Vector3 originalPosition)
     {
         arrow.transform.localPosition = originalPosition;
+    }
+
+    void LoadSelectedLevel()
+    {
+        if (currentIndex >= 0 && currentIndex < levelNames.Length)
+        {
+            SceneManager.LoadScene(levelNames[currentIndex]);
+        }
+        else
+        {
+            Debug.LogError("Invalid level index or level name not assigned.");
+        }
     }
 }
