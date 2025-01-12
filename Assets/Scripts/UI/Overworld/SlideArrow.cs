@@ -12,6 +12,7 @@ public class SlideArrows : MonoBehaviour
     public float pauseDuration = 0.5f; // Pause duration after the scale animation
     public float cooldownDuration = 0.5f; // Cooldown duration to prevent spamming
     public float slideAwayDistance = 500f; // Distance to slide the level options away
+    public float particleAppearanceDelay = 1f; // Time to delay before particles appear
     private Vector3 leftArrowOriginalPosition;
     private Vector3 rightArrowOriginalPosition;
     private Vector3 leftArrowOriginalScale;
@@ -22,6 +23,7 @@ public class SlideArrows : MonoBehaviour
     private Coroutine leftArrowCoroutine;
     private Coroutine rightArrowCoroutine;
     private int currentIndex = 0;
+    private bool[] originalActiveStates;
 
     void Start()
     {
@@ -30,12 +32,40 @@ public class SlideArrows : MonoBehaviour
         leftArrowOriginalScale = leftArrow.transform.localScale;
         rightArrowOriginalScale = rightArrow.transform.localScale;
 
+        // Store original active states
+        originalActiveStates = new bool[levelOptions.Length];
+        for (int i = 0; i < levelOptions.Length; i++)
+        {
+            originalActiveStates[i] = levelOptions[i].activeSelf;
+        }
+
         // Initialize the first level option to be active
         foreach (var level in levelOptions)
         {
             level.SetActive(false);
         }
         levelOptions[currentIndex].SetActive(true);
+    }
+
+    void OnEnable()
+    {
+        // Restore the original active states when the script is enabled
+        if (originalActiveStates != null)
+        {
+            for (int i = 0; i < levelOptions.Length; i++)
+            {
+                levelOptions[i].SetActive(originalActiveStates[i]);
+            }
+        }
+    }
+
+    void OnDisable()
+    {
+        // Store the current active states when the script is disabled
+        for (int i = 0; i < levelOptions.Length; i++)
+        {
+            originalActiveStates[i] = levelOptions[i].activeSelf;
+        }
     }
 
     void Update()
@@ -83,6 +113,16 @@ public class SlideArrows : MonoBehaviour
 
         if (Input.GetKeyDown(KeyCode.Return))
         {
+            // Hide particles as soon as Enter is pressed
+            foreach (var level in levelOptions)
+            {
+                ParticleSystem[] particleSystems = level.GetComponentsInChildren<ParticleSystem>(true);
+                foreach (var ps in particleSystems)
+                {
+                    ps.gameObject.SetActive(false);
+                }
+            }
+
             if (currentArrow == rightArrow)
             {
                 StartCoroutine(SlideAwayAndIn(currentIndex, -slideAwayDistance, true));
@@ -216,6 +256,22 @@ public class SlideArrows : MonoBehaviour
         nextObject.transform.localScale = endScaleNext;
 
         this.currentIndex = nextIndex;
+
+        // Hide particle systems during sliding and scaling
+        ParticleSystem[] particleSystems = nextObject.GetComponentsInChildren<ParticleSystem>(true);
+        foreach (var ps in particleSystems)
+        {
+            ps.gameObject.SetActive(false);
+        }
+
+        // Wait until the other objects are done scaling
+        yield return new WaitForSeconds(particleAppearanceDelay); // Adjust the delay as needed
+
+        // Show particle systems after scaling and sliding
+        foreach (var ps in particleSystems)
+        {
+            ps.gameObject.SetActive(true);
+        }
     }
 
     void ResetPosition(GameObject arrow, Vector3 originalPosition)
