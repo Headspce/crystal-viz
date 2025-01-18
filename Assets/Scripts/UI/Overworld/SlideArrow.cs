@@ -134,6 +134,8 @@ public class SlideArrows : MonoBehaviour
         }
     }
 
+
+
     void SlideRightAndBack(GameObject arrow, Vector3 originalPosition)
     {
         float offset = Mathf.PingPong(Time.time * slideSpeed, slideDistance);
@@ -145,6 +147,19 @@ public class SlideArrows : MonoBehaviour
         float offset = Mathf.PingPong(Time.time * slideSpeed, slideDistance);
         arrow.transform.localPosition = originalPosition - new Vector3(offset, 0, 0);
     }
+
+    public string GetActiveLevel()
+    {
+        for (int i = 0; i < levelOptions.Length; i++)
+        {
+            if (levelOptions[i].activeSelf)
+            {
+                return levelOptions[i].name; // Return the name of the active level
+            }
+        }
+        return null; // In case no level is active, though this shouldn't happen based on your script
+    }
+
 
     void ScaleArrow(GameObject arrow)
     {
