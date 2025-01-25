@@ -1,36 +1,54 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
 public class MeteorSpawner : MonoBehaviour
 {
-    public GameObject meteorPrefab;
-    public Vector3 spawnCenter; // Center location in world space
-    public float spawnRadius = 5f; // Radius for the spawn area
-    public float minSpawnInterval = 1f;
-    public float maxSpawnInterval = 3f;
-    public SlideArrows slideArrows; // Reference to the SlideArrows script
-    public int activeLevelIndex; // Index of the level option to check if active
+    public GameObject meteorPrefab; // Prefab of the meteor
+    public float spawnRadius = 10f; // Radius within which meteors will spawn
+    public float spawnAngle = 45f;  // Angle within which meteors will spawn
+    public float spawnRate = 2f;    // Time between spawns
+    public Gradient colorGradient;  // Gradient for randomizing meteor colors
+    public float minDestructionTime = 3f; // Minimum time before destruction
+    public float maxDestructionTime = 5f; // Maximum time before destruction
 
-    void Start()
+    [Header("SlideArrows Settings")]
+    public SlideArrows slideArrowsScript; // Reference to the SlideArrows script
+    public int triggerIndex; // Index that triggers meteor spawning
+
+    [Header("Spawn Settings")]
+    public Transform spawnLocationObject; // Reference to the GameObject for the spawn location
+
+    private void Start()
     {
-        StartCoroutine(SpawnMeteorRoutine());
+        InvokeRepeating("SpawnMeteor", 0f, spawnRate);
     }
 
-    IEnumerator SpawnMeteorRoutine()
+    private void SpawnMeteor()
     {
-        while (true)
+        if (slideArrowsScript != null && slideArrowsScript.CurrentIndex == triggerIndex && spawnLocationObject != null)
         {
-            float interval = Random.Range(minSpawnInterval, maxSpawnInterval);
-            yield return new WaitForSeconds(interval);
+            // Randomize the spawn position within the radius and angle
+            float angle = Random.Range(-spawnAngle, spawnAngle);
+            Vector3 spawnPosition = Quaternion.Euler(0, angle, 0) * Vector3.forward * Random.Range(0, spawnRadius);
+            spawnPosition += spawnLocationObject.position; // Use the position of the specified GameObject
 
-            // Check if the specified level option is active before spawning
-            if (slideArrows.levelOptions[activeLevelIndex].activeSelf)
+            // Instantiate the meteor
+            GameObject meteor = Instantiate(meteorPrefab, spawnPosition, Quaternion.identity);
+
+            // Randomize the meteor color
+            MeshRenderer renderer = meteor.GetComponent<MeshRenderer>();
+            if (renderer != null)
             {
-                Vector3 randomOffset = Random.insideUnitSphere * spawnRadius;
-                randomOffset.y = Mathf.Abs(randomOffset.y); // Ensure meteors spawn above the center
-                Vector3 spawnPosition = spawnCenter + randomOffset;
+                renderer.material.color = colorGradient.Evaluate(Random.value);
+            }
 
-                Instantiate(meteorPrefab, spawnPosition, Quaternion.identity);
+            // Set the destruction time
+            Meteor meteorScript = meteor.GetComponent<Meteor>();
+            if (meteorScript != null)
+            {
+                meteorScript.minDestructionTime = minDestructionTime;
+                meteorScript.maxDestructionTime = maxDestructionTime;
             }
         }
     }

@@ -2,86 +2,76 @@ using UnityEngine;
 
 public class BirdCircling : MonoBehaviour
 {
-    public GameObject[] objectsToRotate; // Array of game objects to rotate
-    public Vector3 rotationAxis = Vector3.up; // Axis of rotation (default is Y-axis)
-    public float rotationRadius = 10f; // Radius of the circular path
-    public float rotationSpeed = 10f; // Speed of rotation
-    private Vector3 rotationCenter;
-    public bool useCustomCenter; // Use custom center point
-    public Vector3 customCenter;
-    public Transform platform; // Reference to the platform
+    public Bird[] objectsToRotate;
 
     void Start()
     {
-        // Set the initial rotation center to this GameObject's position if not using custom center
-        rotationCenter = useCustomCenter ? customCenter : transform.position;
+        foreach (Bird settings in objectsToRotate)
+        {
+            settings.rotationCenter = settings.useCustomCenter ? settings.customCenter : transform.position;
+        }
     }
 
     void Update()
     {
-        // Update the rotation center if custom center is toggled
-        if (useCustomCenter)
+        foreach (Bird settings in objectsToRotate)
         {
-            rotationCenter = customCenter;
-        }
+            if (settings.useCustomCenter)
+            {
+                settings.rotationCenter = settings.customCenter;
+            }
 
-        // Loop through each object in the array
-        foreach (GameObject obj in objectsToRotate)
-        {
-            float angle = rotationSpeed * Time.time;
-            float nextAngle = angle + rotationSpeed * Time.deltaTime; // Calculate next angle for forward direction
+            float angle = settings.rotationSpeed * Time.time;
+            float nextAngle = angle + settings.rotationSpeed * Time.deltaTime;
 
-            // Calculate the new position based on the specified axis
             Vector3 offset = new Vector3(
-                Mathf.Cos(angle) * rotationRadius,
+                Mathf.Cos(angle) * settings.rotationRadius,
                 0,
-                Mathf.Sin(angle) * rotationRadius
+                Mathf.Sin(angle) * settings.rotationRadius
             );
 
             Vector3 nextOffset = new Vector3(
-                Mathf.Cos(nextAngle) * rotationRadius,
+                Mathf.Cos(nextAngle) * settings.rotationRadius,
                 0,
-                Mathf.Sin(nextAngle) * rotationRadius
+                Mathf.Sin(nextAngle) * settings.rotationRadius
             );
 
-            // Rotate the offset vector to align with the platform's orientation
-            Vector3 rotatedOffset = platform.rotation * offset;
-            Vector3 nextRotatedOffset = platform.rotation * nextOffset;
+            Vector3 rotatedOffset = settings.platform.rotation * offset;
+            Vector3 nextRotatedOffset = settings.platform.rotation * nextOffset;
 
-            // Update the position
-            obj.transform.position = rotationCenter + rotatedOffset;
+            settings.objectToRotate.transform.position = settings.rotationCenter + rotatedOffset;
 
-            // Update rotation to look in the forward direction of the flight path
             Vector3 direction = (nextRotatedOffset - rotatedOffset).normalized;
-            if (direction != Vector3.zero) // Avoid setting rotation to an illegal value
-                obj.transform.forward = -direction; // Invert the direction to make the bird face forward
+            if (direction != Vector3.zero)
+                settings.objectToRotate.transform.forward = -direction;
+
+            // Apply local rotation to add variation
+            settings.objectToRotate.transform.Rotate(settings.localRotationAngle, Space.Self);
         }
     }
 
-    // Optional manual controls to adjust radius, speed, and center
     public void SetRotationAxis(Vector3 axis)
     {
-        rotationAxis = axis;
-    }
-
-    public void SetRotationRadius(float radius)
-    {
-        rotationRadius = radius;
-    }
-
-    public void SetRotationSpeed(float speed)
-    {
-        rotationSpeed = speed;
+        foreach (Bird settings in objectsToRotate)
+        {
+            settings.rotationAxis = axis;
+        }
     }
 
     public void SetCustomCenter(Vector3 center, bool useCustom)
     {
-        customCenter = center;
-        useCustomCenter = useCustom;
+        foreach (Bird settings in objectsToRotate)
+        {
+            settings.customCenter = center;
+            settings.useCustomCenter = useCustom;
+        }
     }
 
     public void SetPlatform(Transform platformTransform)
     {
-        platform = platformTransform;
+        foreach (Bird settings in objectsToRotate)
+        {
+            settings.platform = platformTransform;
+        }
     }
 }

@@ -21,7 +21,7 @@ Material:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_Name: M_CrescentMoon
-  m_Shader: {fileID: -6465566751694194690, guid: 5855c020242afe04ab3d3d43095a75f7, type: 3}
+  m_Shader: {fileID: -6465566751694194690, guid: 820b2c2e5c27f9f489cb7e70bb217bc3, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords: []
@@ -127,10 +127,14 @@ Material:
     - _Surface: 0
     - _WorkflowMode: 1
     - _ZWrite: 1
+    - _oscillationAmplitude: 0.8
     m_Colors:
     - _BaseColor: {r: 1, g: 1, b: 1, a: 1}
     - _Color: {r: 1, g: 1, b: 1, a: 1}
+    - _Colour: {r: 1, g: 1, b: 1, a: 0}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
+    - _Multiply: {r: 10, g: 10, b: 10, a: 0}
     - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
+    - _colourBlend: {r: 0.53638804, g: 0.53638804, b: 0.53638804, a: 0}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

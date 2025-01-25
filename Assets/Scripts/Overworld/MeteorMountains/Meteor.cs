@@ -24,12 +24,14 @@ public class Meteor : MonoBehaviour
         transform.Translate(fallDirection.normalized * fallSpeed * Time.deltaTime);
     }
 
+    /*
     void StartFadeAndDestroy()
     {
         StartCoroutine(FadeAndDestroy());
     }
+    
 
-    IEnumerator FadeAndDestroy()
+    /* IEnumerator FadeAndDestroy()
     {
         MeshRenderer renderer = GetComponent<MeshRenderer>();
         Color initialColor = renderer.material.color;
@@ -41,7 +43,8 @@ public class Meteor : MonoBehaviour
             renderer.material.color = newColor;
             yield return null;
         }
+    */
 
-        Destroy(gameObject);
-    }
+        //Destroy(gameObject);
 }
+

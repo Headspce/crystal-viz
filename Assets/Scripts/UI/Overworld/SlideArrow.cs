@@ -4,6 +4,7 @@ public class SlideArrows : MonoBehaviour
 {
     public GameObject leftArrow;
     public GameObject rightArrow;
+    public GameObject upArrow; // Added for up arrow
     public GameObject[] levelOptions; // Array of level option GameObjects
     public float slideDistance = 10f; // Distance to slide
     public float slideSpeed = 1f;     // Speed of the slide
@@ -15,22 +16,32 @@ public class SlideArrows : MonoBehaviour
     public float particleAppearanceDelay = 1f; // Time to delay before particles appear
     private Vector3 leftArrowOriginalPosition;
     private Vector3 rightArrowOriginalPosition;
+    private Vector3 upArrowOriginalPosition; // Added for up arrow
     private Vector3 leftArrowOriginalScale;
     private Vector3 rightArrowOriginalScale;
+    private Vector3 upArrowOriginalScale; // Added for up arrow
     private bool isScaling = false;
     private bool isInCooldown = false;
     private GameObject currentArrow = null;
     private Coroutine leftArrowCoroutine;
     private Coroutine rightArrowCoroutine;
+    private Coroutine upArrowCoroutine; // Added for up arrow coroutine
     private int currentIndex = 0;
     private bool[] originalActiveStates;
+
+    public int CurrentIndex
+    {
+        get { return currentIndex; }
+    }
 
     void Start()
     {
         leftArrowOriginalPosition = leftArrow.transform.localPosition;
         rightArrowOriginalPosition = rightArrow.transform.localPosition;
+        upArrowOriginalPosition = upArrow.transform.localPosition; // Added for up arrow
         leftArrowOriginalScale = leftArrow.transform.localScale;
         rightArrowOriginalScale = rightArrow.transform.localScale;
+        upArrowOriginalScale = upArrow.transform.localScale; // Added for up arrow
 
         // Store original active states
         originalActiveStates = new bool[levelOptions.Length];
@@ -72,7 +83,49 @@ public class SlideArrows : MonoBehaviour
     {
         if (!isInCooldown)
         {
-            if (Input.GetKeyDown(KeyCode.RightArrow))
+            if (Input.GetKeyDown(KeyCode.UpArrow)) // Added for up arrow
+            {
+                if (leftArrowCoroutine != null)
+                {
+                    StopCoroutine(leftArrowCoroutine);
+                    ResetPosition(leftArrow, leftArrowOriginalPosition);
+                }
+                if (rightArrowCoroutine != null)
+                {
+                    StopCoroutine(rightArrowCoroutine);
+                    ResetPosition(rightArrow, rightArrowOriginalPosition);
+                }
+                if (upArrowCoroutine != null) // Added for up arrow
+                {
+                    StopCoroutine(upArrowCoroutine); // Added for up arrow
+                    ResetPosition(upArrow, upArrowOriginalPosition); // Added for up arrow
+                }
+                currentArrow = upArrow; // Added for up arrow
+                isScaling = true;
+                StartCoroutine(Cooldown());
+            }
+            else if (Input.GetKeyDown(KeyCode.DownArrow)) // Added for down arrow
+            {
+                if (leftArrowCoroutine != null)
+                {
+                    StopCoroutine(leftArrowCoroutine);
+                    ResetPosition(leftArrow, leftArrowOriginalPosition);
+                }
+                if (rightArrowCoroutine != null)
+                {
+                    StopCoroutine(rightArrowCoroutine);
+                    ResetPosition(rightArrow, rightArrowOriginalPosition);
+                }
+                if (upArrowCoroutine != null) // Added for down arrow
+                {
+                    StopCoroutine(upArrowCoroutine); // Added for down arrow
+                    ResetPosition(upArrow, upArrowOriginalPosition); // Added for down arrow
+                }
+                currentArrow = rightArrow; // Added for down arrow
+                isScaling = true;
+                StartCoroutine(Cooldown());
+            }
+            else if (Input.GetKeyDown(KeyCode.RightArrow))
             {
                 if (leftArrowCoroutine != null)
                 {
@@ -133,43 +186,15 @@ public class SlideArrows : MonoBehaviour
             }
         }
     }
-
-
-
-    void SlideRightAndBack(GameObject arrow, Vector3 originalPosition)
-    {
-        float offset = Mathf.PingPong(Time.time * slideSpeed, slideDistance);
-        arrow.transform.localPosition = originalPosition + new Vector3(offset, 0, 0);
-    }
-
-    void SlideLeftAndBack(GameObject arrow, Vector3 originalPosition)
-    {
-        float offset = Mathf.PingPong(Time.time * slideSpeed, slideDistance);
-        arrow.transform.localPosition = originalPosition - new Vector3(offset, 0, 0);
-    }
-
-    public string GetActiveLevel()
-    {
-        for (int i = 0; i < levelOptions.Length; i++)
-        {
-            if (levelOptions[i].activeSelf)
-            {
-                return levelOptions[i].name; // Return the name of the active level
-            }
-        }
-        return null; // In case no level is active, though this shouldn't happen based on your script
-    }
-
-
     void ScaleArrow(GameObject arrow)
     {
         arrow.transform.localScale = Vector3.Lerp(
             arrow.transform.localScale,
-            arrow == leftArrow ? leftArrowOriginalScale * scaleFactor : rightArrowOriginalScale * scaleFactor,
+            arrow == leftArrow ? leftArrowOriginalScale * scaleFactor : arrow == rightArrow ? rightArrowOriginalScale * scaleFactor : upArrowOriginalScale * scaleFactor, // Added for up arrow
             Time.deltaTime * scaleSpeed
         );
 
-        if (Mathf.Abs(arrow.transform.localScale.x - (arrow == leftArrow ? leftArrowOriginalScale.x : rightArrowOriginalScale.x) * scaleFactor) < 0.01f)
+        if (Mathf.Abs(arrow.transform.localScale.x - (arrow == leftArrow ? leftArrowOriginalScale.x : arrow == rightArrow ? rightArrowOriginalScale.x : upArrowOriginalScale.x) * scaleFactor) < 0.01f) // Added for up arrow
         {
             isScaling = false;
             StartCoroutine(PauseAfterScale(arrow));
@@ -184,17 +209,17 @@ public class SlideArrows : MonoBehaviour
 
     System.Collections.IEnumerator ResetScale(GameObject arrow)
     {
-        while (Mathf.Abs(arrow.transform.localScale.x - (arrow == leftArrow ? leftArrowOriginalScale.x : rightArrowOriginalScale.x)) > 0.01f)
+        while (Mathf.Abs(arrow.transform.localScale.x - (arrow == leftArrow ? leftArrowOriginalScale.x : arrow == rightArrow ? rightArrowOriginalScale.x : upArrowOriginalScale.x)) > 0.01f) // Added for up arrow
         {
             arrow.transform.localScale = Vector3.Lerp(
                 arrow.transform.localScale,
-                arrow == leftArrow ? leftArrowOriginalScale : rightArrowOriginalScale,
+                arrow == leftArrow ? leftArrowOriginalScale : arrow == rightArrow ? rightArrowOriginalScale : upArrowOriginalScale, // Added for up arrow
                 Time.deltaTime * scaleSpeed
             );
             yield return null;
         }
 
-        arrow.transform.localScale = arrow == leftArrow ? leftArrowOriginalScale : rightArrowOriginalScale;
+        arrow.transform.localScale = arrow == leftArrow ? leftArrowOriginalScale : arrow == rightArrow ? rightArrowOriginalScale : upArrowOriginalScale; // Added for up arrow
 
         if (arrow == rightArrow)
         {
@@ -203,6 +228,10 @@ public class SlideArrows : MonoBehaviour
         else if (arrow == leftArrow)
         {
             leftArrowCoroutine = StartCoroutine(StartSliding(leftArrow, leftArrowOriginalPosition, SlideLeftAndBack));
+        }
+        else if (arrow == upArrow) // Added for up arrow
+        {
+            upArrowCoroutine = StartCoroutine(StartSliding(upArrow, upArrowOriginalPosition, SlideUpAndBack)); // Added for up arrow
         }
     }
 
@@ -287,6 +316,24 @@ public class SlideArrows : MonoBehaviour
         {
             ps.gameObject.SetActive(true);
         }
+    }
+
+    void SlideRightAndBack(GameObject arrow, Vector3 originalPosition)
+    {
+        float offset = Mathf.PingPong(Time.time * slideSpeed, slideDistance);
+        arrow.transform.localPosition = originalPosition + new Vector3(offset, 0, 0);
+    }
+
+    void SlideLeftAndBack(GameObject arrow, Vector3 originalPosition)
+    {
+        float offset = Mathf.PingPong(Time.time * slideSpeed, slideDistance);
+        arrow.transform.localPosition = originalPosition - new Vector3(offset, 0, 0);
+    }
+
+    void SlideUpAndBack(GameObject arrow, Vector3 originalPosition) // Added for up arrow
+    {
+        float offset = Mathf.PingPong(Time.time * slideSpeed, slideDistance);
+        arrow.transform.localPosition = originalPosition + new Vector3(0, offset, 0); // Slide up and back
     }
 
     void ResetPosition(GameObject arrow, Vector3 originalPosition)
