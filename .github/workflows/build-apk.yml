@@ -1,0 +1,113 @@
+name: Build CrystalViz APK
+
+# Manual trigger only. Builds the CrystalViz lighting-visualizer scene
+# (branch-held crystal ball + sun-orbit slider) into a signed Android APK.
+# Requires repo secrets:
+#   UNITY_USERNAME / UNITY_PASSWORD   (Unity Personal license activation)
+#   ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_PASSWORD
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Free up disk space (Unity 6 editor is large)
+        # GitHub runners ship ~14 GB free; the Unity 6000 editor install
+        # exhausts it. Remove SDKs/toolchains this build job never touches.
+        run: |
+          echo "--- disk before ---"; df -h /
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force 2>/dev/null || true
+          sudo apt-get clean
+          echo "--- disk after ---"; df -h /
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Pre-install Unity Hub (works around Buildalon hub-path bug)
+        # buildalon/unity-setup@v2 bundles unity-cli 2.x, which expects the Hub
+        # at the legacy path /opt/unityhub — but Hub 3.20+ installs to
+        # /usr/lib/unityhub, so its setup step fails. Install the Hub ourselves
+        # first and bridge the legacy path with a symlink.
+        run: |
+          set -e
+          curl -fsSL https://hub.unity3d.com/linux/keys/public | gpg --dearmor | sudo tee /usr/share/keyrings/Unity_Technologies_ApS.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/Unity_Technologies_ApS.gpg] https://hub.unity3d.com/linux/repos/deb stable main" | sudo tee /etc/apt/sources.list.d/unityhub.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq unityhub
+          if [ ! -x /opt/unityhub/unityhub ]; then
+            if [ -x /usr/lib/unityhub/unityhub ]; then
+              HUB_DIR=/usr/lib/unityhub
+            else
+              HUB_DIR="$(dirname "$(readlink -f "$(command -v unityhub)")")"
+            fi
+            echo "Bridging /opt/unityhub -> $HUB_DIR"
+            sudo ln -s "$HUB_DIR" /opt/unityhub
+            sudo chmod -R 777 /opt/unityhub
+          fi
+          ls -la /opt/unityhub/unityhub
+          printf '#!/bin/bash\nxvfb-run --auto-servernum /opt/unityhub/unityhub "$@" 2>/dev/null' | sudo tee /usr/bin/unity-hub > /dev/null
+          sudo chmod 777 /usr/bin/unity-hub
+
+      - name: Setup Unity (6000.0.32f1 + Android modules)
+        uses: buildalon/unity-setup@v2
+        with:
+          # Editor version is auto-detected from ProjectSettings/ProjectVersion.txt
+          build-targets: Android
+          cache-installation: true
+
+      - name: Activate Unity license (Personal)
+        uses: buildalon/activate-unity-license@v2
+        with:
+          license: personal
+          username: ${{ secrets.UNITY_USERNAME }}
+          password: ${{ secrets.UNITY_PASSWORD }}
+
+      - name: Restore Library cache (speeds up re-runs)
+        uses: actions/cache@v4
+        with:
+          path: Library
+          key: unity-library-6000.0.32f1-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            unity-library-6000.0.32f1-
+
+      - name: Restore signing keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          mkdir -p "${{ github.workspace }}/keystore"
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "${{ github.workspace }}/keystore/crystalviz.p12"
+          ls -la "${{ github.workspace }}/keystore/"
+
+      - name: Build APK
+        uses: buildalon/unity-action@v3
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/keystore/crystalviz.p12
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        with:
+          log-name: Android-Build
+          build-target: Android
+          args: -quit -batchmode -executeMethod CrystalVizBuild.BuildAndroid
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: crystalviz-apk
+          path: Builds/Android/*.apk
+          if-no-files-found: error
+
+      - name: Upload build log
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-build-log
+          path: Builds/Logs/*.log
+          if-no-files-found: warn
