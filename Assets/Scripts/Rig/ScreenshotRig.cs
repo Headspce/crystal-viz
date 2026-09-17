@@ -82,9 +82,10 @@ public static class ScreenshotRig
             for (int i = 0; i < frames; i++)
                 yield return null;
 
+            Camera cam = null;
             try
             {
-                Camera cam = Camera.main;
+                cam = Camera.main;
                 if (cam == null)
                 {
                     Debug.LogWarning("ScreenshotRig: no Main Camera found, aborting capture.");
@@ -112,15 +113,23 @@ public static class ScreenshotRig
                 {
                     // Auto-frame onto the chosen area (JumpToArea handles this itself).
                 }
-
-                // One more frame so the camera move lands before the render.
-                yield return null;
-
-                SavePng(cam, shot);
             }
             catch (Exception e)
             {
                 Debug.LogWarning("ScreenshotRig: capture failed: " + e.Message);
+            }
+
+            // One more frame so the camera move lands before the render.
+            // (Kept outside the try: C# forbids yield inside try/catch.)
+            yield return null;
+
+            try
+            {
+                SavePng(cam, shot);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("ScreenshotRig: save failed: " + e.Message);
             }
 
             if (HasFlag(Environment.GetCommandLineArgs(), "-rigquit"))
@@ -246,7 +255,7 @@ public static class ScreenshotRig
         {
             try
             {
-                var lm = UnityEngine.Object.FindObjectOfType<LevelManager>();
+                var lm = UnityEngine.Object.FindFirstObjectByType<LevelManager>();
                 if (lm == null)
                     return false;
                 Type t = lm.GetType();
