@@ -14,6 +14,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 360
     steps:
+      - name: Free up disk space (Unity 6 editor is large)
+        # GitHub runners ship ~14 GB free; the Unity 6000 editor install
+        # exhausts it (the 2026-09-17 run died with "No space left on device").
+        # Remove SDKs/toolchains this screenshot job never touches.
+        run: |
+          echo "--- disk before ---"; df -h /
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force 2>/dev/null || true
+          sudo apt-get clean
+          echo "--- disk after ---"; df -h /
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
