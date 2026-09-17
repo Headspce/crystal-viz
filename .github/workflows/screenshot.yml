@@ -1,0 +1,105 @@
+name: Overworld Screenshot
+
+# Manual trigger only. Opens the project in the Unity editor, loads the first
+# overworld level (Assets/Scenes/Overworld.unity), renders its Main Camera to a
+# PNG, and uploads it as an artifact. Requires UNITY_USERNAME and
+# UNITY_PASSWORD repo secrets (Unity Personal license activation).
+
+on:
+  workflow_dispatch:
+
+jobs:
+  screenshot:
+    name: Capture Overworld screenshot
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Pre-install Unity Hub (works around Buildalon hub-path bug)
+        # buildalon/unity-setup@v2 bundles unity-cli 2.x, which expects the Hub
+        # at the legacy path /opt/unityhub — but Hub 3.20+ installs to
+        # /usr/lib/unityhub, so its setup step fails. Install the Hub ourselves
+        # first and bridge the legacy path with a symlink.
+        run: |
+          set -e
+          curl -fsSL https://hub.unity3d.com/linux/keys/public | gpg --dearmor | sudo tee /usr/share/keyrings/Unity_Technologies_ApS.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/Unity_Technologies_ApS.gpg] https://hub.unity3d.com/linux/repos/deb stable main" | sudo tee /etc/apt/sources.list.d/unityhub.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq unityhub
+          if [ ! -x /opt/unityhub/unityhub ]; then
+            if [ -x /usr/lib/unityhub/unityhub ]; then
+              HUB_DIR=/usr/lib/unityhub
+            else
+              HUB_DIR="$(dirname "$(readlink -f "$(command -v unityhub)")")"
+            fi
+            echo "Bridging /opt/unityhub -> $HUB_DIR"
+            sudo ln -s "$HUB_DIR" /opt/unityhub
+            sudo chmod -R 777 /opt/unityhub
+          fi
+          ls -la /opt/unityhub/unityhub
+          # The action spawns the Hub via a `unity-hub` wrapper (its own install
+          # script normally creates this; ours replaces that script).
+          printf '#!/bin/bash\nxvfb-run --auto-servernum /opt/unityhub/unityhub "$@" 2>/dev/null' | sudo tee /usr/bin/unity-hub > /dev/null
+          sudo chmod 777 /usr/bin/unity-hub
+
+      - name: Setup Unity (version from ProjectSettings/ProjectVersion.txt)
+        uses: buildalon/unity-setup@v2
+        with:
+          cache-installation: true
+
+      - name: Activate Unity license (Personal)
+        uses: buildalon/activate-unity-license@v2
+        with:
+          license: personal
+          username: ${{ secrets.UNITY_USERNAME }}
+          password: ${{ secrets.UNITY_PASSWORD }}
+
+      - name: Restore Library cache (speeds up re-runs)
+        uses: actions/cache@v4
+        with:
+          path: Library
+          key: unity-library-6000.0.32f1-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            unity-library-6000.0.32f1-
+
+      - name: Capture Overworld screenshot
+        # Opens the project, loads the Overworld scene in edit mode, and renders
+        # its Main Camera. Needs a GL context: xvfb + Mesa software rendering.
+        run: |
+          set -e
+          EDITOR_BIN=""
+          for cand in \
+            "$HOME/Unity/Hub/Editor/6000.0.32f1/Editor/Unity" \
+            "/opt/Unity/Hub/Editor/6000.0.32f1/Editor/Unity" \
+            "/usr/local/Unity/Hub/Editor/6000.0.32f1/Editor/Unity"; do
+            if [ -x "$cand" ]; then EDITOR_BIN="$cand"; break; fi
+          done
+          if [ -z "$EDITOR_BIN" ]; then
+            EDITOR_BIN="$(find "$HOME/Unity" /opt/unityhub -maxdepth 6 -path "*6000.0.32f1/Editor/Unity" -type f 2>/dev/null | head -1)"
+          fi
+          echo "Editor: $EDITOR_BIN"
+          test -x "$EDITOR_BIN"
+          mkdir -p Builds/Logs
+          xvfb-run -a "$EDITOR_BIN" \
+            -quit -batchmode \
+            -projectPath "${{ github.workspace }}" \
+            -executeMethod OverworldScreenshot.Capture \
+            -logFile Builds/Logs/Screenshot.log || echo "screenshot run exited non-zero"
+
+      - name: Upload screenshot
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: overworld-screenshot
+          path: 'Screenshots/*.png'
+          if-no-files-found: warn
+
+      - name: Upload editor log
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: editor-log
+          path: 'Builds/Logs/*.log'
+          if-no-files-found: warn
