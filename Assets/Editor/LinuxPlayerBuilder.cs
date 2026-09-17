@@ -17,7 +17,7 @@ public static class LinuxPlayerBuilder
 {
     public static void Build()
     {
-        PlayerSettings.SetScriptingBackend(BuildTargetGroup.Standalone, ScriptingBackend.Mono2x);
+        PlayerSettings.SetScriptingBackend(BuildTargetGroup.Standalone, ScriptingImplementation.Mono2x);
 
         string[] scenes = EditorBuildSettings.scenes
             .Where(s => s.enabled)
