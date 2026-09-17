@@ -21,6 +21,17 @@ using UnityEngine;
 ///                          (aliases: cove, desert, grasslands, mountains, clouds)
 ///                          When no -rigcam is given, the camera is re-framed onto
 ///                          the chosen area using the default view's offset.
+///   -rigdolly <n>          Nudge camera along its view direction after framing
+///                          (positive = toward what the camera aims at); logs
+///                          the resulting world position.
+///   -riglight <rx> <ry> <r> <g> <b> <intensity>
+///                          First directional light: euler rotation, color, intensity.
+///   -rigfog <density> <r> <g> <b>
+///                          Exponential fog density + color.
+///   -rignofog              Disable fog entirely.
+///   -rigambient <r> <g> <b>
+///                          Flat ambient color (switches ambient mode to Flat).
+///   -rigbg <r> <g> <b>     Camera clear color (SolidColor), replacing the skybox.
 ///   -rignext <n>           Legacy/fallback: advance n dioramas forward (cycles order)
 ///   -rigquit               Application.Quit() after the capture (one-shot mode)
 ///
@@ -133,6 +144,8 @@ public static class ScreenshotRig
                 }
 
                 Debug.Log("ScreenshotRig: camera world pos " + cam.transform.position);
+
+                ApplyLighting(args, cam);
             }
             catch (Exception e)
             {
@@ -308,6 +321,129 @@ public static class ScreenshotRig
             }
             catch { /* fall through to transform position */ }
             return root.transform.position;
+        }
+
+        // --- lighting -------------------------------------------------------
+
+        // Lighting overrides for art-directed captures. Applied after camera
+        // framing so each capture can carry its own lighting recipe.
+        // Everything here is defensive: bad input just logs a warning.
+        private void ApplyLighting(string[] args, Camera cam)
+        {
+            try
+            {
+                string lightArg = GetArgValue(args, "-riglight");
+                if (!string.IsNullOrEmpty(lightArg))
+                {
+                    float[] v = ParseFloats(lightArg, 6);
+                    if (v != null)
+                    {
+                        Light dir = FindDirectionalLight();
+                        if (dir != null)
+                        {
+                            dir.transform.rotation = Quaternion.Euler(v[0], v[1], 0f);
+                            dir.color = new Color(v[2], v[3], v[4]);
+                            dir.intensity = v[5];
+                            Debug.Log("ScreenshotRig: light rot(" + v[0] + "," + v[1] + ") " +
+                                      "color(" + v[2] + "," + v[3] + "," + v[4] + ") int " + v[5]);
+                        }
+                        else
+                        {
+                            Debug.LogWarning("ScreenshotRig: -riglight found no directional light.");
+                        }
+                    }
+                    else
+                    {
+                        Debug.LogWarning("ScreenshotRig: -riglight needs 6 numbers (rx ry r g b intensity).");
+                    }
+                }
+
+                string fogArg = GetArgValue(args, "-rigfog");
+                if (!string.IsNullOrEmpty(fogArg))
+                {
+                    float[] v = ParseFloats(fogArg, 4);
+                    if (v != null)
+                    {
+                        RenderSettings.fog = true;
+                        RenderSettings.fogDensity = v[0];
+                        RenderSettings.fogColor = new Color(v[1], v[2], v[3]);
+                        Debug.Log("ScreenshotRig: fog density " + v[0] +
+                                  " color(" + v[1] + "," + v[2] + "," + v[3] + ")");
+                    }
+                    else
+                    {
+                        Debug.LogWarning("ScreenshotRig: -rigfog needs 4 numbers (density r g b).");
+                    }
+                }
+                if (HasFlag(args, "-rignofog"))
+                {
+                    RenderSettings.fog = false;
+                    Debug.Log("ScreenshotRig: fog off");
+                }
+
+                string ambArg = GetArgValue(args, "-rigambient");
+                if (!string.IsNullOrEmpty(ambArg))
+                {
+                    float[] v = ParseFloats(ambArg, 3);
+                    if (v != null)
+                    {
+                        RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
+                        RenderSettings.ambientLight = new Color(v[0], v[1], v[2]);
+                        Debug.Log("ScreenshotRig: ambient flat (" + v[0] + "," + v[1] + "," + v[2] + ")");
+                    }
+                    else
+                    {
+                        Debug.LogWarning("ScreenshotRig: -rigambient needs 3 numbers (r g b).");
+                    }
+                }
+
+                string bgArg = GetArgValue(args, "-rigbg");
+                if (!string.IsNullOrEmpty(bgArg) && cam != null)
+                {
+                    float[] v = ParseFloats(bgArg, 3);
+                    if (v != null)
+                    {
+                        cam.clearFlags = CameraClearFlags.SolidColor;
+                        cam.backgroundColor = new Color(v[0], v[1], v[2]);
+                        Debug.Log("ScreenshotRig: bg (" + v[0] + "," + v[1] + "," + v[2] + ")");
+                    }
+                    else
+                    {
+                        Debug.LogWarning("ScreenshotRig: -rigbg needs 3 numbers (r g b).");
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("ScreenshotRig: ApplyLighting failed: " + e.Message);
+            }
+        }
+
+        private static float[] ParseFloats(string s, int want)
+        {
+            try
+            {
+                string[] parts = s.Split(new[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length < want) return null;
+                float[] v = new float[want];
+                for (int i = 0; i < want; i++)
+                    if (!float.TryParse(parts[i], out v[i])) return null;
+                return v;
+            }
+            catch { return null; }
+        }
+
+        private static Light FindDirectionalLight()
+        {
+            try
+            {
+                var lights = UnityEngine.Object.FindObjectsByType<Light>(FindObjectsSortMode.None);
+                foreach (var l in lights)
+                    if (l != null && l.type == LightType.Directional && l.gameObject.activeInHierarchy)
+                        return l;
+            }
+            catch { /* fall through */ }
+            return null;
         }
 
         // --- camera / capture -----------------------------------------------
