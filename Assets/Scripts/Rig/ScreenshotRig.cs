@@ -113,6 +113,26 @@ public static class ScreenshotRig
                 {
                     // Auto-frame onto the chosen area (JumpToArea handles this itself).
                 }
+
+                // Dolly: nudge the camera along its current view direction.
+                // Positive moves toward whatever the camera is aimed at.
+                // Applied after area framing / -rigcam so it composes with both.
+                string dollyArg = GetArgValue(args, "-rigdolly");
+                if (!string.IsNullOrEmpty(dollyArg))
+                {
+                    float dolly;
+                    if (float.TryParse(dollyArg, out dolly))
+                    {
+                        cam.transform.position += cam.transform.forward * dolly;
+                        Debug.Log("ScreenshotRig: dolly " + dolly);
+                    }
+                    else
+                    {
+                        Debug.LogWarning("ScreenshotRig: -rigdolly needs a number, got '" + dollyArg + "'.");
+                    }
+                }
+
+                Debug.Log("ScreenshotRig: camera world pos " + cam.transform.position);
             }
             catch (Exception e)
             {
