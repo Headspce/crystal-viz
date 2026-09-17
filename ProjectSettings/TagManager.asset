@@ -5,19 +5,21 @@ TagManager:
   serializedVersion: 3
   tags:
   - InvisibleTrigger
+  - BoxNavigator
+  - Ground
   layers:
   - Default
   - TransparentFX
   - Ignore Raycast
-  - 
+  - UIArrows
   - Water
   - UI
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
+  - BoxNavigator
+  - Ground
+  - Collectable_Coin
+  - Collectable_Gem
+  - Collectable_Shell
+  - Collectable_Fish
   - 
   - 
   - 

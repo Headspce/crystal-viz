@@ -1,70 +1,39 @@
-using UnityEditor;
 using UnityEngine;
+using System.Collections; // Ensure the System.Collections namespace is included
 
-public class MissingReferencesFinder : EditorWindow
+public class MeteorCollision : MonoBehaviour
 {
-    [MenuItem("Window/Find Missing References")]
-    public static void ShowWindow()
+    public GameObject targetObject; // Set this to the object the meteor should collide with
+    public GameObject particleEffectPrefab; // Set this to the particle effect prefab
+    public float initialDelay = 3f; // Customizable delay in seconds
+    private bool delayCompleted = false;
+
+    void Start()
     {
-        GetWindow<MissingReferencesFinder>("Missing References Finder");
+        StartCoroutine(InitialDelayCoroutine());
     }
 
-    private void OnGUI()
+    void OnCollisionEnter(Collision collision)
     {
-        if (GUILayout.Button("Find Missing References in Scene"))
-        {
-            FindMissingReferencesInScene();
-        }
+        if (!delayCompleted) return; // Skip collision handling if delay is not completed
 
-        if (GUILayout.Button("Find Missing References in Assets"))
-        {
-            FindMissingReferencesInAssets();
-        }
-    }
+        Debug.Log("Collision detected with: " + collision.gameObject.name);
 
-    private static void FindMissingReferencesInScene()
-    {
-        GameObject[] sceneObjects = GameObject.FindObjectsOfType<GameObject>();
-        foreach (GameObject obj in sceneObjects)
+        // Check if the collided object is the target object
+        if (collision.gameObject == targetObject)
         {
-            Component[] components = obj.GetComponents<Component>();
-            foreach (Component component in components)
-            {
-                SerializedObject so = new SerializedObject(component);
-                SerializedProperty sp = so.GetIterator();
-                while (sp.NextVisible(true))
-                {
-                    if (sp.propertyType == SerializedPropertyType.ObjectReference && sp.objectReferenceValue == null && sp.objectReferenceInstanceIDValue != 0)
-                    {
-                        Debug.LogWarning("Missing reference found in " + obj.name + " (" + component.GetType().Name + ")", obj);
-                    }
-                }
-            }
+            // Spawn the particle effect at the collision point
+            Instantiate(particleEffectPrefab, collision.contacts[0].point, Quaternion.identity);
+
+            // Print confirmation message
+            Debug.Log("Meteor has collided with the target object and spawned a particle effect!");
         }
     }
 
-    private static void FindMissingReferencesInAssets()
+    private IEnumerator InitialDelayCoroutine()
     {
-        string[] allAssetPaths = AssetDatabase.GetAllAssetPaths();
-        foreach (string path in allAssetPaths)
-        {
-            GameObject obj = AssetDatabase.LoadAssetAtPath<GameObject>(path);
-            if (obj != null)
-            {
-                Component[] components = obj.GetComponentsInChildren<Component>(true);
-                foreach (Component component in components)
-                {
-                    SerializedObject so = new SerializedObject(component);
-                    SerializedProperty sp = so.GetIterator();
-                    while (sp.NextVisible(true))
-                    {
-                        if (sp.propertyType == SerializedPropertyType.ObjectReference && sp.objectReferenceValue == null && sp.objectReferenceInstanceIDValue != 0)
-                        {
-                            Debug.LogWarning("Missing reference found in asset: " + path + " (" + component.GetType().Name + ")", obj);
-                        }
-                    }
-                }
-            }
-        }
+        yield return new WaitForSeconds(initialDelay);
+        delayCompleted = true;
+        Debug.Log("Initial delay completed. Collision detection is now active.");
     }
 }

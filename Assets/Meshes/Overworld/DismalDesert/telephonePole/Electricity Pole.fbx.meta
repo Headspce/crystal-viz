@@ -3,7 +3,47 @@ guid: 31a80a5c4cf604544ab14bbbf3257b2d
 ModelImporter:
   serializedVersion: 22200
   internalIDToNameTable: []
-  externalObjects: {}
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: M_PoleMetal
+    second: {fileID: 2100000, guid: 6ec4efc64dbf5ce49a46bf43b0e836a0, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: M_PoleWires
+    second: {fileID: 2100000, guid: dde9360ffc7a4a44bae0d27cfc9a6718, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: M_electricityPole_wood1
+    second: {fileID: 2100000, guid: 09ac5244e65a00043a0bd4c22be4eec9, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Material.019
+    second: {fileID: 2100000, guid: 598b029a0ea8b654b9f3920352ec61cf, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Material.022
+    second: {fileID: 2100000, guid: c6f8b1fed1ec4864dbe69a730473c8fb, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Material.024
+    second: {fileID: 2100000, guid: de82ce9e4b313fe4da149f106026b230, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Material3
+    second: {fileID: 2100000, guid: 032cf972239e5d049984db3376aa3c0d, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Maya_Lambert1
+    second: {fileID: 2100000, guid: ec4a2f9e98b779949865a13afda889d4, type: 2}
   materials:
     materialImportMode: 2
     materialName: 0

@@ -1,11 +1,15 @@
 using UnityEngine;
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine.SceneManagement;
 
 public class SlideArrows : MonoBehaviour
 {
+    // Variables for left and right arrows
     public GameObject leftArrow;
     public GameObject rightArrow;
-    public GameObject upArrow; // Added for up arrow
     public GameObject[] levelOptions; // Array of level option GameObjects
+    public List<string> LevelLoad; // List of scene names for each level option (customizable)
     public float slideDistance = 10f; // Distance to slide
     public float slideSpeed = 1f;     // Speed of the slide
     public float scaleFactor = 1.2f;  // Scale factor for the size increase
@@ -13,21 +17,37 @@ public class SlideArrows : MonoBehaviour
     public float pauseDuration = 0.5f; // Pause duration after the scale animation
     public float cooldownDuration = 0.5f; // Cooldown duration to prevent spamming
     public float slideAwayDistance = 500f; // Distance to slide the level options away
-    public float particleAppearanceDelay = 1f; // Time to delay before particles appear
+    public float arrowSlideDistance = 50f; // Distance for the arrow to slide back and forth
+    public float arrowSlideSpeed = 1f; // Speed of the slide
+    public float arrowSlideDuration = 1f; // Duration of the slide
+    public float arrowMovementStopTime = 3f; // Time after which movement should stop
+
+    // Variables for middleSpark
+    public GameObject middleSpark; // The new GameObject to appear
+    public float sparkScaleFactor = 1.5f;  // Scale factor for middleSpark
+    public float sparkScaleSpeed = 5f;     // Speed of the scaling animation for middleSpark
+    public float sparkAppearDuration = 1f; // Duration middleSpark remains visible
+    public float sparkDisappearDuration = 1f; // Duration of the disappearing animation for middleSpark
+    public float sparkResetDuration = 2f; // Time after which middleSpark can be reused
+    public float sparkAppearDelay = 0.5f; // Delay before middleSpark appears
+
+    // Customizable options for level options behavior
+    public float levelOptionDisappear = 1f; // Duration of the disappearing animation for level options
+    public float levelOptionReappear = 1f; // Duration of the appearing animation for level options
+
     private Vector3 leftArrowOriginalPosition;
     private Vector3 rightArrowOriginalPosition;
-    private Vector3 upArrowOriginalPosition; // Added for up arrow
     private Vector3 leftArrowOriginalScale;
     private Vector3 rightArrowOriginalScale;
-    private Vector3 upArrowOriginalScale; // Added for up arrow
+    private Vector3 middleSparkOriginalScale; // Added for middleSpark reset
     private bool isScaling = false;
     private bool isInCooldown = false;
     private GameObject currentArrow = null;
     private Coroutine leftArrowCoroutine;
     private Coroutine rightArrowCoroutine;
-    private Coroutine upArrowCoroutine; // Added for up arrow coroutine
     private int currentIndex = 0;
     private bool[] originalActiveStates;
+    private bool isSparkResetting = false; // Flag to check if middleSpark is resetting
 
     public int CurrentIndex
     {
@@ -38,10 +58,9 @@ public class SlideArrows : MonoBehaviour
     {
         leftArrowOriginalPosition = leftArrow.transform.localPosition;
         rightArrowOriginalPosition = rightArrow.transform.localPosition;
-        upArrowOriginalPosition = upArrow.transform.localPosition; // Added for up arrow
         leftArrowOriginalScale = leftArrow.transform.localScale;
         rightArrowOriginalScale = rightArrow.transform.localScale;
-        upArrowOriginalScale = upArrow.transform.localScale; // Added for up arrow
+        middleSparkOriginalScale = middleSpark.transform.localScale; // Added for middleSpark reset
 
         // Store original active states
         originalActiveStates = new bool[levelOptions.Length];
@@ -56,6 +75,12 @@ public class SlideArrows : MonoBehaviour
             level.SetActive(false);
         }
         levelOptions[currentIndex].SetActive(true);
+
+        // Move unused level options to the side
+        MoveUnusedLevelOptions();
+
+        // Ensure middleSpark is initially inactive
+        middleSpark.SetActive(false);
     }
 
     void OnEnable()
@@ -78,84 +103,28 @@ public class SlideArrows : MonoBehaviour
             originalActiveStates[i] = levelOptions[i].activeSelf;
         }
     }
-
     void Update()
     {
-        if (!isInCooldown)
+        if (Input.GetKeyDown(KeyCode.Return))
         {
-            if (Input.GetKeyDown(KeyCode.UpArrow)) // Added for up arrow
+            Debug.Log("Enter key pressed.");
+            LoadLevelScene();
+            return;
+        }
+
+        if (!isInCooldown && !isSparkResetting)
+        {
+            if (Input.GetKeyDown(KeyCode.RightArrow))
             {
-                if (leftArrowCoroutine != null)
-                {
-                    StopCoroutine(leftArrowCoroutine);
-                    ResetPosition(leftArrow, leftArrowOriginalPosition);
-                }
-                if (rightArrowCoroutine != null)
-                {
-                    StopCoroutine(rightArrowCoroutine);
-                    ResetPosition(rightArrow, rightArrowOriginalPosition);
-                }
-                if (upArrowCoroutine != null) // Added for up arrow
-                {
-                    StopCoroutine(upArrowCoroutine); // Added for up arrow
-                    ResetPosition(upArrow, upArrowOriginalPosition); // Added for up arrow
-                }
-                currentArrow = upArrow; // Added for up arrow
-                isScaling = true;
-                StartCoroutine(Cooldown());
-            }
-            else if (Input.GetKeyDown(KeyCode.DownArrow)) // Added for down arrow
-            {
-                if (leftArrowCoroutine != null)
-                {
-                    StopCoroutine(leftArrowCoroutine);
-                    ResetPosition(leftArrow, leftArrowOriginalPosition);
-                }
-                if (rightArrowCoroutine != null)
-                {
-                    StopCoroutine(rightArrowCoroutine);
-                    ResetPosition(rightArrow, rightArrowOriginalPosition);
-                }
-                if (upArrowCoroutine != null) // Added for down arrow
-                {
-                    StopCoroutine(upArrowCoroutine); // Added for down arrow
-                    ResetPosition(upArrow, upArrowOriginalPosition); // Added for down arrow
-                }
-                currentArrow = rightArrow; // Added for down arrow
-                isScaling = true;
-                StartCoroutine(Cooldown());
-            }
-            else if (Input.GetKeyDown(KeyCode.RightArrow))
-            {
-                if (leftArrowCoroutine != null)
-                {
-                    StopCoroutine(leftArrowCoroutine);
-                    ResetPosition(leftArrow, leftArrowOriginalPosition);
-                }
-                if (rightArrowCoroutine != null)
-                {
-                    StopCoroutine(rightArrowCoroutine);
-                    ResetPosition(rightArrow, rightArrowOriginalPosition);
-                }
-                currentArrow = rightArrow;
-                isScaling = true;
-                StartCoroutine(Cooldown());
+                StartCoroutine(DeactivateAndScaleDownOption(currentIndex, (currentIndex + 1) % levelOptions.Length));
+                StartCoroutine(MoveArrowBackAndForth(rightArrow));
+                StartCoroutine(HandleMiddleSpark());
             }
             else if (Input.GetKeyDown(KeyCode.LeftArrow))
             {
-                if (rightArrowCoroutine != null)
-                {
-                    StopCoroutine(rightArrowCoroutine);
-                    ResetPosition(rightArrow, rightArrowOriginalPosition);
-                }
-                if (leftArrowCoroutine != null)
-                {
-                    StopCoroutine(leftArrowCoroutine);
-                    ResetPosition(leftArrow, leftArrowOriginalPosition);
-                }
-                currentArrow = leftArrow;
-                isScaling = true;
-                StartCoroutine(Cooldown());
+                StartCoroutine(DeactivateAndScaleDownOption(currentIndex, (currentIndex - 1 + levelOptions.Length) % levelOptions.Length));
+                StartCoroutine(MoveArrowBackAndForth(leftArrow));
+                StartCoroutine(HandleMiddleSpark());
             }
         }
 
@@ -163,38 +132,17 @@ public class SlideArrows : MonoBehaviour
         {
             ScaleArrow(currentArrow);
         }
-
-        if (Input.GetKeyDown(KeyCode.Return))
-        {
-            // Hide particles as soon as Enter is pressed
-            foreach (var level in levelOptions)
-            {
-                ParticleSystem[] particleSystems = level.GetComponentsInChildren<ParticleSystem>(true);
-                foreach (var ps in particleSystems)
-                {
-                    ps.gameObject.SetActive(false);
-                }
-            }
-
-            if (currentArrow == rightArrow)
-            {
-                StartCoroutine(SlideAwayAndIn(currentIndex, -slideAwayDistance, true));
-            }
-            else if (currentArrow == leftArrow)
-            {
-                StartCoroutine(SlideAwayAndIn(currentIndex, slideAwayDistance, false));
-            }
-        }
     }
+
     void ScaleArrow(GameObject arrow)
     {
         arrow.transform.localScale = Vector3.Lerp(
             arrow.transform.localScale,
-            arrow == leftArrow ? leftArrowOriginalScale * scaleFactor : arrow == rightArrow ? rightArrowOriginalScale * scaleFactor : upArrowOriginalScale * scaleFactor, // Added for up arrow
+            arrow == leftArrow ? leftArrowOriginalScale * scaleFactor : rightArrowOriginalScale * scaleFactor,
             Time.deltaTime * scaleSpeed
         );
 
-        if (Mathf.Abs(arrow.transform.localScale.x - (arrow == leftArrow ? leftArrowOriginalScale.x : arrow == rightArrow ? rightArrowOriginalScale.x : upArrowOriginalScale.x) * scaleFactor) < 0.01f) // Added for up arrow
+        if (Mathf.Abs(arrow.transform.localScale.x - (arrow == leftArrow ? leftArrowOriginalScale.x : rightArrowOriginalScale.x) * scaleFactor) < 0.01f)
         {
             isScaling = false;
             StartCoroutine(PauseAfterScale(arrow));
@@ -207,19 +155,84 @@ public class SlideArrows : MonoBehaviour
         StartCoroutine(ResetScale(arrow));
     }
 
+    System.Collections.IEnumerator HandleMiddleSpark()
+    {
+        isSparkResetting = true;
+
+        // Wait for the delay before middleSpark appears
+        yield return new WaitForSeconds(sparkAppearDelay);
+
+        // Ensure middleSpark is active
+        middleSpark.SetActive(true);
+
+        // Scale up middleSpark
+        Vector3 startScale = Vector3.zero;
+        Vector3 endScale = middleSparkOriginalScale * sparkScaleFactor; // Updated for middleSpark reset
+        float elapsedTime = 0f;
+
+        while (elapsedTime < sparkAppearDuration)
+        {
+            middleSpark.transform.localScale = Vector3.Lerp(startScale, endScale, (elapsedTime / sparkAppearDuration));
+            elapsedTime += Time.deltaTime;
+            yield return null;
+        }
+
+        middleSpark.transform.localScale = endScale;
+
+        // Wait for some time
+        yield return new WaitForSeconds(sparkAppearDuration);
+
+        // Scale down and deactivate middleSpark
+        elapsedTime = 0f;
+        startScale = middleSpark.transform.localScale;
+        endScale = Vector3.zero;
+
+        while (elapsedTime < sparkDisappearDuration)
+        {
+            middleSpark.transform.localScale = Vector3.Lerp(startScale, endScale, (elapsedTime / sparkDisappearDuration));
+            elapsedTime += Time.deltaTime;
+            yield return null;
+        }
+
+        middleSpark.transform.localScale = endScale;
+        middleSpark.SetActive(false);
+
+        // Wait for the reset duration
+        yield return new WaitForSeconds(sparkResetDuration);
+
+        // Reset the scale of middleSpark
+        middleSpark.transform.localScale = middleSparkOriginalScale;
+
+        isSparkResetting = false;
+    }
+
+    void LoadLevelScene()
+    {
+        Debug.Log("LoadLevelScene called. Current index: " + currentIndex);
+        if (currentIndex >= 0 && currentIndex < LevelLoad.Count)
+        {
+            string sceneName = LevelLoad[currentIndex];
+            Debug.Log("Loading scene: " + sceneName);
+            SceneManager.LoadScene(sceneName);
+        }
+        else
+        {
+            Debug.Log("Invalid level index or LevelLoad list is not set up correctly.");
+        }
+    }
     System.Collections.IEnumerator ResetScale(GameObject arrow)
     {
-        while (Mathf.Abs(arrow.transform.localScale.x - (arrow == leftArrow ? leftArrowOriginalScale.x : arrow == rightArrow ? rightArrowOriginalScale.x : upArrowOriginalScale.x)) > 0.01f) // Added for up arrow
+        while (Mathf.Abs(arrow.transform.localScale.x - (arrow == leftArrow ? leftArrowOriginalScale.x : rightArrowOriginalScale.x)) > 0.01f)
         {
             arrow.transform.localScale = Vector3.Lerp(
                 arrow.transform.localScale,
-                arrow == leftArrow ? leftArrowOriginalScale : arrow == rightArrow ? rightArrowOriginalScale : upArrowOriginalScale, // Added for up arrow
+                arrow == leftArrow ? leftArrowOriginalScale : rightArrowOriginalScale,
                 Time.deltaTime * scaleSpeed
             );
             yield return null;
         }
 
-        arrow.transform.localScale = arrow == leftArrow ? leftArrowOriginalScale : arrow == rightArrow ? rightArrowOriginalScale : upArrowOriginalScale; // Added for up arrow
+        arrow.transform.localScale = arrow == leftArrow ? leftArrowOriginalScale : rightArrowOriginalScale;
 
         if (arrow == rightArrow)
         {
@@ -229,10 +242,67 @@ public class SlideArrows : MonoBehaviour
         {
             leftArrowCoroutine = StartCoroutine(StartSliding(leftArrow, leftArrowOriginalPosition, SlideLeftAndBack));
         }
-        else if (arrow == upArrow) // Added for up arrow
+    }
+
+    System.Collections.IEnumerator DeactivateAndScaleDownOption(int currentIndex, int nextIndex)
+    {
+        GameObject currentOption = levelOptions[currentIndex];
+
+        Vector3 startScale = currentOption.transform.localScale;
+        Vector3 endScale = Vector3.zero; // Scale down to zero to simulate fading away
+        float elapsedTime = 0f;
+        float duration = levelOptionDisappear; // Customizable duration for disappearing
+
+        // Scale down the current option
+        while (elapsedTime < duration)
         {
-            upArrowCoroutine = StartCoroutine(StartSliding(upArrow, upArrowOriginalPosition, SlideUpAndBack)); // Added for up arrow
+            currentOption.transform.localScale = Vector3.Lerp(startScale, endScale, (elapsedTime / duration));
+            elapsedTime += Time.deltaTime;
+            yield return null;
         }
+
+        currentOption.transform.localScale = endScale;
+        currentOption.SetActive(false);
+
+        // Move all level options to the side
+        MoveUnusedLevelOptions();
+
+        // Activate the next option and scale it up
+        StartCoroutine(ScaleUpAndActivateOption(nextIndex));
+
+        this.currentIndex = nextIndex;
+    }
+
+    void MoveUnusedLevelOptions()
+    {
+        for (int i = 0; i < levelOptions.Length; i++)
+        {
+            if (i != currentIndex)
+            {
+                levelOptions[i].transform.localPosition = new Vector3(slideAwayDistance, levelOptions[i].transform.localPosition.y, levelOptions[i].transform.localPosition.z);
+            }
+        }
+    }
+
+    System.Collections.IEnumerator ScaleUpAndActivateOption(int index)
+    {
+        GameObject nextOption = levelOptions[index];
+        nextOption.SetActive(true);
+
+        Vector3 startScale = Vector3.zero;
+        Vector3 endScale = Vector3.one;
+        float elapsedTime = 0f;
+        float duration = levelOptionReappear; // Customizable duration for appearing
+
+        // Scale up the next option
+        while (elapsedTime < duration)
+        {
+            nextOption.transform.localScale = Vector3.Lerp(startScale, endScale, (elapsedTime / duration));
+            elapsedTime += Time.deltaTime;
+            yield return null;
+        }
+
+        nextOption.transform.localScale = endScale;
     }
 
     System.Collections.IEnumerator StartSliding(GameObject arrow, Vector3 originalPosition, System.Action<GameObject, Vector3> slideFunction)
@@ -252,72 +322,6 @@ public class SlideArrows : MonoBehaviour
         isInCooldown = false;
     }
 
-    System.Collections.IEnumerator SlideAwayAndIn(int currentIndex, float distance, bool moveForward)
-    {
-        GameObject currentObject = levelOptions[currentIndex];
-        int nextIndex = moveForward ? (currentIndex + 1) % levelOptions.Length : (currentIndex - 1 + levelOptions.Length) % levelOptions.Length;
-        GameObject nextObject = levelOptions[nextIndex];
-
-        Vector3 startPosition = currentObject.transform.localPosition;
-        Vector3 endPosition = startPosition + new Vector3(distance, 0, 0);
-        Vector3 startScale = currentObject.transform.localScale;
-        Vector3 endScale = Vector3.zero; // Scale down to zero to simulate fading away
-        float elapsedTime = 0f;
-        float duration = 1f; // Duration of the slide animation
-
-        // Fade out the current object
-        while (elapsedTime < duration)
-        {
-            currentObject.transform.localPosition = Vector3.Lerp(startPosition, endPosition, (elapsedTime / duration));
-            currentObject.transform.localScale = Vector3.Lerp(startScale, endScale, (elapsedTime / duration));
-            elapsedTime += Time.deltaTime;
-            yield return null;
-        }
-
-        currentObject.transform.localPosition = endPosition;
-        currentObject.SetActive(false);
-
-        // Prepare the next object to slide in
-        nextObject.transform.localPosition = startPosition - new Vector3(distance, 0, 0);
-        nextObject.transform.localScale = Vector3.zero; // Start the next object at scale zero for fading in
-        nextObject.SetActive(true);
-
-        elapsedTime = 0f;
-        Vector3 endScaleNext = Vector3.one; // Scale to one to simulate fading in
-        startPosition = nextObject.transform.localPosition;
-        endPosition = startPosition + new Vector3(distance, 0, 0);
-
-        // Fade in the next object
-        while (elapsedTime < duration)
-        {
-            nextObject.transform.localPosition = Vector3.Lerp(startPosition, endPosition, (elapsedTime / duration));
-            nextObject.transform.localScale = Vector3.Lerp(Vector3.zero, endScaleNext, (elapsedTime / duration));
-            elapsedTime += Time.deltaTime;
-            yield return null;
-        }
-
-        nextObject.transform.localPosition = endPosition;
-        nextObject.transform.localScale = endScaleNext;
-
-        this.currentIndex = nextIndex;
-
-        // Hide particle systems during sliding and scaling
-        ParticleSystem[] particleSystems = nextObject.GetComponentsInChildren<ParticleSystem>(true);
-        foreach (var ps in particleSystems)
-        {
-            ps.gameObject.SetActive(false);
-        }
-
-        // Wait until the other objects are done scaling
-        yield return new WaitForSeconds(particleAppearanceDelay); // Adjust the delay as needed
-
-        // Show particle systems after scaling and sliding
-        foreach (var ps in particleSystems)
-        {
-            ps.gameObject.SetActive(true);
-        }
-    }
-
     void SlideRightAndBack(GameObject arrow, Vector3 originalPosition)
     {
         float offset = Mathf.PingPong(Time.time * slideSpeed, slideDistance);
@@ -330,14 +334,31 @@ public class SlideArrows : MonoBehaviour
         arrow.transform.localPosition = originalPosition - new Vector3(offset, 0, 0);
     }
 
-    void SlideUpAndBack(GameObject arrow, Vector3 originalPosition) // Added for up arrow
-    {
-        float offset = Mathf.PingPong(Time.time * slideSpeed, slideDistance);
-        arrow.transform.localPosition = originalPosition + new Vector3(0, offset, 0); // Slide up and back
-    }
-
     void ResetPosition(GameObject arrow, Vector3 originalPosition)
     {
         arrow.transform.localPosition = originalPosition;
+    }
+
+    System.Collections.IEnumerator MoveArrowBackAndForth(GameObject arrow)
+    {
+        float elapsedTime = 0f;
+        Vector3 startPosition = arrow.transform.localPosition;
+        Vector3 endPosition = startPosition + new Vector3(arrowSlideDistance, 0, 0);
+
+        while (elapsedTime < arrowMovementStopTime)
+        {
+            float t = Mathf.PingPong(Time.time * arrowSlideSpeed, arrowSlideDuration) / arrowSlideDuration;
+            arrow.transform.localPosition = Vector3.Lerp(startPosition, endPosition, t);
+            elapsedTime += Time.deltaTime;
+            yield return null;
+        }
+
+        // Reset position after movement stop time
+        arrow.transform.localPosition = startPosition;
+    }
+
+    private IEnumerator DoublePressCooldown(KeyCode arrowKey)
+    {
+        yield return new WaitForSeconds(0.5f); // Adjust the delay as needed
     }
 }
