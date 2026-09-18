@@ -40,6 +40,13 @@ public class SunOrbitControl : MonoBehaviour
         BuildUI();
         slider.value = targetAzimuth / 360f;
         UpdateLabel();
+        var hrtDbg = slider.handleRect;
+        var himg = hrtDbg != null ? hrtDbg.GetComponent<Image>() : null;
+        UnityEngine.Debug.Log("[CrystalViz] handle rect=" +
+            (hrtDbg != null ? hrtDbg.rect.ToString() : "null") +
+            " imgNull=" + (himg == null) +
+            " spriteNull=" + (himg != null && himg.sprite == null) +
+            " active=" + (hrtDbg != null && hrtDbg.gameObject.activeInHierarchy));
     }
 
     void Update()
@@ -231,8 +238,16 @@ public class SunOrbitControl : MonoBehaviour
             }
         }
         tex.Apply();
-        return Sprite.Create(tex, new Rect(0, 0, size, size),
-            new Vector2(0.5f, 0.5f), 100f);
+#if UNITY_EDITOR
+        // Debug: dump the knob texture so CI can upload it for inspection.
+        try { System.IO.File.WriteAllBytes("/tmp/knob_debug.png", tex.EncodeToPNG()); }
+        catch (System.Exception e) { UnityEngine.Debug.LogWarning("[CrystalViz] knob dump failed: " + e.Message); }
+#endif
+        var spr = Sprite.Create(tex, new Rect(0, 0, size, size),
+            new Vector2(0.5f, 0.5f), 100f, 0u, SpriteMeshType.FullRect);
+        UnityEngine.Debug.Log("[CrystalViz] knobSprite null=" + (spr == null) +
+            " rect=" + (spr != null ? spr.rect.ToString() : "n/a"));
+        return spr;
     }
 
     /// <summary>
