@@ -52,6 +52,17 @@ public class CrystalVizBootstrap : MonoBehaviour
         return new Material(shader);
     }
 
+    /// <summary>
+    /// Destroy() is illegal in edit mode (the CI screenshot tool builds the
+    /// scene in edit mode); use DestroyImmediate there instead.
+    /// </summary>
+    static void DestroyNow(Object obj)
+    {
+        if (obj == null) return;
+        if (Application.isPlaying) Object.Destroy(obj);
+        else Object.DestroyImmediate(obj);
+    }
+
     // ------------------------------------------------------------------ camera
 
     void BuildCamera()
@@ -150,7 +161,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         // Outer glass shell.
         var glass = GameObject.CreatePrimitive(PrimitiveType.Sphere);
         glass.name = "CrystalBall";
-        Destroy(glass.GetComponent<Collider>());
+        DestroyNow(glass.GetComponent<Collider>());
         glass.transform.position = SphereCenter;
         glass.transform.localScale = Vector3.one * SphereRadius * 2f;
         var gmat = NewLitMaterial();
@@ -175,7 +186,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         // Bright inner core: fakes the caustic glow in the reference.
         var core = GameObject.CreatePrimitive(PrimitiveType.Sphere);
         core.name = "CrystalCore";
-        Destroy(core.GetComponent<Collider>());
+        DestroyNow(core.GetComponent<Collider>());
         core.transform.position = SphereCenter + new Vector3(0f, -0.12f, 0f);
         core.transform.localScale = Vector3.one * SphereRadius * 1.05f;
         var cmat = NewLitMaterial();

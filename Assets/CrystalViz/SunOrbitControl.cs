@@ -132,11 +132,32 @@ public class SunOrbitControl : MonoBehaviour
         lrt.anchoredPosition = new Vector2(66f, 78f);
         lrt.sizeDelta = new Vector2(120f, 40f);
         var txt = labelGo.GetComponent<Text>();
-        var builtin = Resources.GetBuiltinResource<Font>("Arial.ttf");
-        if (builtin != null) txt.font = builtin;
+        txt.font = GetDefaultFont(); // may be null; Text renders nothing without one
         txt.fontSize = 30;
         txt.alignment = TextAnchor.MiddleCenter;
         txt.color = new Color(0.25f, 0.22f, 0.20f, 0.9f);
         angleLabel = txt;
+    }
+
+    /// <summary>
+    /// Unity 6 removed the built-in Arial.ttf — GetBuiltinResource now THROWS
+    /// for it instead of returning null. LegacyRuntime.ttf is the bundled
+    /// replacement. A missing font must never crash UI construction.
+    /// </summary>
+    static Font GetDefaultFont()
+    {
+        foreach (var name in new[] { "LegacyRuntime.ttf", "Arial.ttf" })
+        {
+            try
+            {
+                var f = Resources.GetBuiltinResource<Font>(name);
+                if (f != null) return f;
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"SunOrbitControl: built-in font '{name}' unavailable ({e.GetType().Name}).");
+            }
+        }
+        return null;
     }
 }
