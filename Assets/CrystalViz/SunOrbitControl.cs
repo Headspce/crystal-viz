@@ -14,6 +14,7 @@ public class SunOrbitControl : MonoBehaviour
     Slider slider;
     Text angleLabel;
     RectTransform knobRT;
+    Texture trackTexRef; // TEMPORARY diagnostic reference
     float currentAzimuth = 54f;
     float targetAzimuth = 54f;
 
@@ -73,6 +74,31 @@ public class SunOrbitControl : MonoBehaviour
         crt.sizeDelta = new Vector2(40f, 40f);
         ctrl.GetComponent<Image>().color = Color.magenta;
         Debug.Log("[CrystalViz] DIAG magenta control placed");
+
+        // TestA: knob texture as Image+Sprite (Simple), left of knob.
+        var testA = new GameObject("TestA", typeof(RectTransform), typeof(Image));
+        testA.transform.SetParent(knobRT.parent, false);
+        var art = testA.GetComponent<RectTransform>();
+        art.anchorMin = knobRT.anchorMin; art.anchorMax = knobRT.anchorMax;
+        art.anchoredPosition = new Vector2(-70f, 0f);
+        art.pivot = new Vector2(0.5f, 0.5f);
+        art.sizeDelta = new Vector2(48f, 48f);
+        var sprA = Sprite.Create(raw.texture as Texture2D,
+            new Rect(0, 0, 96, 96), new Vector2(0.5f, 0.5f));
+        testA.GetComponent<Image>().sprite = sprA;
+        Debug.Log("[CrystalViz] DIAG TestA (Image+knobTex sprite) placed");
+
+        // TestB: RawImage with the known-good track texture, right of knob.
+        var testB = new GameObject("TestB", typeof(RectTransform), typeof(RawImage));
+        testB.transform.SetParent(knobRT.parent, false);
+        var brt = testB.GetComponent<RectTransform>();
+        brt.anchorMin = knobRT.anchorMin; brt.anchorMax = knobRT.anchorMax;
+        brt.anchoredPosition = new Vector2(80f, 0f);
+        brt.pivot = new Vector2(0.5f, 0.5f);
+        brt.sizeDelta = new Vector2(48f, 48f);
+        testB.GetComponent<RawImage>().texture = trackTexRef;
+        testB.GetComponent<RawImage>().color = Color.yellow;
+        Debug.Log("[CrystalViz] DIAG TestB (RawImage+trackTex) placed");
     }
 
     /// <summary>
@@ -136,6 +162,7 @@ public class SunOrbitControl : MonoBehaviour
             new Color(0.50f, 0.95f, 1.00f, 0.95f), new Color(0.05f, 0.72f, 0.95f, 0.95f),
             16, new Color(0.25f, 0.85f, 1.00f, 1f));
         var knobTex = MakeKnobTexture(96);
+        trackTexRef = trackSprite.texture; // TEMPORARY diagnostic reference
 
         // Slider root: vertical strip hugging the left edge.
         var root = new GameObject("SunSlider", typeof(RectTransform), typeof(Slider));
