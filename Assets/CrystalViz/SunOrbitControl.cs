@@ -44,6 +44,35 @@ public class SunOrbitControl : MonoBehaviour
         slider.value = targetAzimuth / 360f;
         PositionKnob();
         UpdateLabel();
+        DumpKnobDiagnostics(); // TEMPORARY: isolate knob invisibility
+    }
+
+    /// <summary>
+    /// TEMPORARY diagnostic: dumps the knob's state and places a solid
+    /// magenta control square at the same anchors (no texture involved).
+    /// </summary>
+    void DumpKnobDiagnostics()
+    {
+        var handle = knobRT != null ? knobRT.gameObject : null;
+        var raw = handle != null ? handle.GetComponent<RawImage>() : null;
+        var corners = new Vector3[4];
+        if (knobRT != null) knobRT.GetWorldCorners(corners);
+        Debug.Log("[CrystalViz] DIAG handle active=" + (handle != null && handle.activeInHierarchy)
+            + " texNull=" + (raw == null || raw.texture == null)
+            + " color=" + (raw != null ? raw.color.ToString() : "n/a")
+            + " rect=" + (knobRT != null ? knobRT.rect.ToString() : "n/a")
+            + " anchors=" + (knobRT != null ? knobRT.anchorMin.ToString() + "/" + knobRT.anchorMax.ToString() : "n/a")
+            + " world0=" + corners[0].ToString() + " world2=" + corners[2].ToString()
+            + " canvasMode=" + (knobRT != null ? knobRT.GetComponentInParent<Canvas>().renderMode.ToString() : "n/a"));
+        var ctrl = new GameObject("KnobControl", typeof(RectTransform), typeof(Image));
+        ctrl.transform.SetParent(knobRT.parent, false);
+        var crt = ctrl.GetComponent<RectTransform>();
+        crt.anchorMin = knobRT.anchorMin; crt.anchorMax = knobRT.anchorMax;
+        crt.anchoredPosition = new Vector2(30f, 0f);
+        crt.pivot = new Vector2(0.5f, 0.5f);
+        crt.sizeDelta = new Vector2(40f, 40f);
+        ctrl.GetComponent<Image>().color = Color.magenta;
+        Debug.Log("[CrystalViz] DIAG magenta control placed");
     }
 
     /// <summary>
