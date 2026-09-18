@@ -13,6 +13,7 @@ public class SunOrbitControl : MonoBehaviour
 
     Slider slider;
     Text angleLabel;
+    RectTransform knobRT;
     float currentAzimuth = 54f;
     float targetAzimuth = 54f;
 
@@ -22,9 +23,11 @@ public class SunOrbitControl : MonoBehaviour
         slider.onValueChanged.AddListener(v =>
         {
             targetAzimuth = v * 360f;
+            PositionKnob();
             UpdateLabel();
         });
         slider.value = targetAzimuth / 360f; // fires listener, sets initial sun pos
+        PositionKnob();
         UpdateLabel();
     }
 
@@ -39,14 +42,22 @@ public class SunOrbitControl : MonoBehaviour
         if (bootstrap == null) bootstrap = FindObjectOfType<CrystalVizBootstrap>();
         BuildUI();
         slider.value = targetAzimuth / 360f;
+        PositionKnob();
         UpdateLabel();
-        var hrtDbg = slider.handleRect;
-        var himg = hrtDbg != null ? hrtDbg.GetComponent<Image>() : null;
-        UnityEngine.Debug.Log("[CrystalViz] handle rect=" +
-            (hrtDbg != null ? hrtDbg.rect.ToString() : "null") +
-            " imgNull=" + (himg == null) +
-            " spriteNull=" + (himg != null && himg.sprite == null) +
-            " active=" + (hrtDbg != null && hrtDbg.gameObject.activeInHierarchy));
+    }
+
+    /// <summary>
+    /// Centers the glowing knob on the fill line. The Slider's own
+    /// handleRect driving stretches the knob across the track, so we leave
+    /// slider.handleRect null and place the knob with fractional anchors.
+    /// </summary>
+    void PositionKnob()
+    {
+        if (slider == null || knobRT == null) return;
+        float v = slider.normalizedValue;
+        knobRT.anchorMin = new Vector2(0.5f, v);
+        knobRT.anchorMax = new Vector2(0.5f, v);
+        knobRT.anchoredPosition = Vector2.zero;
     }
 
     void Update()
@@ -56,6 +67,7 @@ public class SunOrbitControl : MonoBehaviour
         currentAzimuth = Mathf.LerpAngle(currentAzimuth, targetAzimuth,
             1f - Mathf.Exp(-8f * Time.deltaTime));
         bootstrap.PlaceSun(currentAzimuth);
+        PositionKnob();
     }
 
     void UpdateLabel()
@@ -94,7 +106,7 @@ public class SunOrbitControl : MonoBehaviour
         var fillSprite = MakeBarSprite(48, 64, 22,
             new Color(0.50f, 0.95f, 1.00f, 0.95f), new Color(0.05f, 0.72f, 0.95f, 0.95f),
             16, new Color(0.25f, 0.85f, 1.00f, 1f));
-        var knobSprite = MakeKnobSprite(96);
+        var knobTex = MakeKnobTexture(96);
 
         // Slider root: vertical strip hugging the left edge.
         var root = new GameObject("SunSlider", typeof(RectTransform), typeof(Slider));
@@ -133,19 +145,22 @@ public class SunOrbitControl : MonoBehaviour
         fillImg.type = Image.Type.Sliced;
         slider.fillRect = fill.GetComponent<RectTransform>();
 
-        // Handle area + glowing knob.
+        // Handle area + glowing knob. The knob is a RawImage (texture drawn
+        // directly, no sprite mesh involved) positioned with fractional
+        // anchors in PositionKnob(); slider.handleRect stays null so the
+        // Slider never stretches the knob.
         var handleArea = new GameObject("Handle Area", typeof(RectTransform));
         handleArea.transform.SetParent(root.transform, false);
         var hart = handleArea.GetComponent<RectTransform>();
         hart.anchorMin = Vector2.zero; hart.anchorMax = Vector2.one;
-        hart.offsetMin = new Vector2(0f, -48f); hart.offsetMax = new Vector2(0f, 48f);
-        var handle = new GameObject("Handle", typeof(RectTransform), typeof(Image));
+        hart.offsetMin = Vector2.zero; hart.offsetMax = Vector2.zero;
+        var handle = new GameObject("Handle", typeof(RectTransform), typeof(RawImage));
         handle.transform.SetParent(handleArea.transform, false);
         var hrt = handle.GetComponent<RectTransform>();
+        hrt.pivot = new Vector2(0.5f, 0.5f);
         hrt.sizeDelta = new Vector2(96f, 96f);
-        handle.GetComponent<Image>().sprite = knobSprite;
-        slider.handleRect = hrt;
-        slider.targetGraphic = handle.GetComponent<Image>();
+        knobRT = hrt;
+        handle.GetComponent<RawImage>().texture = knobTex;
 
         // Angle readout under the slider.
         var labelGo = new GameObject("AngleLabel", typeof(RectTransform), typeof(Text));
@@ -208,9 +223,10 @@ public class SunOrbitControl : MonoBehaviour
     }
 
     /// <summary>
-    /// Glassy circular knob: bright disc, cyan rim, soft cyan aura.
+    /// Glassy circular knob texture: bright disc, cyan rim, soft cyan aura.
+    /// Used via RawImage so no sprite mesh is involved.
     /// </summary>
-    static Sprite MakeKnobSprite(int size)
+    static Texture2D MakeKnobTexture(int size)
     {
         var tex = new Texture2D(size, size, TextureFormat.ARGB32, false);
         tex.filterMode = FilterMode.Bilinear;
@@ -238,16 +254,7 @@ public class SunOrbitControl : MonoBehaviour
             }
         }
         tex.Apply();
-#if UNITY_EDITOR
-        // Debug: dump the knob texture so CI can upload it for inspection.
-        try { System.IO.File.WriteAllBytes("/tmp/knob_debug.png", tex.EncodeToPNG()); }
-        catch (System.Exception e) { UnityEngine.Debug.LogWarning("[CrystalViz] knob dump failed: " + e.Message); }
-#endif
-        var spr = Sprite.Create(tex, new Rect(0, 0, size, size),
-            new Vector2(0.5f, 0.5f), 100f, 0u, SpriteMeshType.FullRect);
-        UnityEngine.Debug.Log("[CrystalViz] knobSprite null=" + (spr == null) +
-            " rect=" + (spr != null ? spr.rect.ToString() : "n/a"));
-        return spr;
+        return tex;
     }
 
     /// <summary>
