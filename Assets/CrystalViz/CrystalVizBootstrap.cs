@@ -17,7 +17,14 @@ public class CrystalVizBootstrap : MonoBehaviour
     [HideInInspector] public float sunElevationDeg = 35f;
     [HideInInspector] public float sunDistance = 14f;
 
-    void Awake()
+    void Awake() => BuildScene();
+
+    /// <summary>
+    /// Builds the whole diorama. Called from Awake at runtime; the CI
+    /// screenshot tool calls it directly in edit mode (Awake never runs in
+    /// edit mode).
+    /// </summary>
+    public void BuildScene()
     {
         Random.InitState(1234); // deterministic branches every run
         BuildCamera();
@@ -26,6 +33,23 @@ public class CrystalVizBootstrap : MonoBehaviour
         BuildDiorama();
         var ctrl = gameObject.AddComponent<SunOrbitControl>();
         ctrl.bootstrap = this;
+    }
+
+    /// <summary>
+    /// URP/Lit is created at runtime via Shader.Find. If it was stripped from
+    /// the build this returns null (and logs loudly) instead of producing a
+    /// magenta material or crashing halfway through the diorama.
+    /// </summary>
+    static Material NewLitMaterial()
+    {
+        var shader = Shader.Find("Universal Render Pipeline/Lit");
+        if (shader == null)
+        {
+            Debug.LogError("CrystalViz: 'Universal Render Pipeline/Lit' not found in this build. " +
+                "Pin it in Always Included Shaders (CI does this automatically).");
+            return null;
+        }
+        return new Material(shader);
     }
 
     // ------------------------------------------------------------------ camera
@@ -66,10 +90,13 @@ public class CrystalVizBootstrap : MonoBehaviour
         ground.name = "StudioGround";
         ground.transform.position = Vector3.zero;
         ground.transform.localScale = new Vector3(8f, 1f, 8f); // 80x80 world units
-        var gmat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
-        gmat.color = new Color(0.74f, 0.71f, 0.68f, 1f);
-        gmat.SetFloat("_Smoothness", 0f);
-        ground.GetComponent<Renderer>().material = gmat;
+        var gmat = NewLitMaterial();
+        if (gmat != null)
+        {
+            gmat.color = new Color(0.74f, 0.71f, 0.68f, 1f);
+            gmat.SetFloat("_Smoothness", 0f);
+            ground.GetComponent<Renderer>().material = gmat;
+        }
 
         // Faint cool fill so shadow sides of the glass don't go pitch black.
         var fill = new GameObject("FillLight").AddComponent<Light>();
@@ -126,19 +153,22 @@ public class CrystalVizBootstrap : MonoBehaviour
         Destroy(glass.GetComponent<Collider>());
         glass.transform.position = SphereCenter;
         glass.transform.localScale = Vector3.one * SphereRadius * 2f;
-        var gmat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
-        gmat.SetFloat("_Surface", 1f); // transparent
-        gmat.SetFloat("_Blend", 0f);   // alpha blend
-        gmat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
-        gmat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-        gmat.SetInt("_ZWrite", 0);
-        gmat.DisableKeyword("_ALPHATEST_ON");
-        gmat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
-        gmat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
-        gmat.SetColor("_BaseColor", new Color(1f, 1f, 1f, 0.20f));
-        gmat.SetFloat("_Smoothness", 1f);
-        gmat.SetFloat("_Metallic", 0f);
-        glass.GetComponent<Renderer>().material = gmat;
+        var gmat = NewLitMaterial();
+        if (gmat != null)
+        {
+            gmat.SetFloat("_Surface", 1f); // transparent
+            gmat.SetFloat("_Blend", 0f);   // alpha blend
+            gmat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            gmat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            gmat.SetInt("_ZWrite", 0);
+            gmat.DisableKeyword("_ALPHATEST_ON");
+            gmat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            gmat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+            gmat.SetColor("_BaseColor", new Color(1f, 1f, 1f, 0.20f));
+            gmat.SetFloat("_Smoothness", 1f);
+            gmat.SetFloat("_Metallic", 0f);
+            glass.GetComponent<Renderer>().material = gmat;
+        }
         glass.GetComponent<Renderer>().shadowCastingMode =
             UnityEngine.Rendering.ShadowCastingMode.Off; // glass shouldn't blob-shadow
 
@@ -148,18 +178,21 @@ public class CrystalVizBootstrap : MonoBehaviour
         Destroy(core.GetComponent<Collider>());
         core.transform.position = SphereCenter + new Vector3(0f, -0.12f, 0f);
         core.transform.localScale = Vector3.one * SphereRadius * 1.05f;
-        var cmat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
-        cmat.SetFloat("_Surface", 1f);
-        cmat.SetFloat("_Blend", 0f);
-        cmat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
-        cmat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-        cmat.SetInt("_ZWrite", 0);
-        cmat.DisableKeyword("_ALPHATEST_ON");
-        cmat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
-        cmat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent + 1;
-        cmat.SetColor("_BaseColor", new Color(1f, 0.98f, 0.94f, 0.30f));
-        cmat.SetFloat("_Smoothness", 1f);
-        core.GetComponent<Renderer>().material = cmat;
+        var cmat = NewLitMaterial();
+        if (cmat != null)
+        {
+            cmat.SetFloat("_Surface", 1f);
+            cmat.SetFloat("_Blend", 0f);
+            cmat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            cmat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            cmat.SetInt("_ZWrite", 0);
+            cmat.DisableKeyword("_ALPHATEST_ON");
+            cmat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            cmat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent + 1;
+            cmat.SetColor("_BaseColor", new Color(1f, 0.98f, 0.94f, 0.30f));
+            cmat.SetFloat("_Smoothness", 1f);
+            core.GetComponent<Renderer>().material = cmat;
+        }
         core.GetComponent<Renderer>().shadowCastingMode =
             UnityEngine.Rendering.ShadowCastingMode.Off;
     }
@@ -259,9 +292,16 @@ public class CrystalVizBootstrap : MonoBehaviour
 
         var go = new GameObject("Branches");
         go.AddComponent<MeshFilter>().mesh = mesh;
-        var bark = new Material(Shader.Find("Universal Render Pipeline/Lit"));
-        bark.color = new Color(0.16f, 0.19f, 0.11f, 1f); // dark mossy green-brown
-        bark.SetFloat("_Smoothness", 0.15f);
-        go.AddComponent<MeshRenderer>().material = bark;
+        var bark = NewLitMaterial();
+        if (bark != null)
+        {
+            bark.color = new Color(0.16f, 0.19f, 0.11f, 1f); // dark mossy green-brown
+            bark.SetFloat("_Smoothness", 0.15f);
+            go.AddComponent<MeshRenderer>().material = bark;
+        }
+        else
+        {
+            go.AddComponent<MeshRenderer>(); // default material; error already logged
+        }
     }
 }

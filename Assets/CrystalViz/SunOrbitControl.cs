@@ -18,14 +18,27 @@ public class SunOrbitControl : MonoBehaviour
 
     void Start()
     {
-        if (bootstrap == null) bootstrap = FindObjectOfType<CrystalVizBootstrap>();
-        BuildUI();
+        BuildForScreenshot();
         slider.onValueChanged.AddListener(v =>
         {
             targetAzimuth = v * 360f;
             UpdateLabel();
         });
         slider.value = targetAzimuth / 360f; // fires listener, sets initial sun pos
+        UpdateLabel();
+    }
+
+    /// <summary>
+    /// Builds the slider UI and sets its initial value. Called from Start at
+    /// runtime; the CI screenshot tool calls it directly in edit mode (Start
+    /// never runs in edit mode).
+    /// </summary>
+    public void BuildForScreenshot()
+    {
+        if (slider != null) return; // already built
+        if (bootstrap == null) bootstrap = FindObjectOfType<CrystalVizBootstrap>();
+        BuildUI();
+        slider.value = targetAzimuth / 360f;
         UpdateLabel();
     }
 
@@ -46,7 +59,7 @@ public class SunOrbitControl : MonoBehaviour
 
     // ------------------------------------------------------------------ UI build
 
-    void BuildUI()
+    public void BuildUI()
     {
         // EventSystem is required for touch/click on UI.
         if (FindObjectOfType<UnityEngine.EventSystems.EventSystem>() == null)

@@ -1,0 +1,114 @@
+name: Screenshot CrystalViz
+
+# Manual trigger only. Opens the project in the Unity editor, builds the
+# runtime-generated CrystalViz diorama in edit mode, renders its Main Camera
+# (plus the sun-orbit slider UI) to a PNG, and uploads it as an artifact.
+# Requires UNITY_USERNAME and UNITY_PASSWORD repo secrets (Personal license).
+
+on:
+  workflow_dispatch:
+
+jobs:
+  screenshot:
+    name: Capture CrystalViz screenshot
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Free up disk space (Unity 6 editor is large)
+        run: |
+          echo "--- disk before ---"; df -h /
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf "/usr/local/share/boost"
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force 2>/dev/null || true
+          sudo apt-get clean
+          echo "--- disk after ---"; df -h /
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Pre-install Unity Hub (works around Buildalon hub-path bug)
+        run: |
+          set -e
+          curl -fsSL https://hub.unity3d.com/linux/keys/public | gpg --dearmor | sudo tee /usr/share/keyrings/Unity_Technologies_ApS.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/Unity_Technologies_ApS.gpg] https://hub.unity3d.com/linux/repos/deb stable main" | sudo tee /etc/apt/sources.list.d/unityhub.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq unityhub
+          if [ ! -x /opt/unityhub/unityhub ]; then
+            if [ -x /usr/lib/unityhub/unityhub ]; then
+              HUB_DIR=/usr/lib/unityhub
+            else
+              HUB_DIR="$(dirname "$(readlink -f "$(command -v unityhub)")")"
+            fi
+            echo "Bridging /opt/unityhub -> $HUB_DIR"
+            sudo ln -s "$HUB_DIR" /opt/unityhub
+            sudo chmod -R 777 /opt/unityhub
+          fi
+          ls -la /opt/unityhub/unityhub
+          printf '#!/bin/bash\nxvfb-run --auto-servernum /opt/unityhub/unityhub "$@" 2>/dev/null' | sudo tee /usr/bin/unity-hub > /dev/null
+          sudo chmod 777 /usr/bin/unity-hub
+
+      - name: Setup Unity (version from ProjectSettings/ProjectVersion.txt)
+        uses: buildalon/unity-setup@v2
+        with:
+          # No build-targets: screenshots need no mobile modules.
+          cache-installation: true
+
+      - name: Activate Unity license (Personal)
+        uses: buildalon/activate-unity-license@v2
+        with:
+          license: personal
+          username: ${{ secrets.UNITY_USERNAME }}
+          password: ${{ secrets.UNITY_PASSWORD }}
+
+      - name: Restore Library cache (speeds up re-runs)
+        uses: actions/cache@v4
+        with:
+          path: Library
+          key: unity-library-6000.0.32f1-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            unity-library-6000.0.32f1-
+
+      - name: Capture CrystalViz screenshot
+        # Builds the runtime diorama in edit mode and renders the Main Camera
+        # (with the slider UI) to Screenshots/crystalviz.png. Needs a GL
+        # context: xvfb + Mesa software rendering. Non-fatal.
+        continue-on-error: true
+        run: |
+          set -e
+          EDITOR_BIN=""
+          for cand in \
+            "$HOME/Unity/Hub/Editor/6000.0.32f1/Editor/Unity" \
+            "/opt/Unity/Hub/Editor/6000.0.32f1/Editor/Unity" \
+            "/usr/local/Unity/Hub/Editor/6000.0.32f1/Editor/Unity"; do
+            if [ -x "$cand" ]; then EDITOR_BIN="$cand"; break; fi
+          done
+          if [ -z "$EDITOR_BIN" ]; then
+            EDITOR_BIN="$(find "$HOME/Unity" /opt/unityhub -maxdepth 6 -path "*6000.0.32f1/Editor/Unity" -type f 2>/dev/null | head -1)"
+          fi
+          echo "Editor: $EDITOR_BIN"
+          test -x "$EDITOR_BIN"
+          mkdir -p Builds/Logs
+          xvfb-run -a "$EDITOR_BIN" \
+            -quit -batchmode \
+            -projectPath "${{ github.workspace }}" \
+            -executeMethod CrystalVizScreenshot.Capture \
+            -logFile Builds/Logs/Screenshot.log || echo "screenshot run exited non-zero"
+
+      - name: Upload screenshot
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: crystalviz-screenshot
+          path: 'Screenshots/*.png'
+          if-no-files-found: warn
+
+      - name: Upload editor log
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: crystalviz-editor-log
+          path: 'Builds/Logs/*.log'
+          if-no-files-found: warn

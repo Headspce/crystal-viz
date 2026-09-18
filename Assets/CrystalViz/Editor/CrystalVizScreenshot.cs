@@ -1,0 +1,74 @@
+using System.IO;
+using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+
+/// <summary>
+/// CI visual verification for CrystalViz: opens the scene, runs the
+/// runtime bootstrap in edit mode (Awake never runs in edit mode), builds the
+/// slider UI, and renders the main camera to Screenshots/crystalviz.png.
+/// Invoked from GitHub Actions via:
+///   -executeMethod CrystalVizScreenshot.Capture
+/// Must run WITHOUT -nographics (needs a GL context; the workflow wraps it
+/// in xvfb-run with Mesa software rendering, same as the duck-walk repo).
+/// </summary>
+public static class CrystalVizScreenshot
+{
+    public static void Capture()
+    {
+        EditorSceneManager.OpenScene("Assets/CrystalViz/CrystalViz.unity");
+
+        var bootstrap = Object.FindFirstObjectByType<CrystalVizBootstrap>();
+        if (bootstrap == null)
+        {
+            Debug.LogError("CrystalVizScreenshot: no CrystalVizBootstrap in scene.");
+            EditorApplication.Exit(1);
+            return;
+        }
+        bootstrap.BuildScene(); // edit-mode equivalent of Awake
+
+        var ctrl = bootstrap.GetComponent<SunOrbitControl>();
+        if (ctrl != null)
+            ctrl.BuildForScreenshot();
+        else
+            Debug.LogWarning("CrystalVizScreenshot: no SunOrbitControl; slider UI will be missing.");
+
+        var cam = Camera.main;
+        if (cam == null)
+        {
+            Debug.LogError("CrystalVizScreenshot: no Main Camera.");
+            EditorApplication.Exit(1);
+            return;
+        }
+
+        // ScreenSpaceOverlay canvases don't render into a camera target
+        // texture, so point the slider canvas at the camera just for capture.
+        var canvas = Object.FindFirstObjectByType<Canvas>();
+        if (canvas != null)
+        {
+            canvas.renderMode = RenderMode.ScreenSpaceCamera;
+            canvas.worldCamera = cam;
+            canvas.planeDistance = 1f;
+        }
+
+        // Portrait, close to Tyler's phone aspect.
+        const int w = 720;
+        const int h = 1600;
+        var rt = new RenderTexture(w, h, 24, RenderTextureFormat.ARGB32);
+        cam.targetTexture = rt;
+        cam.Render();
+        RenderTexture.active = rt;
+        var tex = new Texture2D(w, h, TextureFormat.RGB24, false);
+        tex.ReadPixels(new Rect(0, 0, w, h), 0, 0);
+        tex.Apply();
+        cam.targetTexture = null;
+        RenderTexture.active = null;
+        Object.DestroyImmediate(rt);
+
+        Directory.CreateDirectory("Screenshots");
+        var path = Path.Combine("Screenshots", "crystalviz.png");
+        File.WriteAllBytes(path, tex.EncodeToPNG());
+        Object.DestroyImmediate(tex);
+        Debug.Log("CrystalVizScreenshot: saved " + path);
+    }
+}

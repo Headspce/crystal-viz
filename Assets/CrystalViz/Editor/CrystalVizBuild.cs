@@ -14,8 +14,48 @@ using UnityEngine;
 /// </summary>
 public static class CrystalVizBuild
 {
+    /// <summary>
+    /// The whole scene is generated at runtime via Shader.Find, and the build
+    /// contains only CrystalViz.unity (an empty scene), so Unity would strip
+    /// URP/Lit and every material would render magenta on device (this is
+    /// exactly what v1.0.0 did). Pin the shader into Always Included Shaders
+    /// via SerializedObject so no shader GUID hardcoding is needed.
+    /// </summary>
+    public static void EnsureLitShaderIncluded()
+    {
+        var lit = Shader.Find("Universal Render Pipeline/Lit");
+        if (lit == null)
+        {
+            Debug.LogError("CrystalVizBuild: 'Universal Render Pipeline/Lit' not found in the editor; cannot pin it.");
+            return;
+        }
+        var gs = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>("ProjectSettings/GraphicsSettings.asset");
+        if (gs == null)
+        {
+            Debug.LogError("CrystalVizBuild: GraphicsSettings.asset not found.");
+            return;
+        }
+        var so = new SerializedObject(gs);
+        var arr = so.FindProperty("m_AlwaysIncludedShaders");
+        for (int i = 0; i < arr.arraySize; i++)
+        {
+            if (arr.GetArrayElementAtIndex(i).objectReferenceValue == lit)
+            {
+                Debug.Log("CrystalVizBuild: URP/Lit already in Always Included Shaders.");
+                return;
+            }
+        }
+        arr.arraySize++;
+        arr.GetArrayElementAtIndex(arr.arraySize - 1).objectReferenceValue = lit;
+        so.ApplyModifiedProperties();
+        AssetDatabase.SaveAssets();
+        Debug.Log("CrystalVizBuild: pinned URP/Lit into Always Included Shaders.");
+    }
+
     public static void BuildAndroid()
     {
+        EnsureLitShaderIncluded();
+
         PlayerSettings.companyName = "Headspce";
         PlayerSettings.productName = "Crystal Viz";
         PlayerSettings.SetApplicationIdentifier(BuildTargetGroup.Android, "com.headspce.crystalviz");
