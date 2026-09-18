@@ -59,6 +59,8 @@ public class SunOrbitControl : MonoBehaviour
 
     // ------------------------------------------------------------------ UI build
 
+    // ------------------------------------------------------------------ UI build
+
     public void BuildUI()
     {
         // EventSystem is required for touch/click on UI.
@@ -77,50 +79,64 @@ public class SunOrbitControl : MonoBehaviour
         canvasGo.AddComponent<CanvasScaler>();
         canvasGo.AddComponent<GraphicRaycaster>();
 
+        // Modern glassmorphism skin: procedural textures (dark glass track,
+        // glowing cyan fill, glowing knob) generated once — no image assets.
+        var trackSprite = MakeBarSprite(48, 64, 22,
+            new Color(0.17f, 0.19f, 0.23f, 0.78f), new Color(0.07f, 0.09f, 0.13f, 0.78f),
+            0, Color.clear);
+        var fillSprite = MakeBarSprite(48, 64, 22,
+            new Color(0.50f, 0.95f, 1.00f, 0.95f), new Color(0.05f, 0.72f, 0.95f, 0.95f),
+            16, new Color(0.25f, 0.85f, 1.00f, 1f));
+        var knobSprite = MakeKnobSprite(96);
+
         // Slider root: vertical strip hugging the left edge.
         var root = new GameObject("SunSlider", typeof(RectTransform), typeof(Slider));
         root.transform.SetParent(canvasGo.transform, false);
         var rrt = root.GetComponent<RectTransform>();
         rrt.anchorMin = new Vector2(0f, 0f);
         rrt.anchorMax = new Vector2(0f, 1f);
-        rrt.offsetMin = new Vector2(28f, 130f);
-        rrt.offsetMax = new Vector2(104f, -130f);
+        rrt.offsetMin = new Vector2(20f, 150f);
+        rrt.offsetMax = new Vector2(116f, -150f);
 
         slider = root.GetComponent<Slider>();
         slider.minValue = 0f;
         slider.maxValue = 1f;
         slider.direction = Slider.Direction.BottomToTop;
 
-        // Track background.
+        // Track: dark glass rounded bar.
         var bg = new GameObject("Background", typeof(RectTransform), typeof(Image));
         bg.transform.SetParent(root.transform, false);
         var bgrt = bg.GetComponent<RectTransform>();
         bgrt.anchorMin = Vector2.zero; bgrt.anchorMax = Vector2.one;
-        bgrt.offsetMin = new Vector2(26f, 0f); bgrt.offsetMax = new Vector2(-26f, 0f);
-        bg.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.30f);
+        bgrt.offsetMin = new Vector2(24f, 0f); bgrt.offsetMax = new Vector2(-24f, 0f);
+        var bgImg = bg.GetComponent<Image>();
+        bgImg.sprite = trackSprite;
+        bgImg.type = Image.Type.Sliced;
 
-        // Fill area + fill (the warm amber progress).
+        // Fill area (wider than the track so the fill's glow bleeds over it).
         var fillArea = new GameObject("Fill Area", typeof(RectTransform));
         fillArea.transform.SetParent(root.transform, false);
         var fart = fillArea.GetComponent<RectTransform>();
         fart.anchorMin = Vector2.zero; fart.anchorMax = Vector2.one;
-        fart.offsetMin = new Vector2(26f, 0f); fart.offsetMax = new Vector2(-26f, 0f);
+        fart.offsetMin = new Vector2(6f, 0f); fart.offsetMax = new Vector2(-6f, 0f);
         var fill = new GameObject("Fill", typeof(RectTransform), typeof(Image));
         fill.transform.SetParent(fillArea.transform, false);
-        fill.GetComponent<Image>().color = new Color(1f, 0.72f, 0.35f, 0.90f);
+        var fillImg = fill.GetComponent<Image>();
+        fillImg.sprite = fillSprite;
+        fillImg.type = Image.Type.Sliced;
         slider.fillRect = fill.GetComponent<RectTransform>();
 
-        // Handle area + knob.
+        // Handle area + glowing knob.
         var handleArea = new GameObject("Handle Area", typeof(RectTransform));
         handleArea.transform.SetParent(root.transform, false);
         var hart = handleArea.GetComponent<RectTransform>();
         hart.anchorMin = Vector2.zero; hart.anchorMax = Vector2.one;
-        hart.offsetMin = new Vector2(8f, -28f); hart.offsetMax = new Vector2(-8f, 28f);
+        hart.offsetMin = new Vector2(0f, -48f); hart.offsetMax = new Vector2(0f, 48f);
         var handle = new GameObject("Handle", typeof(RectTransform), typeof(Image));
         handle.transform.SetParent(handleArea.transform, false);
         var hrt = handle.GetComponent<RectTransform>();
-        hrt.sizeDelta = new Vector2(56f, 56f);
-        handle.GetComponent<Image>().color = new Color(1f, 1f, 1f, 0.95f);
+        hrt.sizeDelta = new Vector2(96f, 96f);
+        handle.GetComponent<Image>().sprite = knobSprite;
         slider.handleRect = hrt;
         slider.targetGraphic = handle.GetComponent<Image>();
 
@@ -129,14 +145,94 @@ public class SunOrbitControl : MonoBehaviour
         labelGo.transform.SetParent(canvasGo.transform, false);
         var lrt = labelGo.GetComponent<RectTransform>();
         lrt.anchorMin = new Vector2(0f, 0f); lrt.anchorMax = new Vector2(0f, 0f);
-        lrt.anchoredPosition = new Vector2(66f, 78f);
-        lrt.sizeDelta = new Vector2(120f, 40f);
+        lrt.anchoredPosition = new Vector2(68f, 92f);
+        lrt.sizeDelta = new Vector2(140f, 44f);
         var txt = labelGo.GetComponent<Text>();
         txt.font = GetDefaultFont(); // may be null; Text renders nothing without one
-        txt.fontSize = 30;
+        txt.fontSize = 26;
         txt.alignment = TextAnchor.MiddleCenter;
-        txt.color = new Color(0.25f, 0.22f, 0.20f, 0.9f);
+        txt.color = new Color(0.93f, 0.97f, 1f, 0.92f);
         angleLabel = txt;
+    }
+
+    /// <summary>
+    /// Rounded vertical bar texture with vertical gradient and optional baked
+    /// outer glow. 9-sliced (borders cover the rounded ends + glow) so it
+    /// stretches cleanly to any height.
+    /// </summary>
+    static Sprite MakeBarSprite(int w, int h, int radius, Color top, Color bottom,
+        int glowPad, Color glowColor)
+    {
+        int W = w + glowPad * 2, H = h + glowPad * 2;
+        var tex = new Texture2D(W, H, TextureFormat.ARGB32, false);
+        tex.filterMode = FilterMode.Bilinear;
+        float cx = W / 2f, cy = H / 2f;
+        float bx = w / 2f, by = h / 2f;
+        float r = radius;
+        for (int y = 0; y < H; y++)
+        {
+            for (int x = 0; x < W; x++)
+            {
+                float px = x + 0.5f - cx;
+                float py = y + 0.5f - cy;
+                float qx = Mathf.Abs(px) - bx + r;
+                float qy = Mathf.Abs(py) - by + r;
+                float ax = Mathf.Max(qx, 0f), ay = Mathf.Max(qy, 0f);
+                float d = Mathf.Min(Mathf.Max(qx, qy), 0f) + Mathf.Sqrt(ax * ax + ay * ay) - r;
+                float cover = 1f - Mathf.SmoothStep(0f, 1.5f, d);
+                float t = Mathf.Clamp01((py + by) / (2f * by));
+                Color c = Color.Lerp(bottom, top, t);
+                float glowA = 0f;
+                if (d > 0f && glowPad > 0)
+                    glowA = Mathf.Pow(Mathf.Clamp01(1f - d / glowPad), 2f);
+                float inv = 1f - cover;
+                float fr = c.r * cover + glowColor.r * glowA * inv;
+                float fg = c.g * cover + glowColor.g * glowA * inv;
+                float fb = c.b * cover + glowColor.b * glowA * inv;
+                float fa = Mathf.Clamp01(cover * c.a + glowColor.a * glowA * inv);
+                tex.SetPixel(x, y, new Color(
+                    Mathf.Clamp01(fr), Mathf.Clamp01(fg), Mathf.Clamp01(fb), fa));
+            }
+        }
+        tex.Apply();
+        float b = glowPad + radius;
+        return Sprite.Create(tex, new Rect(0, 0, W, H), new Vector2(0.5f, 0.5f),
+            100f, 0u, SpriteMeshType.FullRect, new Vector4(b, b, b, b));
+    }
+
+    /// <summary>
+    /// Glassy circular knob: bright disc, cyan rim, soft cyan aura.
+    /// </summary>
+    static Sprite MakeKnobSprite(int size)
+    {
+        var tex = new Texture2D(size, size, TextureFormat.ARGB32, false);
+        tex.filterMode = FilterMode.Bilinear;
+        float c = size / 2f;
+        float cr = size * 0.23f;
+        Color cyan = new Color(0.30f, 0.88f, 1.00f);
+        Color glass = new Color(0.93f, 0.97f, 1.00f);
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float px = x + 0.5f - c;
+                float py = y + 0.5f - c;
+                float d = Mathf.Sqrt(px * px + py * py);
+                float aura = Mathf.Pow(Mathf.Clamp01(1f - d / c), 2.4f) * 0.55f;
+                float disc = 1f - Mathf.SmoothStep(cr - 1.5f, cr + 1.5f, d);
+                float rim = (1f - Mathf.SmoothStep(0f, 3f, Mathf.Abs(d - (cr - 2f)))) * disc;
+                float sheen = disc * Mathf.Clamp01(0.5f - py / (2f * cr)) * 0.35f;
+                float r = cyan.r * aura + glass.r * disc + rim * 0.6f + sheen;
+                float g = cyan.g * aura + glass.g * disc + rim * 0.9f + sheen;
+                float bch = cyan.b * aura + glass.b * disc + rim + sheen;
+                float a = Mathf.Clamp01(aura * (1f - disc) + disc);
+                tex.SetPixel(x, y, new Color(
+                    Mathf.Clamp01(r), Mathf.Clamp01(g), Mathf.Clamp01(bch), a));
+            }
+        }
+        tex.Apply();
+        return Sprite.Create(tex, new Rect(0, 0, size, size),
+            new Vector2(0.5f, 0.5f), 100f);
     }
 
     /// <summary>
