@@ -272,6 +272,8 @@ public class CrystalVizBootstrap : MonoBehaviour
         }
 
         var mesh = new Mesh { name = "GrassField" };
+        // 4000 tufts x 24 verts = 96k verts: needs 32-bit indices.
+        mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
         mesh.SetVertices(verts);
         mesh.SetNormals(normals);
         mesh.SetUVs(0, uvs);
