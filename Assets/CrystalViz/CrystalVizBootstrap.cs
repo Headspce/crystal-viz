@@ -9,7 +9,7 @@ using UnityEngine;
 /// </summary>
 public class CrystalVizBootstrap : MonoBehaviour
 {
-    public static readonly Vector3 SphereCenter = new Vector3(0f, 2.35f, 0f);
+    public static readonly Vector3 SphereCenter = new Vector3(0f, 2.6f, 0f);
     public const float SphereRadius = 0.9f;
 
     [HideInInspector] public Light sun;
@@ -233,8 +233,8 @@ public class CrystalVizBootstrap : MonoBehaviour
             gmat.DisableKeyword("_ALPHATEST_ON");
             gmat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
             gmat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
-            gmat.SetColor("_BaseColor", new Color(0.75f, 0.90f, 1f, 0.15f)); // faint cyan whisper: background must dominate for a glass read
-            gmat.SetFloat("_Smoothness", 0.85f);
+            gmat.SetColor("_BaseColor", new Color(1f, 1f, 1f, 0.20f)); // v1.0.3 known-good: revert to diagnose white dome
+            gmat.SetFloat("_Smoothness", 1f);
             gmat.SetFloat("_Metallic", 0f);
             glass.GetComponent<Renderer>().material = gmat;
         }
