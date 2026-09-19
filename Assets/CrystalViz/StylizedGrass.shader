@@ -83,6 +83,13 @@ Shader "CrystalViz/StylizedGrass"
                 // Stylized gradient: dark root blending to a light sunny tip.
                 half3 albedo = lerp(_RootColor.rgb, _TipColor.rgb, IN.uv.y);
 
+                // Coherent patchiness: large soft patches of lighter/darker
+                // grass drifting across the field, Zelda-meadow style. Pure
+                // function of world position, so it costs no vertex data.
+                float patch = sin(IN.positionWS.x * 0.11 + IN.positionWS.z * 0.07)
+                            * sin(IN.positionWS.x * 0.05 - IN.positionWS.z * 0.13);
+                albedo *= 0.85 + 0.30 * (0.5 + 0.5 * patch);
+
                 Light mainLight = GetMainLight(IN.shadowCoord);
                 // Wrapped diffuse: blades are up-normaled, so a plain NdotL
                 // would shade one side black; the wrap keeps it soft and sunny.

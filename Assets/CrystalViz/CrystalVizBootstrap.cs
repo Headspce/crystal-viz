@@ -77,33 +77,40 @@ public class CrystalVizBootstrap : MonoBehaviour
         cam.transform.LookAt(new Vector3(0f, 1.7f, 0f)); // frame tree + grass
         cam.fieldOfView = 40f;
         cam.clearFlags = CameraClearFlags.SolidColor;
-        cam.backgroundColor = new Color(0.71f, 0.68f, 0.65f, 1f);
+        // Periwinkle sampled from the bottom edge of clouds.jpg: the sky,
+        // the distance fog, and the clear color all meet at this one hue so
+        // the ground melts into the horizon with no seam.
+        cam.backgroundColor = new Color(0.611f, 0.672f, 0.824f, 1f);
         cam.nearClipPlane = 0.1f;
-        cam.farClipPlane = 100f;
+        cam.farClipPlane = 250f;
     }
 
     // -------------------------------------------------------------- environment
 
     void BuildEnvironment()
     {
-        // Warm studio-grey sweep: ground plane + matching linear fog.
-        var bg = new Color(0.71f, 0.68f, 0.65f, 1f);
+        // Endless-meadow horizon: the ground runs far past the sky plane and
+        // melts into a periwinkle distance fog sampled from the bottom edge
+        // of clouds.jpg. Near field (tree + grass) stays crisp; the far
+        // ground fades to exactly the fog/clear color, so there is no seam
+        // where the world ends and the sky begins.
+        var horizon = new Color(0.611f, 0.672f, 0.824f, 1f);
         RenderSettings.fog = true;
         RenderSettings.fogMode = FogMode.Linear;
-        RenderSettings.fogColor = bg;
-        RenderSettings.fogStartDistance = 12f;
-        RenderSettings.fogEndDistance = 34f;
+        RenderSettings.fogColor = horizon;
+        RenderSettings.fogStartDistance = 45f;
+        RenderSettings.fogEndDistance = 100f;
         RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
         RenderSettings.ambientLight = new Color(0.42f, 0.43f, 0.46f, 1f);
 
         var ground = GameObject.CreatePrimitive(PrimitiveType.Plane);
         ground.name = "GrassGround";
         ground.transform.position = Vector3.zero;
-        ground.transform.localScale = new Vector3(8f, 1f, 8f); // 80x80 world units
+        ground.transform.localScale = new Vector3(20f, 1f, 20f); // 200x200 world units, past the sky plane
         var gmat = NewLitMaterial();
         if (gmat != null)
         {
-            gmat.color = new Color(0.36f, 0.55f, 0.25f, 1f); // meadow green under the grass tufts
+            gmat.color = new Color(0.24f, 0.45f, 0.17f, 1f); // grass mid-tone: gaps read as meadow, not dirt
             gmat.SetFloat("_Smoothness", 0f);
             ground.GetComponent<Renderer>().material = gmat;
         }
@@ -150,7 +157,7 @@ public class CrystalVizBootstrap : MonoBehaviour
 
         // Massive upright plane at the horizon, facing the camera (+Z).
         // Camera sits near z=7.4 looking toward -Z, so the sky stands deep
-        // at -Z. Far plane is 100; this sits comfortably inside it.
+        // at -Z. Far plane is 250; this sits comfortably inside it.
         const float skyDist = 60f;
         const float skyW = 220f;
         const float skyH = 60f;
@@ -242,13 +249,15 @@ public class CrystalVizBootstrap : MonoBehaviour
         var mat = new Material(grassShader);
         mat.SetColor("_RootColor", new Color(0.15f, 0.34f, 0.11f, 1f));
         mat.SetColor("_TipColor", new Color(0.58f, 0.82f, 0.26f, 1f));
-        // Wind bend is in world units: scaled down for the small blades so
-        // the sway reads as a ripple, not a thrash.
-        mat.SetFloat("_WindStrength", 0.05f);
+        // Wind bend is in world units: gentle enough that the taller blades
+        // ripple instead of thrashing.
+        mat.SetFloat("_WindStrength", 0.07f);
         mat.SetFloat("_WindSpeed", 1.7f);
 
         // One combined mesh => one draw call for the entire field (v1.0.5
-        // used 800 GameObjects / 800 draw calls). Deterministic seed so the
+        // used 800 GameObjects / 800 draw calls). Zelda-meadow density:
+        // ~10k tufts over the disc, tall enough to overlap, so the field
+        // reads as one endless coherent carpet. Deterministic seed so the
         // field looks identical on every launch.
         var rng = new System.Random(20260919);
         var verts = new System.Collections.Generic.List<Vector3>();
@@ -256,7 +265,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         var uvs = new System.Collections.Generic.List<Vector2>();
         var tris = new System.Collections.Generic.List<int>();
 
-        const int count = 4000;
+        const int count = 10000;
         const float radius = 28f;
         for (int i = 0; i < count; i++)
         {
@@ -272,7 +281,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         }
 
         var mesh = new Mesh { name = "GrassField" };
-        // 4000 tufts x 24 verts = 96k verts: needs 32-bit indices.
+        // 10000 tufts x 30 verts = 300k verts: needs 32-bit indices.
         mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
         mesh.SetVertices(verts);
         mesh.SetNormals(normals);
@@ -292,11 +301,11 @@ public class CrystalVizBootstrap : MonoBehaviour
     }
 
     /// <summary>
-    /// Appends one small grass tuft (a few tapered, slightly curled blades)
-    /// into shared mesh lists, transformed by the tuft's matrix. Normals all
-    /// point up for the soft stylized look; uv.y is 0 at the root and 1 at
-    /// the tip so the shader can gradient-color and wind-sway by height.
-    /// Blades are deliberately small and cheap: 4 blades x 2 segments.
+    /// Appends one grass tuft (tapered, slightly curled blades) into shared
+    /// mesh lists, transformed by the tuft's matrix. Normals all point up
+    /// for the soft stylized look; uv.y is 0 at the root and 1 at the tip
+    /// so the shader can gradient-color and wind-sway by height.
+    /// Blades are tall enough to overlap their neighbors: 5 blades x 2 segments.
     /// </summary>
     static void AppendGrassTuft(
         System.Collections.Generic.List<Vector3> verts,
@@ -306,15 +315,15 @@ public class CrystalVizBootstrap : MonoBehaviour
         Matrix4x4 mtx,
         System.Random rng)
     {
-        const int blades = 4;
+        const int blades = 5;
         const int segs = 2;
         for (int b = 0; b < blades; b++)
         {
             float ang = (b / (float)blades) * Mathf.PI * 2f + (float)rng.NextDouble() * 0.9f;
             float tilt = 0.25f + (float)rng.NextDouble() * 0.35f;   // outward lean
-            float height = 0.10f + (float)rng.NextDouble() * 0.08f;
-            float width = 0.020f + (float)rng.NextDouble() * 0.012f;
-            float curl = 0.03f + (float)rng.NextDouble() * 0.04f;   // tip curl
+            float height = 0.28f + (float)rng.NextDouble() * 0.22f;
+            float width = 0.030f + (float)rng.NextDouble() * 0.018f;
+            float curl = 0.05f + (float)rng.NextDouble() * 0.06f;   // tip curl
             Vector3 outward = new Vector3(Mathf.Cos(ang), 0f, Mathf.Sin(ang));
             Vector3 side = new Vector3(-outward.z, 0f, outward.x); // blade width axis
             Vector3 basePos = outward * (0.008f + (float)rng.NextDouble() * 0.012f);
