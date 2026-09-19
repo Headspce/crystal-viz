@@ -233,8 +233,8 @@ public class CrystalVizBootstrap : MonoBehaviour
             gmat.DisableKeyword("_ALPHATEST_ON");
             gmat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
             gmat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
-            gmat.SetColor("_BaseColor", new Color(0.62f, 0.82f, 1f, 0.32f)); // icy cyan: reads as glass against bright clouds
-            gmat.SetFloat("_Smoothness", 1f);
+            gmat.SetColor("_BaseColor", new Color(0.75f, 0.90f, 1f, 0.15f)); // faint cyan whisper: background must dominate for a glass read
+            gmat.SetFloat("_Smoothness", 0.85f);
             gmat.SetFloat("_Metallic", 0f);
             glass.GetComponent<Renderer>().material = gmat;
         }
