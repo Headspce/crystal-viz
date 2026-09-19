@@ -111,7 +111,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         var gmat = NewLitMaterial();
         if (gmat != null)
         {
-            gmat.color = new Color(0.10f, 0.23f, 0.08f, 1f); // dark shadowed moss: gaps read as depth under the grass, not neon
+            gmat.color = new Color(0.24f, 0.45f, 0.17f, 1f); // dark shadowed moss: gaps read as depth under the grass, not neon
             gmat.SetFloat("_Smoothness", 0f);
             ground.GetComponent<Renderer>().material = gmat;
         }
