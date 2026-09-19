@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -211,7 +210,7 @@ public class CrystalVizBootstrap : MonoBehaviour
 
     void BuildDiorama()
     {
-        BuildBranches();
+        BuildOldTree();
         BuildGlassSphere();
     }
 
@@ -267,111 +266,60 @@ public class CrystalVizBootstrap : MonoBehaviour
             UnityEngine.Rendering.ShadowCastingMode.Off;
     }
 
-    // -------------------------------------------------------- procedural branches
+    // -------------------------------------------------------- imported old tree
 
-    static Vector3 QuadBezier(Vector3 p0, Vector3 c, Vector3 p1, float t)
+    /// <summary>
+    /// The dead tree: "Old tree" by evolveduk (CC-BY) from Sketchfab, imported
+    /// as Assets/CrystalViz/Resources/Models/OldTree/old.fbx with its bark,
+    /// stump and branch textures. Replaces the old procedural BuildBranches().
+    /// The model is ~858 units tall (cm); it is scaled so the crown cradles the
+    /// crystal sphere, with the base buried slightly like the old trunk was.
+    /// See THIRD-PARTY-NOTICES.md for the required attribution.
+    /// </summary>
+    void BuildOldTree()
     {
-        float u = 1f - t;
-        return u * u * p0 + 2f * u * t * c + t * t * p1;
-    }
-
-    static Vector3 QuadBezierTangent(Vector3 p0, Vector3 c, Vector3 p1, float t)
-    {
-        return 2f * (1f - t) * (c - p0) + 2f * t * (p1 - c);
-    }
-
-    static void AddTube(List<Vector3> verts, List<Vector3> norms, List<int> tris,
-        Vector3 p0, Vector3 c, Vector3 p1,
-        float r0, float r1, int lengthSegs, int radialSegs)
-    {
-        int baseIndex = verts.Count;
-        int rings = lengthSegs + 1;
-        Vector3 upRef = Vector3.up;
-        for (int i = 0; i < rings; i++)
+        var treePrefab = Resources.Load<GameObject>("Models/OldTree/old");
+        if (treePrefab == null)
         {
-            float t = (float)i / lengthSegs;
-            Vector3 pos = QuadBezier(p0, c, p1, t);
-            Vector3 tangent = QuadBezierTangent(p0, c, p1, t).normalized;
-            if (Mathf.Abs(Vector3.Dot(tangent, upRef)) > 0.9f)
-                upRef = Mathf.Abs(tangent.y) > 0.9f ? Vector3.right : Vector3.up;
-            Vector3 b = Vector3.Cross(tangent, upRef).normalized;
-            Vector3 n = Vector3.Cross(b, tangent).normalized;
-            float r = Mathf.Lerp(r0, r1, t);
-            for (int j = 0; j < radialSegs; j++)
+            Debug.LogWarning("CrystalViz: 'Models/OldTree/old' not found in Resources; skipping tree.");
+            return;
+        }
+        var tree = Instantiate(treePrefab);
+        tree.name = "OldTree";
+
+        // Measure the model in its own units, then scale so the full tree
+        // (base to crown) stands targetHeight world units tall.
+        var bounds = new Bounds();
+        bool any = false;
+        foreach (var mf in tree.GetComponentsInChildren<MeshFilter>())
+        {
+            if (mf.sharedMesh == null) continue;
+            if (!any) { bounds = mf.sharedMesh.bounds; any = true; }
+            else bounds.Encapsulate(mf.sharedMesh.bounds);
+        }
+        const float targetHeight = 2.5f;
+        const float buryDepth = 0.35f;
+        float s = any && bounds.size.y > 0f ? targetHeight / bounds.size.y : 0.003f;
+        tree.transform.localScale = Vector3.one * s;
+        // Drop the tree so its lowest point sits buryDepth below the ground.
+        tree.transform.position = new Vector3(0f, -buryDepth - bounds.min.y * s, 0f);
+
+        // The branch cards (branch06.png) are alpha-mapped twigs: enable alpha
+        // cutout so they don't render as opaque quads. _ALPHATEST_ON is
+        // already pinned in the build's ShaderVariantCollection.
+        foreach (var rend in tree.GetComponentsInChildren<Renderer>())
+        {
+            foreach (var mat in rend.materials)
             {
-                float a = (j / (float)radialSegs) * Mathf.PI * 2f;
-                Vector3 ringDir = n * Mathf.Cos(a) + b * Mathf.Sin(a);
-                verts.Add(pos + ringDir * r);
-                norms.Add(ringDir);
+                var tex = mat.HasProperty("_BaseMap") ? mat.GetTexture("_BaseMap") : mat.mainTexture;
+                if (tex != null && tex.name.ToLowerInvariant().Contains("branch"))
+                {
+                    mat.SetFloat("_AlphaClip", 1f);
+                    mat.SetFloat("_Cutoff", 0.5f);
+                    mat.EnableKeyword("_ALPHATEST_ON");
+                }
             }
         }
-        for (int i = 0; i < lengthSegs; i++)
-        {
-            for (int j = 0; j < radialSegs; j++)
-            {
-                int a0 = baseIndex + i * radialSegs + j;
-                int a1 = baseIndex + i * radialSegs + (j + 1) % radialSegs;
-                int b0 = baseIndex + (i + 1) * radialSegs + j;
-                int b1 = baseIndex + (i + 1) * radialSegs + (j + 1) % radialSegs;
-                tris.Add(a0); tris.Add(b0); tris.Add(a1);
-                tris.Add(a1); tris.Add(b0); tris.Add(b1);
-            }
-        }
-    }
-
-    void BuildBranches()
-    {
-        var verts = new List<Vector3>();
-        var norms = new List<Vector3>();
-        var tris = new List<int>();
-
-        // Trunk: rises from below the ground, slight organic lean.
-        AddTube(verts, norms, tris,
-            new Vector3(0f, -0.4f, 0f), new Vector3(0.18f, 0.7f, 0.06f), new Vector3(0f, 1.55f, 0f),
-            0.30f, 0.15f, 10, 8);
-
-        // Six "fingers" arc up and inward, tips landing on the sphere's lower
-        // hemisphere like hands cradling the ball in the reference image.
-        int fingers = 6;
-        for (int i = 0; i < fingers; i++)
-        {
-            float ang = (i / (float)fingers) * Mathf.PI * 2f + Random.Range(-0.15f, 0.15f);
-            Vector3 dir = new Vector3(Mathf.Cos(ang), 0f, Mathf.Sin(ang));
-            Vector3 fp0 = dir * 0.10f + new Vector3(0f, 1.50f, 0f);
-            Vector3 fp1 = SphereCenter + dir * 0.60f + new Vector3(0f, -0.66f, 0f);
-            Vector3 fc = (fp0 + fp1) * 0.5f + dir * 0.38f + new Vector3(0f, -0.12f, 0f);
-            AddTube(verts, norms, tris, fp0, fc, fp1, 0.11f, 0.035f, 12, 7);
-
-            // A couple of small twigs per finger for silhouette interest.
-            for (int k = 0; k < 2; k++)
-            {
-                float t = 0.35f + 0.30f * k + Random.Range(-0.05f, 0.05f);
-                Vector3 tb = QuadBezier(fp0, fc, fp1, t);
-                Vector3 td = (dir * Random.Range(0.6f, 1f) + Vector3.up * Random.Range(0.8f, 1.4f)).normalized;
-                Vector3 tp1 = tb + td * Random.Range(0.30f, 0.50f);
-                Vector3 tc = tb + td * 0.20f + dir * 0.10f;
-                AddTube(verts, norms, tris, tb, tc, tp1, 0.035f, 0.012f, 6, 5);
-            }
-        }
-
-        var mesh = new Mesh();
-        mesh.SetVertices(verts);
-        mesh.SetNormals(norms);
-        mesh.SetTriangles(tris, 0);
-        mesh.RecalculateBounds();
-
-        var go = new GameObject("Branches");
-        go.AddComponent<MeshFilter>().mesh = mesh;
-        var bark = NewLitMaterial();
-        if (bark != null)
-        {
-            bark.color = new Color(0.16f, 0.19f, 0.11f, 1f); // dark mossy green-brown
-            bark.SetFloat("_Smoothness", 0.15f);
-            go.AddComponent<MeshRenderer>().material = bark;
-        }
-        else
-        {
-            go.AddComponent<MeshRenderer>(); // default material; error already logged
-        }
+        Debug.Log($"CrystalViz: old tree placed at scale {s:F5}.");
     }
 }
