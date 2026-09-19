@@ -31,9 +31,13 @@ public static class CrystalVizBuild
     /// superset of the keyword combinations the runtime diorama can actually
     /// hit: opaque + transparent surfaces, main-light shadows (with/without
     /// cascades and screen-space), additional lights, linear/exp fog, DBuffer
-    /// decals on/off, across every pass type. Collection entries that match no
-    /// real variant cost nothing; the matched set is a few dozen variants, so
-    /// the build finishes in minutes and nothing renders magenta.
+    /// decals on/off, across every pass type the Lit shader implements.
+    /// Note (Unity 6 API): ShaderVariantCollection now derives from Object, not
+    /// ScriptableObject (use `new`, not CreateInstance), ShaderVariant is the
+    /// nested struct ShaderVariantCollection.ShaderVariant, and its constructor
+    /// throws ArgumentException for combos that don't exist — so invalid
+    /// combos are probed and skipped. The matched set is a few dozen variants,
+    /// so the build finishes in minutes and nothing renders magenta.
     /// </summary>
     public static void EnsureVariantCollection()
     {
@@ -77,27 +81,36 @@ public static class CrystalVizBuild
         string[] dbuffer = { "_DBUFFER_MRT1", "_DBUFFER_MRT2", "_DBUFFER_MRT3" };
         var passTypes = (PassType[])Enum.GetValues(typeof(PassType));
 
-        var svc = ScriptableObject.CreateInstance<ShaderVariantCollection>();
-        int added = 0;
+        var svc = new ShaderVariantCollection();
+        int added = 0, skipped = 0, passTypesHit = 0;
         int n = keywords.Length;
         var combo = new List<string>(n + 3);
-        for (int mask = 0; mask < (1 << n); mask++)
+        foreach (var pt in passTypes)
         {
-            combo.Clear();
-            for (int b = 0; b < n; b++)
-                if ((mask & (1 << b)) != 0) combo.Add(keywords[b]);
-            // Two DBuffer flavors per combo: decals off, and decals on.
-            for (int db = 0; db < 2; db++)
+            // Probe: skip pass types the Lit shader doesn't implement at all.
+            try { var probe = new ShaderVariantCollection.ShaderVariant(lit, pt, new string[0]); }
+            catch (ArgumentException) { continue; }
+            passTypesHit++;
+
+            for (int mask = 0; mask < (1 << n); mask++)
             {
-                int baseCount = combo.Count;
-                if (db == 1) combo.AddRange(dbuffer);
-                var kws = combo.ToArray();
-                foreach (var pt in passTypes)
+                combo.Clear();
+                for (int b = 0; b < n; b++)
+                    if ((mask & (1 << b)) != 0) combo.Add(keywords[b]);
+                // Two DBuffer flavors per combo: decals off, and decals on.
+                for (int db = 0; db < 2; db++)
                 {
-                    svc.Add(new ShaderVariant(lit, pt, kws));
-                    added++;
+                    int baseCount = combo.Count;
+                    if (db == 1) combo.AddRange(dbuffer);
+                    var kws = combo.ToArray();
+                    try
+                    {
+                        var v = new ShaderVariantCollection.ShaderVariant(lit, pt, kws);
+                        if (svc.Add(v)) added++;
+                    }
+                    catch (ArgumentException) { skipped++; }
+                    if (db == 1) combo.RemoveRange(baseCount, dbuffer.Length);
                 }
-                if (db == 1) combo.RemoveRange(baseCount, dbuffer.Length);
             }
         }
 
@@ -109,7 +122,7 @@ public static class CrystalVizBuild
         AssetDatabase.CreateAsset(svc, path);
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
-        Debug.Log($"CrystalVizBuild: wrote {added} variant entries to {path}; URP/Lit variants pinned surgically.");
+        Debug.Log($"CrystalVizBuild: wrote {added} real variants ({skipped} invalid combos skipped, {passTypesHit} pass types) to {path}.");
     }
 
     public static void BuildAndroid()
@@ -118,7 +131,7 @@ public static class CrystalVizBuild
 
         PlayerSettings.companyName = "Headspce";
         PlayerSettings.productName = "Crystal Viz";
-        PlayerSettings.SetApplicationIdentifier(BuildTargetGroup.Android, "com.headspce.crystalviz");
+        PlayerSettings.SetApplicationIdentifier(UnityEditor.Build.NamedBuildTarget.Android, "com.headspce.crystalviz");
         PlayerSettings.bundleVersion = "1.0.2";
         PlayerSettings.defaultInterfaceOrientation = UIOrientation.Portrait;
 
@@ -131,7 +144,7 @@ public static class CrystalVizBuild
 
         PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
         PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
-        PlayerSettings.SetScriptingBackend(BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
+        PlayerSettings.SetScriptingBackend(UnityEditor.Build.NamedBuildTarget.Android, ScriptingImplementation.IL2CPP);
         PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
 
         var keystorePath = Environment.GetEnvironmentVariable("ANDROID_KEYSTORE_PATH");
