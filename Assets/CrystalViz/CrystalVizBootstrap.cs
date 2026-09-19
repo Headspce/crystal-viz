@@ -2,9 +2,9 @@ using UnityEngine;
 
 /// <summary>
 /// Crystal Viz bootstrap: builds the entire diorama at runtime so the shipped
-/// scene file stays tiny. The scene is a dead tree on a stylized grass field
-/// under a drifting cloud sky, with a single sun that orbits the tree under
-/// slider control (see SunOrbitControl).
+/// scene file stays tiny. The scene is a tap-to-grow parametric tree on a
+/// stylized grass field under a drifting cloud sky, with a single sun that
+/// orbits the tree under slider control (see SunOrbitControl).
 /// Attach to an empty GameObject in CrystalViz.unity; it finds MainCamera itself.
 /// </summary>
 public class CrystalVizBootstrap : MonoBehaviour
@@ -254,8 +254,26 @@ public class CrystalVizBootstrap : MonoBehaviour
 
     void BuildDiorama()
     {
-        BuildOldTree();
+        BuildGrowingTree();
         BuildGrassField();
+    }
+
+    /// <summary>
+    /// Interactive tap-to-grow tree (sprout -> mature over 50 taps). The
+    /// growing tree is the centerpiece at origin; it replaces the old static
+    /// OldTree. ParametricTree builds the geometry, TreeGrowthController owns
+    /// tap input + persistence, StageIndicatorUI shows the stage avatar.
+    /// Components find each other via GetComponent in Awake, so add order is
+    /// safe (all Awakes run before any Start).
+    /// </summary>
+    void BuildGrowingTree()
+    {
+        var treeGO = new GameObject("GrowingTree");
+        treeGO.transform.position = Vector3.zero;
+        treeGO.AddComponent<ParametricTree>();
+        treeGO.AddComponent<TreeGrowthController>();
+        treeGO.AddComponent<StageIndicatorUI>();
+        Debug.Log("CrystalViz: growing tree planted at origin.");
     }
 
     // ---------------------------------------------------------- stylized grass
@@ -395,62 +413,5 @@ public class CrystalVizBootstrap : MonoBehaviour
                 tris.Add(r0 + 1); tris.Add(r1); tris.Add(r1 + 1);
             }
         }
-    }
-
-    // -------------------------------------------------------- imported old tree
-
-    /// <summary>
-    /// The dead tree: "Old tree" by evolveduk (CC-BY) from Sketchfab, imported
-    /// as Assets/CrystalViz/Resources/Models/OldTree/old.fbx with its bark,
-    /// stump and branch textures. Replaces the old procedural BuildBranches().
-    /// The model is ~858 units tall (cm); it is scaled so the crown rises above
-    /// the grass field, with the base buried slightly like the old trunk was.
-    /// See THIRD-PARTY-NOTICES.md for the required attribution.
-    /// </summary>
-    void BuildOldTree()
-    {
-        var treePrefab = Resources.Load<GameObject>("Models/OldTree/old");
-        if (treePrefab == null)
-        {
-            Debug.LogWarning("CrystalViz: 'Models/OldTree/old' not found in Resources; skipping tree.");
-            return;
-        }
-        var tree = Instantiate(treePrefab);
-        tree.name = "OldTree";
-
-        // Measure the model in its own units, then scale so the full tree
-        // (base to crown) stands targetHeight world units tall.
-        var bounds = new Bounds();
-        bool any = false;
-        foreach (var mf in tree.GetComponentsInChildren<MeshFilter>())
-        {
-            if (mf.sharedMesh == null) continue;
-            if (!any) { bounds = mf.sharedMesh.bounds; any = true; }
-            else bounds.Encapsulate(mf.sharedMesh.bounds);
-        }
-        const float targetHeight = 2.5f;
-        const float buryDepth = 0.35f;
-        float s = any && bounds.size.y > 0f ? targetHeight / bounds.size.y : 0.003f;
-        tree.transform.localScale = Vector3.one * s;
-        // Drop the tree so its lowest point sits buryDepth below the ground.
-        tree.transform.position = new Vector3(0f, -buryDepth - bounds.min.y * s, 0f);
-
-        // The branch cards (branch06.png) are alpha-mapped twigs: enable alpha
-        // cutout so they don't render as opaque quads. _ALPHATEST_ON is
-        // already pinned in the build's ShaderVariantCollection.
-        foreach (var rend in tree.GetComponentsInChildren<Renderer>())
-        {
-            foreach (var mat in rend.materials)
-            {
-                var tex = mat.HasProperty("_BaseMap") ? mat.GetTexture("_BaseMap") : mat.mainTexture;
-                if (tex != null && tex.name.ToLowerInvariant().Contains("branch"))
-                {
-                    mat.SetFloat("_AlphaClip", 1f);
-                    mat.SetFloat("_Cutoff", 0.5f);
-                    mat.EnableKeyword("_ALPHATEST_ON");
-                }
-            }
-        }
-        Debug.Log($"CrystalViz: old tree placed at scale {s:F5}.");
     }
 }

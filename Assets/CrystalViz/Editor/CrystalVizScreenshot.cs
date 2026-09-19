@@ -42,9 +42,11 @@ public static class CrystalVizScreenshot
         }
 
         // ScreenSpaceOverlay canvases don't render into a camera target
-        // texture, so point the slider canvas at the camera just for capture.
-        var canvas = Object.FindFirstObjectByType<Canvas>();
-        if (canvas != null)
+        // texture, so point every canvas at the camera just for capture.
+        // (There can be more than one: the sun slider canvas plus the
+        // tap-to-grow stage avatar canvas.)
+        var canvases = Object.FindObjectsByType<Canvas>(FindObjectsSortMode.None);
+        foreach (var canvas in canvases)
         {
             canvas.renderMode = RenderMode.ScreenSpaceCamera;
             canvas.worldCamera = cam;
