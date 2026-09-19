@@ -316,9 +316,7 @@ public class CrystalVizBootstrap : MonoBehaviour
             var mtx = Matrix4x4.TRS(
                 new Vector3(Mathf.Cos(a) * r, 0f, Mathf.Sin(a) * r),
                 Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f),
-                // 1.6x larger clusters: tufts overlap and cover bare spots
-                // with zero extra geometry instances.
-                Vector3.one * (0.7f + (float)rng.NextDouble() * 0.8f) * 1.6f);
+                Vector3.one * (0.7f + (float)rng.NextDouble() * 0.8f));
             AppendGrassTuft(verts, normals, uvs, tris, mtx, rng);
         }
 
