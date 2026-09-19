@@ -3,7 +3,8 @@ Shader "CrystalViz/ScrollingClouds"
     Properties
     {
         _MainTex ("Cloud Texture", 2D) = "white" {}
-        _ScrollSpeed ("Scroll Speed", Float) = 0.008
+        _ScrollSpeed ("Scroll Speed", Float) = 0.0012
+        _Tiling ("Tiling", Vector) = (8, 2, 0, 0)
         _Tint ("Tint", Color) = (1, 1, 1, 1)
     }
     SubShader
@@ -37,6 +38,7 @@ Shader "CrystalViz/ScrollingClouds"
             TEXTURE2D(_MainTex);
             SAMPLER(sampler_MainTex);
             float _ScrollSpeed;
+            float4 _Tiling;
             float4 _Tint;
 
             Varyings vert(Attributes IN)
@@ -49,8 +51,8 @@ Shader "CrystalViz/ScrollingClouds"
 
             half4 frag(Varyings IN) : SV_Target
             {
-                // Scroll left -> right: sample point drifts left in UV space.
-                float2 uv = IN.uv;
+                // Tile, then scroll left -> right: sample point drifts left in UV space.
+                float2 uv = IN.uv * _Tiling.xy;
                 uv.x = frac(uv.x - _Time.y * _ScrollSpeed);
                 half4 c = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, uv);
                 return c * _Tint;

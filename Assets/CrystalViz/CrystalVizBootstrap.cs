@@ -122,11 +122,13 @@ public class CrystalVizBootstrap : MonoBehaviour
     // ------------------------------------------------------- cloud backdrop
 
     /// <summary>
-    /// Slowly scrolling cloud backdrop: a large quad parented to the camera
-    /// (so it always fills the frame) textured with Assets/CrystalViz/Resources/
-    /// clouds.jpg drifting left to right via the CrystalViz/ScrollingClouds
-    /// shader. The shader has no fog code, so scene fog never washes it out.
-    /// Missing texture or shader => quietly skipped, never a crash.
+    /// Sky backdrop: ONE single massive upright plane standing at the horizon
+    /// behind the diorama (world-space, not camera-parented), textured with
+    /// Assets/CrystalViz/Resources/clouds.jpg drifting left to right at an
+    /// extremely slow crawl via the CrystalViz/ScrollingClouds shader. The
+    /// plane faces the camera upright, as if looking toward the horizon. The
+    /// shader has no fog code, so scene fog never washes it out. Missing
+    /// texture or shader => quietly skipped, never a crash.
     /// </summary>
     void BuildCloudBackdrop()
     {
@@ -144,36 +146,35 @@ public class CrystalVizBootstrap : MonoBehaviour
             return;
         }
 
-        var cam = Camera.main;
-        if (cam == null) return;
-        const float dist = 30f; // well inside the far plane, shader ignores fog
-        float h = 2f * dist * Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);
-        // Camera.aspect is only valid once the camera has rendered. In the
-        // headless CI screenshot run (edit mode, -batchmode) it can be 0/NaN,
-        // which would scale the quad to nothing and silently hide the clouds.
-        // Fall back to 16:9 and oversize generously so the quad still covers
-        // any reasonable frame; on device the aspect is always sane.
-        float aspect = cam.aspect;
-        bool sane = aspect > 0.05f && aspect < 20f
-            && !float.IsNaN(aspect) && !float.IsInfinity(aspect);
-        float w = h * (sane ? aspect : 16f / 9f);
-        float margin = sane ? 1.1f : 2.0f;
-        Debug.Log($"CrystalViz: cloud backdrop aspect={aspect} sane={sane} " +
-            $"quad={w * margin:F1}x{h * margin:F1} at dist {dist}");
+        // Massive upright plane at the horizon, facing the camera (+Z).
+        // Camera sits near z=7.4 looking toward -Z, so the sky stands deep
+        // at -Z. Far plane is 100; this sits comfortably inside it.
+        const float skyDist = 60f;
+        const float skyW = 220f;
+        const float skyH = 60f;
+        const float skyCenterY = 12f;
 
         var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
-        quad.name = "CloudBackdrop";
+        quad.name = "SkyPlane";
         DestroyNow(quad.GetComponent<Collider>());
-        quad.transform.SetParent(cam.transform, false);
-        quad.transform.localPosition = new Vector3(0f, 0f, dist); // +Z: in FRONT of the camera (cameras look along local +Z)
-        quad.transform.localRotation = Quaternion.identity; // back face toward camera; Cull Off renders it, u still runs left-to-right on screen
-        quad.transform.localScale = new Vector3(w * margin, h * margin, 1f);
+        // Unity quads face +Z by default: upright, facing the camera. No
+        // rotation needed.
+        quad.transform.position = new Vector3(0f, skyCenterY, -skyDist);
+        quad.transform.localScale = new Vector3(skyW, skyH, 1f);
         var mat = new Material(shader);
         mat.mainTexture = cloudTex;
+        // Tile the texture across the massive plane so clouds keep a natural
+        // scale instead of stretching.
+        if (mat.HasProperty("_Tiling"))
+            mat.SetVector("_Tiling", new Vector4(8f, 2f, 0f, 0f));
+        // Extremely slow drift: a fraction of the old camera-quad speed.
+        if (mat.HasProperty("_ScrollSpeed"))
+            mat.SetFloat("_ScrollSpeed", 0.0012f);
         var rend = quad.GetComponent<Renderer>();
         rend.material = mat;
         rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         rend.receiveShadows = false;
+        Debug.Log($"CrystalViz: sky plane {skyW}x{skyH} at z={-skyDist}, upright, facing camera.");
     }
 
     // --------------------------------------------------------------------- sun
