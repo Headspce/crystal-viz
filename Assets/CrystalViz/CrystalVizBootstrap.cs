@@ -28,6 +28,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         BuildCamera();
         BuildEnvironment();
         BuildCloudBackdrop();
+        BuildHorizonHaze();
         BuildSun();
         BuildDiorama();
         var ctrl = gameObject.AddComponent<SunOrbitControl>();
@@ -186,6 +187,39 @@ public class CrystalVizBootstrap : MonoBehaviour
         Debug.Log($"CrystalViz: sky plane {skyW}x{skyH} at z={-skyDist}, upright, facing camera.");
     }
 
+    /// <summary>
+    /// Horizon haze: a wide, short transparent quad standing just in front
+    /// of the sky plane, painted with a vertical gradient of the fog color.
+    /// It blurs the line where the grass field meets the sky into a soft
+    /// painted smudge instead of a hard edge. Its bottom dips below the
+    /// ground plane so the opaque ground clips it exactly at the horizon.
+    /// Missing shader => quietly skipped, never a crash.
+    /// </summary>
+    void BuildHorizonHaze()
+    {
+        var shader = Shader.Find("CrystalViz/HorizonHaze");
+        if (shader == null)
+        {
+            Debug.LogWarning("CrystalViz: 'CrystalViz/HorizonHaze' shader not found; skipping horizon haze.");
+            return;
+        }
+        var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        quad.name = "HorizonHaze";
+        DestroyNow(quad.GetComponent<Collider>());
+        // In front of the sky plane (z=-60), straddling the horizon line:
+        // 300 wide, 12 tall, centered at y=5 so it spans y=-1..11.
+        quad.transform.position = new Vector3(0f, 5f, -55f);
+        quad.transform.localScale = new Vector3(300f, 12f, 1f);
+        var mat = new Material(shader);
+        mat.SetColor("_HazeColor", new Color(0.611f, 0.672f, 0.824f, 1f));
+        mat.SetFloat("_BottomAlpha", 0.9f);
+        var rend = quad.GetComponent<Renderer>();
+        rend.material = mat;
+        rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        rend.receiveShadows = false;
+        Debug.Log("CrystalViz: horizon haze band placed at z=-55.");
+    }
+
     // --------------------------------------------------------------------- sun
 
     void BuildSun()
@@ -249,15 +283,15 @@ public class CrystalVizBootstrap : MonoBehaviour
         var mat = new Material(grassShader);
         mat.SetColor("_RootColor", new Color(0.15f, 0.34f, 0.11f, 1f));
         mat.SetColor("_TipColor", new Color(0.58f, 0.82f, 0.26f, 1f));
-        // Wind bend is in world units: gentle enough that the taller blades
-        // ripple instead of thrashing.
-        mat.SetFloat("_WindStrength", 0.07f);
+        // Wind bend is in world units: scaled to the tiny blades so the sway
+        // reads as a shimmer, not a thrash.
+        mat.SetFloat("_WindStrength", 0.02f);
         mat.SetFloat("_WindSpeed", 1.7f);
 
         // One combined mesh => one draw call for the entire field (v1.0.5
-        // used 800 GameObjects / 800 draw calls). Zelda-meadow density:
-        // ~10k tufts over the disc, tall enough to overlap, so the field
-        // reads as one endless coherent carpet. Deterministic seed so the
+        // used 800 GameObjects / 800 draw calls). Tiny-but-dense: blades at
+        // 25% of v1.0.7 size, packed ~3x denser so the field reads as one
+        // completely filled carpet with no gaps. Deterministic seed so the
         // field looks identical on every launch.
         var rng = new System.Random(20260919);
         var verts = new System.Collections.Generic.List<Vector3>();
@@ -265,7 +299,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         var uvs = new System.Collections.Generic.List<Vector2>();
         var tris = new System.Collections.Generic.List<int>();
 
-        const int count = 10000;
+        const int count = 30000;
         const float radius = 28f;
         for (int i = 0; i < count; i++)
         {
@@ -281,7 +315,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         }
 
         var mesh = new Mesh { name = "GrassField" };
-        // 10000 tufts x 30 verts = 300k verts: needs 32-bit indices.
+        // 30000 tufts x 30 verts = 900k verts: needs 32-bit indices.
         mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
         mesh.SetVertices(verts);
         mesh.SetNormals(normals);
@@ -305,7 +339,8 @@ public class CrystalVizBootstrap : MonoBehaviour
     /// mesh lists, transformed by the tuft's matrix. Normals all point up
     /// for the soft stylized look; uv.y is 0 at the root and 1 at the tip
     /// so the shader can gradient-color and wind-sway by height.
-    /// Blades are tall enough to overlap their neighbors: 5 blades x 2 segments.
+    /// Blades are tiny (75% smaller than v1.0.7) and densely packed:
+    /// 5 blades x 2 segments.
     /// </summary>
     static void AppendGrassTuft(
         System.Collections.Generic.List<Vector3> verts,
@@ -321,12 +356,12 @@ public class CrystalVizBootstrap : MonoBehaviour
         {
             float ang = (b / (float)blades) * Mathf.PI * 2f + (float)rng.NextDouble() * 0.9f;
             float tilt = 0.25f + (float)rng.NextDouble() * 0.35f;   // outward lean
-            float height = 0.28f + (float)rng.NextDouble() * 0.22f;
-            float width = 0.030f + (float)rng.NextDouble() * 0.018f;
-            float curl = 0.05f + (float)rng.NextDouble() * 0.06f;   // tip curl
+            float height = 0.07f + (float)rng.NextDouble() * 0.055f;
+            float width = 0.0075f + (float)rng.NextDouble() * 0.0045f;
+            float curl = 0.012f + (float)rng.NextDouble() * 0.015f;  // tip curl
             Vector3 outward = new Vector3(Mathf.Cos(ang), 0f, Mathf.Sin(ang));
             Vector3 side = new Vector3(-outward.z, 0f, outward.x); // blade width axis
-            Vector3 basePos = outward * (0.008f + (float)rng.NextDouble() * 0.012f);
+            Vector3 basePos = outward * (0.002f + (float)rng.NextDouble() * 0.003f);
 
             int baseIdx = verts.Count;
             for (int s = 0; s <= segs; s++)

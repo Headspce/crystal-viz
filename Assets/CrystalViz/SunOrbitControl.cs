@@ -108,7 +108,9 @@ public class SunOrbitControl : MonoBehaviour
             8, new Color(0.25f, 0.85f, 1.00f, 0.35f));
         var knobTex = MakeKnobTexture(96);
 
-        // Slider root: slim vertical strip hugging the RIGHT edge (half width).
+        // Slider root: slim vertical strip hugging the RIGHT edge.
+        // v1.0.8: the whole bar is 75% smaller — rendered at quarter scale
+        // about its right-center pivot so it stays glued to the edge.
         var root = new GameObject("SunSlider", typeof(RectTransform), typeof(Slider));
         root.transform.SetParent(canvasGo.transform, false);
         var rrt = root.GetComponent<RectTransform>();
@@ -116,6 +118,8 @@ public class SunOrbitControl : MonoBehaviour
         rrt.anchorMax = new Vector2(1f, 1f);
         rrt.offsetMin = new Vector2(-68f, 150f);
         rrt.offsetMax = new Vector2(-20f, -150f);
+        rrt.pivot = new Vector2(1f, 0.5f);
+        rrt.localScale = new Vector3(0.25f, 0.25f, 1f);
 
         slider = root.GetComponent<Slider>();
         slider.minValue = 0f;
@@ -167,13 +171,15 @@ public class SunOrbitControl : MonoBehaviour
         knobImg.sprite = knobSprite;
         knobImg.type = Image.Type.Simple;
 
-        // Angle readout under the slider.
+        // Angle readout under the mini slider: centered beneath it (the bar's
+        // rendered center sits 26px left of the edge), scaled to match.
         var labelGo = new GameObject("AngleLabel", typeof(RectTransform), typeof(Text));
         labelGo.transform.SetParent(canvasGo.transform, false);
         var lrt = labelGo.GetComponent<RectTransform>();
-        lrt.anchorMin = new Vector2(1f, 0f); lrt.anchorMax = new Vector2(1f, 0f);
-        lrt.anchoredPosition = new Vector2(-44f, 92f);
+        lrt.anchorMin = new Vector2(1f, 0.355f); lrt.anchorMax = new Vector2(1f, 0.355f);
+        lrt.anchoredPosition = new Vector2(-26f, -8f);
         lrt.sizeDelta = new Vector2(140f, 44f);
+        lrt.localScale = new Vector3(0.25f, 0.25f, 1f);
         var txt = labelGo.GetComponent<Text>();
         txt.font = GetDefaultFont(); // may be null; Text renders nothing without one
         txt.fontSize = 26;
