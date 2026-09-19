@@ -43,7 +43,8 @@ public class TreeGrowthController : MonoBehaviour
     void Awake()
     {
         tree = GetComponent<ParametricTree>();
-        currentTaps = Mathf.Clamp(PlayerPrefs.GetInt(PrefsKey, 0), 0, totalTaps);
+        // DEBUG: start at 30 taps (young tree) for prototype screenshots; revert to 0 for release
+        currentTaps = Mathf.Clamp(PlayerPrefs.GetInt(PrefsKey, 30), 0, totalTaps);
         displayedG = GrowthTarget;
     }
 
