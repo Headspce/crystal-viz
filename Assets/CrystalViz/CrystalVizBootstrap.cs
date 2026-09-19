@@ -111,7 +111,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         var gmat = NewLitMaterial();
         if (gmat != null)
         {
-            gmat.color = new Color(0.24f, 0.45f, 0.17f, 1f); // grass mid-tone: gaps read as meadow, not dirt
+            gmat.color = new Color(0.10f, 0.23f, 0.08f, 1f); // dark shadowed moss: gaps read as depth under the grass, not neon
             gmat.SetFloat("_Smoothness", 0f);
             ground.GetComponent<Renderer>().material = gmat;
         }
@@ -316,7 +316,9 @@ public class CrystalVizBootstrap : MonoBehaviour
             var mtx = Matrix4x4.TRS(
                 new Vector3(Mathf.Cos(a) * r, 0f, Mathf.Sin(a) * r),
                 Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f),
-                Vector3.one * (0.7f + (float)rng.NextDouble() * 0.8f));
+                // 1.6x larger clusters: tufts overlap and cover bare spots
+                // with zero extra geometry instances.
+                Vector3.one * (0.7f + (float)rng.NextDouble() * 0.8f) * 1.6f);
             AppendGrassTuft(verts, normals, uvs, tris, mtx, rng);
         }
 
