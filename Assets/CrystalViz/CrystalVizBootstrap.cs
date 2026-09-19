@@ -111,7 +111,14 @@ public class CrystalVizBootstrap : MonoBehaviour
         var gmat = NewLitMaterial();
         if (gmat != null)
         {
-            gmat.color = new Color(0.24f, 0.45f, 0.17f, 1f); // dark shadowed moss: gaps read as depth under the grass, not neon
+            // Workaround: dark _BaseColor renders pure black in CI (suspected Mesa
+            // artifact). Feed Tyler's target dark green through _BaseMap instead,
+            // leaving _BaseColor white.
+            var tex = new Texture2D(1, 1, TextureFormat.RGB24, false);
+            tex.SetPixel(0, 0, new Color(0.10f, 0.23f, 0.08f, 1f));
+            tex.Apply();
+            gmat.SetTexture("_BaseMap", tex);
+            gmat.color = Color.white;
             gmat.SetFloat("_Smoothness", 0f);
             ground.GetComponent<Renderer>().material = gmat;
         }
