@@ -46,13 +46,18 @@ public class TreeGrowthController : MonoBehaviour
         // DEBUG: start at 30 taps (young tree) for prototype screenshots; revert to 0 for release
         currentTaps = Mathf.Clamp(PlayerPrefs.GetInt(PrefsKey, 30), 0, totalTaps);
         displayedG = GrowthTarget;
+        // Build the mesh here, not just in Start(): CI screenshot captures run
+        // in edit mode, where Start()/Update() never execute, leaving the
+        // trunk/leaf meshes empty (invisible tree).
+        ApplyGrowth();
     }
 
     void Start()
     {
         lastStage = CurrentStage;
-        if (tree != null) tree.SetGrowth(displayedG);
-        else Debug.LogError("TreeGrowthController: no ParametricTree on this GameObject.");
+        ApplyGrowth();
+        if (tree == null)
+            Debug.LogError("TreeGrowthController: no ParametricTree on this GameObject.");
     }
 
     void Update()
@@ -71,6 +76,17 @@ public class TreeGrowthController : MonoBehaviour
             displayedG = Mathf.Lerp(animFrom, animTo, Smooth(animT));
             if (tree != null) tree.SetGrowth(displayedG);
         }
+    }
+
+    /// <summary>
+    /// Rebuilds the tree mesh at the currently displayed growth value.
+    /// Idempotent (ParametricTree skips rebuilds for tiny changes), so it is
+    /// safe to call from Awake, Start, and explicitly after AddComponent.
+    /// </summary>
+    public void ApplyGrowth()
+    {
+        if (tree != null) tree.SetGrowth(displayedG);
+        lastStage = CurrentStage;
     }
 
     /// <summary>Advance one growth step. Safe to call from UI buttons too.</summary>

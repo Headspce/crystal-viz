@@ -273,6 +273,10 @@ public class CrystalVizBootstrap : MonoBehaviour
         treeGO.AddComponent<ParametricTree>();
         treeGO.AddComponent<TreeGrowthController>();
         treeGO.AddComponent<StageIndicatorUI>();
+        // Explicit: CI screenshot captures run in edit mode, where Start()/
+        // Update() never execute. TreeGrowthController.Awake() already builds
+        // the mesh, but this makes it deterministic even if add order changes.
+        treeGO.GetComponent<TreeGrowthController>().ApplyGrowth();
         Debug.Log("CrystalViz: growing tree planted at origin.");
     }
 

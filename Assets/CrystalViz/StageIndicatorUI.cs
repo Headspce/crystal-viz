@@ -47,6 +47,9 @@ public class StageIndicatorUI : MonoBehaviour
             }
         }
         BuildUI();
+        // Start()/Update() never run in edit-mode screenshot captures, so set
+        // the initial sprite and counter text here instead of waiting for them.
+        Refresh(controller.CurrentStage);
     }
 
     void Start()
@@ -179,6 +182,10 @@ public class StageIndicatorUI : MonoBehaviour
         var shadow = textGO.AddComponent<Shadow>();
         shadow.effectDistance = new Vector2(2f, -2f);
         shadow.effectColor = new Color(0f, 0f, 0f, 0.6f);
+        // Update() never runs in edit-mode screenshot captures, so seed the
+        // counter text now; Update() keeps it fresh in play mode.
+        if (controller != null)
+            tapText.text = $"{controller.currentTaps} / {controller.totalTaps}";
     }
 
     static GameObject NewRect(string name, Transform parent)
