@@ -1,7 +1,7 @@
 name: Build CrystalViz APK
 
-# Manual trigger only. Builds the CrystalViz lighting-visualizer scene
-# (branch-held crystal ball + sun-orbit slider) into a signed Android APK.
+# Manual trigger only. Builds the CrystalViz tree-and-grass diorama scene
+# (dead tree on a stylized grass field + sun-orbit slider) into a signed Android APK.
 # Requires repo secrets:
 #   UNITY_USERNAME / UNITY_PASSWORD   (Unity Personal license activation)
 #   ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PASSWORD / ANDROID_KEY_PASSWORD

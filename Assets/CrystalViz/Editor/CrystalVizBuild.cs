@@ -32,6 +32,10 @@ public static class CrystalVizBuild
     /// hit: opaque + transparent surfaces, main-light shadows (with/without
     /// cascades and screen-space), additional lights, linear/exp fog, DBuffer
     /// decals on/off, across every pass type the Lit shader implements.
+    /// The custom CrystalViz shaders (ScrollingClouds, StylizedGrass) are
+    /// pinned too: ScrollingClouds has a single variant, while StylizedGrass
+    /// declares shadow/additional-light/fog multi_compiles, so it goes through
+    /// the same keyword-combo probing — invalid combos throw and are skipped.
     /// Note (Unity 6 API): ShaderVariantCollection now derives from Object, not
     /// ScriptableObject (use `new`, not CreateInstance), ShaderVariant is the
     /// nested struct ShaderVariantCollection.ShaderVariant, and its constructor
@@ -85,33 +89,56 @@ public static class CrystalVizBuild
         int added = 0, skipped = 0, passTypesHit = 0;
         int n = keywords.Length;
         var combo = new List<string>(n + 3);
-        foreach (var pt in passTypes)
-        {
-            // Probe: skip pass types the Lit shader doesn't implement at all.
-            try { var probe = new ShaderVariantCollection.ShaderVariant(lit, pt, new string[0]); }
-            catch (ArgumentException) { continue; }
-            passTypesHit++;
 
-            for (int mask = 0; mask < (1 << n); mask++)
+        // Probe every keyword combo against a shader; invalid combos throw
+        // ArgumentException and are skipped. Shared by URP/Lit and the grass
+        // shader below.
+        void PinVariants(Shader sh)
+        {
+            foreach (var pt in passTypes)
             {
-                combo.Clear();
-                for (int b = 0; b < n; b++)
-                    if ((mask & (1 << b)) != 0) combo.Add(keywords[b]);
-                // Two DBuffer flavors per combo: decals off, and decals on.
-                for (int db = 0; db < 2; db++)
+                // Probe: skip pass types the shader doesn't implement at all.
+                try { var probe = new ShaderVariantCollection.ShaderVariant(sh, pt, new string[0]); }
+                catch (ArgumentException) { continue; }
+                passTypesHit++;
+
+                for (int mask = 0; mask < (1 << n); mask++)
                 {
-                    int baseCount = combo.Count;
-                    if (db == 1) combo.AddRange(dbuffer);
-                    var kws = combo.ToArray();
-                    try
+                    combo.Clear();
+                    for (int b = 0; b < n; b++)
+                        if ((mask & (1 << b)) != 0) combo.Add(keywords[b]);
+                    // Two DBuffer flavors per combo: decals off, and decals on.
+                    for (int db = 0; db < 2; db++)
                     {
-                        var v = new ShaderVariantCollection.ShaderVariant(lit, pt, kws);
-                        if (svc.Add(v)) added++;
+                        int baseCount = combo.Count;
+                        if (db == 1) combo.AddRange(dbuffer);
+                        var kws = combo.ToArray();
+                        try
+                        {
+                            var v = new ShaderVariantCollection.ShaderVariant(sh, pt, kws);
+                            if (svc.Add(v)) added++;
+                        }
+                        catch (ArgumentException) { skipped++; }
+                        if (db == 1) combo.RemoveRange(baseCount, dbuffer.Length);
                     }
-                    catch (ArgumentException) { skipped++; }
-                    if (db == 1) combo.RemoveRange(baseCount, dbuffer.Length);
                 }
             }
+        }
+
+        PinVariants(lit);
+
+        // The stylized-grass shader is also created at runtime via
+        // Shader.Find; pin its variants (shadow/additional-light/fog
+        // multi_compiles) so they survive stripping. A missing shader here
+        // is fine — the bootstrap skips the grass field.
+        var grassShader = Shader.Find("CrystalViz/StylizedGrass");
+        if (grassShader != null)
+        {
+            PinVariants(grassShader);
+        }
+        else
+        {
+            Debug.LogWarning("CrystalVizBuild: 'CrystalViz/StylizedGrass' not found; grass field will be skipped at runtime.");
         }
 
         // The scrolling-cloud backdrop shader is also created at runtime via
@@ -153,7 +180,7 @@ public static class CrystalVizBuild
         PlayerSettings.companyName = "Headspce";
         PlayerSettings.productName = "Crystal Viz";
         PlayerSettings.SetApplicationIdentifier(UnityEditor.Build.NamedBuildTarget.Android, "com.headspce.crystalviz");
-        PlayerSettings.bundleVersion = "1.0.3";
+        PlayerSettings.bundleVersion = "1.0.5";
         PlayerSettings.defaultInterfaceOrientation = UIOrientation.Portrait;
 
         var runNumber = Environment.GetEnvironmentVariable("GITHUB_RUN_NUMBER");

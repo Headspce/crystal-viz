@@ -3,7 +3,7 @@ using UnityEngine.UI;
 
 /// <summary>
 /// Sun-orbit slider: a vertical slider pinned to the right edge of the screen.
-/// Sliding UP rotates the sun clockwise around the crystal sphere; sliding DOWN
+/// Sliding UP rotates the sun clockwise around the tree; sliding DOWN
 /// rotates it counter-clockwise. The whole UI is built in code (no prefabs) so
 /// the scene file stays tiny and everything is version-controlled as C#.
 /// </summary>

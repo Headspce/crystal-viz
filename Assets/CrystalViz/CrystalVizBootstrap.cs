@@ -2,15 +2,14 @@ using UnityEngine;
 
 /// <summary>
 /// Crystal Viz bootstrap: builds the entire diorama at runtime so the shipped
-/// scene file stays tiny. Emulates the reference image: a glass/crystal sphere
-/// cradled from below by dark tree branches, warm studio-grey backdrop, and a
-/// single sun that orbits the sphere under slider control (see SunOrbitControl).
+/// scene file stays tiny. The scene is a dead tree on a stylized grass field
+/// under a drifting cloud sky, with a single sun that orbits the tree under
+/// slider control (see SunOrbitControl).
 /// Attach to an empty GameObject in CrystalViz.unity; it finds MainCamera itself.
 /// </summary>
 public class CrystalVizBootstrap : MonoBehaviour
 {
-    public static readonly Vector3 SphereCenter = new Vector3(0f, 2.6f, 0f);
-    public const float SphereRadius = 0.9f;
+    public static readonly Vector3 FocusPoint = new Vector3(0f, 1.3f, 0f);
 
     [HideInInspector] public Light sun;
     [HideInInspector] public float sunElevationDeg = 35f;
@@ -75,7 +74,7 @@ public class CrystalVizBootstrap : MonoBehaviour
             cam = go.GetComponent<Camera>();
         }
         cam.transform.position = new Vector3(0f, 2.5f, 7.4f);
-        cam.transform.LookAt(new Vector3(0f, 2.3f, 0f));
+        cam.transform.LookAt(new Vector3(0f, 1.7f, 0f)); // frame tree + grass
         cam.fieldOfView = 40f;
         cam.clearFlags = CameraClearFlags.SolidColor;
         cam.backgroundColor = new Color(0.71f, 0.68f, 0.65f, 1f);
@@ -98,18 +97,18 @@ public class CrystalVizBootstrap : MonoBehaviour
         RenderSettings.ambientLight = new Color(0.42f, 0.43f, 0.46f, 1f);
 
         var ground = GameObject.CreatePrimitive(PrimitiveType.Plane);
-        ground.name = "StudioGround";
+        ground.name = "GrassGround";
         ground.transform.position = Vector3.zero;
         ground.transform.localScale = new Vector3(8f, 1f, 8f); // 80x80 world units
         var gmat = NewLitMaterial();
         if (gmat != null)
         {
-            gmat.color = new Color(0.74f, 0.71f, 0.68f, 1f);
+            gmat.color = new Color(0.36f, 0.55f, 0.25f, 1f); // meadow green under the grass tufts
             gmat.SetFloat("_Smoothness", 0f);
             ground.GetComponent<Renderer>().material = gmat;
         }
 
-        // Faint cool fill so shadow sides of the glass don't go pitch black.
+        // Faint cool fill so shadow sides of the tree don't go pitch black.
         var fill = new GameObject("FillLight").AddComponent<Light>();
         fill.type = LightType.Directional;
         fill.color = new Color(0.70f, 0.80f, 1.0f, 1f);
@@ -202,8 +201,8 @@ public class CrystalVizBootstrap : MonoBehaviour
             Mathf.Sin(rad) * Mathf.Cos(el),
             Mathf.Sin(el),
             Mathf.Cos(rad) * Mathf.Cos(el));
-        sun.transform.position = SphereCenter + dir * sunDistance;
-        sun.transform.LookAt(SphereCenter);
+        sun.transform.position = FocusPoint + dir * sunDistance;
+        sun.transform.LookAt(FocusPoint);
     }
 
     // ------------------------------------------------------------------ diorama
@@ -211,59 +210,126 @@ public class CrystalVizBootstrap : MonoBehaviour
     void BuildDiorama()
     {
         BuildOldTree();
-        BuildGlassSphere();
+        BuildGrassField();
     }
 
-    void BuildGlassSphere()
-    {
-        // Outer glass shell.
-        var glass = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        glass.name = "CrystalBall";
-        DestroyNow(glass.GetComponent<Collider>());
-        glass.transform.position = SphereCenter;
-        glass.transform.localScale = Vector3.one * SphereRadius * 2f;
-        var gmat = NewLitMaterial();
-        if (gmat != null)
-        {
-            gmat.SetFloat("_Surface", 1f); // transparent
-            gmat.SetFloat("_Blend", 0f);   // alpha blend
-            gmat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
-            gmat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-            gmat.SetInt("_ZWrite", 0);
-            gmat.DisableKeyword("_ALPHATEST_ON");
-            gmat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
-            gmat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
-            gmat.SetColor("_BaseColor", new Color(1f, 1f, 1f, 0.20f)); // v1.0.3 known-good: revert to diagnose white dome
-            gmat.SetFloat("_Smoothness", 1f);
-            gmat.SetFloat("_Metallic", 0f);
-            glass.GetComponent<Renderer>().material = gmat;
-        }
-        glass.GetComponent<Renderer>().shadowCastingMode =
-            UnityEngine.Rendering.ShadowCastingMode.Off; // glass shouldn't blob-shadow
+    // ---------------------------------------------------------- stylized grass
 
-        // Bright inner core: fakes the caustic glow in the reference.
-        var core = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        core.name = "CrystalCore";
-        DestroyNow(core.GetComponent<Collider>());
-        core.transform.position = SphereCenter + new Vector3(0f, -0.12f, 0f);
-        core.transform.localScale = Vector3.one * SphereRadius * 1.05f;
-        var cmat = NewLitMaterial();
-        if (cmat != null)
+    /// <summary>
+    /// Stylized grass field under the tree, following the classic Unity
+    /// stylized-grass tutorial beats: tapered blade tufts with a dark-root to
+    /// light-tip gradient, wind sway in the vertex shader (stronger at the
+    /// tip), and soft wrapped lighting that receives the tree's shadow.
+    /// Tufts are scattered across a disc covering the ground plane, denser
+    /// near the trunk. The CrystalViz/StylizedGrass shader's variants are
+    /// pinned in the build by CrystalVizBuild.EnsureVariantCollection().
+    /// </summary>
+    void BuildGrassField()
+    {
+        var grassShader = Shader.Find("CrystalViz/StylizedGrass");
+        if (grassShader == null)
         {
-            cmat.SetFloat("_Surface", 1f);
-            cmat.SetFloat("_Blend", 0f);
-            cmat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
-            cmat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-            cmat.SetInt("_ZWrite", 0);
-            cmat.DisableKeyword("_ALPHATEST_ON");
-            cmat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
-            cmat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent + 1;
-            cmat.SetColor("_BaseColor", new Color(1f, 0.98f, 0.94f, 0.30f));
-            cmat.SetFloat("_Smoothness", 1f);
-            core.GetComponent<Renderer>().material = cmat;
+            Debug.LogWarning("CrystalViz: 'CrystalViz/StylizedGrass' shader not found; skipping grass field.");
+            return;
         }
-        core.GetComponent<Renderer>().shadowCastingMode =
-            UnityEngine.Rendering.ShadowCastingMode.Off;
+        var mat = new Material(grassShader);
+        mat.SetColor("_RootColor", new Color(0.15f, 0.34f, 0.11f, 1f));
+        mat.SetColor("_TipColor", new Color(0.58f, 0.82f, 0.26f, 1f));
+        mat.SetFloat("_WindStrength", 0.16f);
+        mat.SetFloat("_WindSpeed", 1.7f);
+
+        // Three tuft shapes, cycled so the repetition doesn't read as a pattern.
+        var tuftMeshes = new[]
+        {
+            BuildGrassTuftMesh(11),
+            BuildGrassTuftMesh(23),
+            BuildGrassTuftMesh(37),
+        };
+        var field = new GameObject("GrassField");
+
+        const int count = 800;
+        const float radius = 8.5f;
+        for (int i = 0; i < count; i++)
+        {
+            float a = Random.value * Mathf.PI * 2f;
+            // sqrt-ish falloff: denser near the trunk, thinning toward the edge.
+            float r = radius * Mathf.Pow(Random.value, 0.65f);
+            var go = new GameObject("Tuft");
+            go.transform.SetParent(field.transform, false);
+            go.transform.position = new Vector3(Mathf.Cos(a) * r, 0f, Mathf.Sin(a) * r);
+            go.transform.rotation = Quaternion.Euler(0f, Random.value * 360f, 0f);
+            float s = 0.75f + Random.value * 0.7f;
+            go.transform.localScale = new Vector3(s, s * (0.85f + Random.value * 0.5f), s);
+            var mf = go.AddComponent<MeshFilter>();
+            mf.sharedMesh = tuftMeshes[i % tuftMeshes.Length];
+            var mr = go.AddComponent<MeshRenderer>();
+            mr.sharedMaterial = mat;
+            // Grass doesn't cast (thin blades would speckle the shadows) but
+            // it does receive, so the tree throws a soft shadow across it.
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            mr.receiveShadows = true;
+        }
+        Debug.Log($"CrystalViz: grass field planted ({count} tufts).");
+    }
+
+    /// <summary>
+    /// One grass tuft: several tapered, slightly curled blades leaning
+    /// outward from a small base disc. Normals all point up for the soft
+    /// stylized look; uv.y is 0 at the root and 1 at the tip so the shader
+    /// can gradient-color and wind-sway by blade height.
+    /// </summary>
+    static Mesh BuildGrassTuftMesh(int seed)
+    {
+        var rng = new System.Random(seed);
+        var verts = new System.Collections.Generic.List<Vector3>();
+        var normals = new System.Collections.Generic.List<Vector3>();
+        var uvs = new System.Collections.Generic.List<Vector2>();
+        var tris = new System.Collections.Generic.List<int>();
+
+        const int blades = 6;
+        const int segs = 3;
+        for (int b = 0; b < blades; b++)
+        {
+            float ang = (b / (float)blades) * Mathf.PI * 2f + (float)rng.NextDouble() * 0.6f;
+            float tilt = 0.25f + (float)rng.NextDouble() * 0.35f;   // outward lean
+            float height = 0.38f + (float)rng.NextDouble() * 0.25f;
+            float width = 0.055f + (float)rng.NextDouble() * 0.03f;
+            float curl = 0.10f + (float)rng.NextDouble() * 0.12f;  // tip curl
+            Vector3 outward = new Vector3(Mathf.Cos(ang), 0f, Mathf.Sin(ang));
+            Vector3 side = new Vector3(-outward.z, 0f, outward.x); // blade width axis
+            Vector3 basePos = outward * (0.02f + (float)rng.NextDouble() * 0.03f);
+
+            int baseIdx = verts.Count;
+            for (int s = 0; s <= segs; s++)
+            {
+                float t = s / (float)segs;
+                Vector3 c = basePos
+                    + Vector3.up * (height * t)
+                    + outward * (Mathf.Sin(tilt) * height * t + curl * t * t);
+                float hw = width * 0.5f * (1f - t * 0.92f); // taper to a point
+                verts.Add(c - side * hw);
+                verts.Add(c + side * hw);
+                normals.Add(Vector3.up);
+                normals.Add(Vector3.up);
+                uvs.Add(new Vector2(0f, t));
+                uvs.Add(new Vector2(1f, t));
+            }
+            for (int s = 0; s < segs; s++)
+            {
+                int r0 = baseIdx + s * 2;
+                int r1 = baseIdx + (s + 1) * 2;
+                tris.Add(r0); tris.Add(r1); tris.Add(r0 + 1);
+                tris.Add(r0 + 1); tris.Add(r1); tris.Add(r1 + 1);
+            }
+        }
+
+        var mesh = new Mesh { name = "GrassTuft" };
+        mesh.SetVertices(verts);
+        mesh.SetNormals(normals);
+        mesh.SetUVs(0, uvs);
+        mesh.SetTriangles(tris, 0);
+        mesh.RecalculateBounds();
+        return mesh;
     }
 
     // -------------------------------------------------------- imported old tree
@@ -272,8 +338,8 @@ public class CrystalVizBootstrap : MonoBehaviour
     /// The dead tree: "Old tree" by evolveduk (CC-BY) from Sketchfab, imported
     /// as Assets/CrystalViz/Resources/Models/OldTree/old.fbx with its bark,
     /// stump and branch textures. Replaces the old procedural BuildBranches().
-    /// The model is ~858 units tall (cm); it is scaled so the crown cradles the
-    /// crystal sphere, with the base buried slightly like the old trunk was.
+    /// The model is ~858 units tall (cm); it is scaled so the crown rises above
+    /// the grass field, with the base buried slightly like the old trunk was.
     /// See THIRD-PARTY-NOTICES.md for the required attribution.
     /// </summary>
     void BuildOldTree()
