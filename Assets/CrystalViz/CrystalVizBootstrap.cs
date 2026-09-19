@@ -148,7 +148,18 @@ public class CrystalVizBootstrap : MonoBehaviour
         if (cam == null) return;
         const float dist = 30f; // well inside the far plane, shader ignores fog
         float h = 2f * dist * Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);
-        float w = h * cam.aspect;
+        // Camera.aspect is only valid once the camera has rendered. In the
+        // headless CI screenshot run (edit mode, -batchmode) it can be 0/NaN,
+        // which would scale the quad to nothing and silently hide the clouds.
+        // Fall back to 16:9 and oversize generously so the quad still covers
+        // any reasonable frame; on device the aspect is always sane.
+        float aspect = cam.aspect;
+        bool sane = aspect > 0.05f && aspect < 20f
+            && !float.IsNaN(aspect) && !float.IsInfinity(aspect);
+        float w = h * (sane ? aspect : 16f / 9f);
+        float margin = sane ? 1.1f : 2.0f;
+        Debug.Log($"CrystalViz: cloud backdrop aspect={aspect} sane={sane} " +
+            $"quad={w * margin:F1}x{h * margin:F1} at dist {dist}");
 
         var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
         quad.name = "CloudBackdrop";
@@ -156,7 +167,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         quad.transform.SetParent(cam.transform, false);
         quad.transform.localPosition = new Vector3(0f, 0f, -dist);
         quad.transform.localRotation = Quaternion.identity; // Quad faces +Z => toward camera
-        quad.transform.localScale = new Vector3(w * 1.1f, h * 1.1f, 1f);
+        quad.transform.localScale = new Vector3(w * margin, h * margin, 1f);
         var mat = new Material(shader);
         mat.mainTexture = cloudTex;
         var rend = quad.GetComponent<Renderer>();
