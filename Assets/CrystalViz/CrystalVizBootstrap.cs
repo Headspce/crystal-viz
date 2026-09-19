@@ -136,7 +136,11 @@ public class CrystalVizBootstrap : MonoBehaviour
             Debug.Log("CrystalViz: no 'clouds' texture in Resources; skipping cloud backdrop.");
             return;
         }
-        cloudTex.wrapMode = TextureWrapMode.Repeat;
+        // One single tile stretched across the whole plane: one cloud type
+        // everywhere, no tiling seams. Mirrored wrap keeps the ultra-slow
+        // scroll from ever revealing a texture edge. The texture's mountain
+        // strip lands at the bottom of the plane, i.e. at the horizon.
+        cloudTex.wrapMode = TextureWrapMode.Mirror;
         var shader = Shader.Find("CrystalViz/ScrollingClouds");
         if (shader == null)
         {
@@ -161,10 +165,10 @@ public class CrystalVizBootstrap : MonoBehaviour
         quad.transform.localScale = new Vector3(skyW, skyH, 1f);
         var mat = new Material(shader);
         mat.mainTexture = cloudTex;
-        // Tile the texture across the massive plane so clouds keep a natural
-        // scale instead of stretching.
+        // One tile fills the entire sky: a single cloud image, enlarged,
+        // instead of a tiled grid.
         if (mat.HasProperty("_Tiling"))
-            mat.SetVector("_Tiling", new Vector4(8f, 2f, 0f, 0f));
+            mat.SetVector("_Tiling", new Vector4(1f, 1f, 0f, 0f));
         // Extremely slow drift: a fraction of the old camera-quad speed.
         if (mat.HasProperty("_ScrollSpeed"))
             mat.SetFloat("_ScrollSpeed", 0.0012f);
@@ -220,9 +224,12 @@ public class CrystalVizBootstrap : MonoBehaviour
     /// stylized-grass tutorial beats: tapered blade tufts with a dark-root to
     /// light-tip gradient, wind sway in the vertex shader (stronger at the
     /// tip), and soft wrapped lighting that receives the tree's shadow.
-    /// Tufts are scattered across a disc covering the ground plane, denser
-    /// near the trunk. The CrystalViz/StylizedGrass shader's variants are
-    /// pinned in the build by CrystalVizBuild.EnsureVariantCollection().
+    /// The whole field is ONE combined mesh (a single draw call): thousands
+    /// of small tufts scattered across the entire ground, denser near the
+    /// trunk. Wind phase comes from world position in the shader, so the
+    /// combined mesh still ripples in traveling waves. The
+    /// CrystalViz/StylizedGrass shader's variants are pinned in the build by
+    /// CrystalVizBuild.EnsureVariantCollection().
     /// </summary>
     void BuildGrassField()
     {
@@ -235,69 +242,80 @@ public class CrystalVizBootstrap : MonoBehaviour
         var mat = new Material(grassShader);
         mat.SetColor("_RootColor", new Color(0.15f, 0.34f, 0.11f, 1f));
         mat.SetColor("_TipColor", new Color(0.58f, 0.82f, 0.26f, 1f));
-        mat.SetFloat("_WindStrength", 0.16f);
+        // Wind bend is in world units: scaled down for the small blades so
+        // the sway reads as a ripple, not a thrash.
+        mat.SetFloat("_WindStrength", 0.05f);
         mat.SetFloat("_WindSpeed", 1.7f);
 
-        // Three tuft shapes, cycled so the repetition doesn't read as a pattern.
-        var tuftMeshes = new[]
-        {
-            BuildGrassTuftMesh(11),
-            BuildGrassTuftMesh(23),
-            BuildGrassTuftMesh(37),
-        };
-        var field = new GameObject("GrassField");
-
-        const int count = 800;
-        const float radius = 8.5f;
-        for (int i = 0; i < count; i++)
-        {
-            float a = Random.value * Mathf.PI * 2f;
-            // sqrt-ish falloff: denser near the trunk, thinning toward the edge.
-            float r = radius * Mathf.Pow(Random.value, 0.65f);
-            var go = new GameObject("Tuft");
-            go.transform.SetParent(field.transform, false);
-            go.transform.position = new Vector3(Mathf.Cos(a) * r, 0f, Mathf.Sin(a) * r);
-            go.transform.rotation = Quaternion.Euler(0f, Random.value * 360f, 0f);
-            float s = 0.75f + Random.value * 0.7f;
-            go.transform.localScale = new Vector3(s, s * (0.85f + Random.value * 0.5f), s);
-            var mf = go.AddComponent<MeshFilter>();
-            mf.sharedMesh = tuftMeshes[i % tuftMeshes.Length];
-            var mr = go.AddComponent<MeshRenderer>();
-            mr.sharedMaterial = mat;
-            // Grass doesn't cast (thin blades would speckle the shadows) but
-            // it does receive, so the tree throws a soft shadow across it.
-            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            mr.receiveShadows = true;
-        }
-        Debug.Log($"CrystalViz: grass field planted ({count} tufts).");
-    }
-
-    /// <summary>
-    /// One grass tuft: several tapered, slightly curled blades leaning
-    /// outward from a small base disc. Normals all point up for the soft
-    /// stylized look; uv.y is 0 at the root and 1 at the tip so the shader
-    /// can gradient-color and wind-sway by blade height.
-    /// </summary>
-    static Mesh BuildGrassTuftMesh(int seed)
-    {
-        var rng = new System.Random(seed);
+        // One combined mesh => one draw call for the entire field (v1.0.5
+        // used 800 GameObjects / 800 draw calls). Deterministic seed so the
+        // field looks identical on every launch.
+        var rng = new System.Random(20260919);
         var verts = new System.Collections.Generic.List<Vector3>();
         var normals = new System.Collections.Generic.List<Vector3>();
         var uvs = new System.Collections.Generic.List<Vector2>();
         var tris = new System.Collections.Generic.List<int>();
 
-        const int blades = 6;
-        const int segs = 3;
+        const int count = 4000;
+        const float radius = 28f;
+        for (int i = 0; i < count; i++)
+        {
+            float a = (float)rng.NextDouble() * Mathf.PI * 2f;
+            // sqrt-ish falloff: denser near the trunk, thinning toward the
+            // horizon, but tufts reach everywhere.
+            float r = radius * Mathf.Pow((float)rng.NextDouble(), 0.6f);
+            var mtx = Matrix4x4.TRS(
+                new Vector3(Mathf.Cos(a) * r, 0f, Mathf.Sin(a) * r),
+                Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f),
+                Vector3.one * (0.7f + (float)rng.NextDouble() * 0.8f));
+            AppendGrassTuft(verts, normals, uvs, tris, mtx, rng);
+        }
+
+        var mesh = new Mesh { name = "GrassField" };
+        mesh.SetVertices(verts);
+        mesh.SetNormals(normals);
+        mesh.SetUVs(0, uvs);
+        mesh.SetTriangles(tris, 0);
+        mesh.RecalculateBounds();
+
+        var field = new GameObject("GrassField");
+        field.AddComponent<MeshFilter>().sharedMesh = mesh;
+        var mr = field.AddComponent<MeshRenderer>();
+        mr.sharedMaterial = mat;
+        // Grass doesn't cast (thin blades would speckle the shadows) but
+        // it does receive, so the tree throws a soft shadow across it.
+        mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        mr.receiveShadows = true;
+        Debug.Log($"CrystalViz: grass field planted ({count} tufts, {tris.Count / 3} tris, 1 draw call).");
+    }
+
+    /// <summary>
+    /// Appends one small grass tuft (a few tapered, slightly curled blades)
+    /// into shared mesh lists, transformed by the tuft's matrix. Normals all
+    /// point up for the soft stylized look; uv.y is 0 at the root and 1 at
+    /// the tip so the shader can gradient-color and wind-sway by height.
+    /// Blades are deliberately small and cheap: 4 blades x 2 segments.
+    /// </summary>
+    static void AppendGrassTuft(
+        System.Collections.Generic.List<Vector3> verts,
+        System.Collections.Generic.List<Vector3> normals,
+        System.Collections.Generic.List<Vector2> uvs,
+        System.Collections.Generic.List<int> tris,
+        Matrix4x4 mtx,
+        System.Random rng)
+    {
+        const int blades = 4;
+        const int segs = 2;
         for (int b = 0; b < blades; b++)
         {
-            float ang = (b / (float)blades) * Mathf.PI * 2f + (float)rng.NextDouble() * 0.6f;
+            float ang = (b / (float)blades) * Mathf.PI * 2f + (float)rng.NextDouble() * 0.9f;
             float tilt = 0.25f + (float)rng.NextDouble() * 0.35f;   // outward lean
-            float height = 0.38f + (float)rng.NextDouble() * 0.25f;
-            float width = 0.055f + (float)rng.NextDouble() * 0.03f;
-            float curl = 0.10f + (float)rng.NextDouble() * 0.12f;  // tip curl
+            float height = 0.10f + (float)rng.NextDouble() * 0.08f;
+            float width = 0.020f + (float)rng.NextDouble() * 0.012f;
+            float curl = 0.03f + (float)rng.NextDouble() * 0.04f;   // tip curl
             Vector3 outward = new Vector3(Mathf.Cos(ang), 0f, Mathf.Sin(ang));
             Vector3 side = new Vector3(-outward.z, 0f, outward.x); // blade width axis
-            Vector3 basePos = outward * (0.02f + (float)rng.NextDouble() * 0.03f);
+            Vector3 basePos = outward * (0.008f + (float)rng.NextDouble() * 0.012f);
 
             int baseIdx = verts.Count;
             for (int s = 0; s <= segs; s++)
@@ -307,8 +325,8 @@ public class CrystalVizBootstrap : MonoBehaviour
                     + Vector3.up * (height * t)
                     + outward * (Mathf.Sin(tilt) * height * t + curl * t * t);
                 float hw = width * 0.5f * (1f - t * 0.92f); // taper to a point
-                verts.Add(c - side * hw);
-                verts.Add(c + side * hw);
+                verts.Add(mtx.MultiplyPoint3x4(c - side * hw));
+                verts.Add(mtx.MultiplyPoint3x4(c + side * hw));
                 normals.Add(Vector3.up);
                 normals.Add(Vector3.up);
                 uvs.Add(new Vector2(0f, t));
@@ -322,14 +340,6 @@ public class CrystalVizBootstrap : MonoBehaviour
                 tris.Add(r0 + 1); tris.Add(r1); tris.Add(r1 + 1);
             }
         }
-
-        var mesh = new Mesh { name = "GrassTuft" };
-        mesh.SetVertices(verts);
-        mesh.SetNormals(normals);
-        mesh.SetUVs(0, uvs);
-        mesh.SetTriangles(tris, 0);
-        mesh.RecalculateBounds();
-        return mesh;
     }
 
     // -------------------------------------------------------- imported old tree

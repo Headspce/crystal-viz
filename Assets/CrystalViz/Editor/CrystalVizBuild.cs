@@ -180,7 +180,7 @@ public static class CrystalVizBuild
         PlayerSettings.companyName = "Headspce";
         PlayerSettings.productName = "Crystal Viz";
         PlayerSettings.SetApplicationIdentifier(UnityEditor.Build.NamedBuildTarget.Android, "com.headspce.crystalviz");
-        PlayerSettings.bundleVersion = "1.0.5";
+        PlayerSettings.bundleVersion = "1.0.6";
         PlayerSettings.defaultInterfaceOrientation = UIOrientation.Portrait;
 
         var runNumber = Environment.GetEnvironmentVariable("GITHUB_RUN_NUMBER");
