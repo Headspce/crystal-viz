@@ -290,12 +290,14 @@ public class CrystalVizBootstrap : MonoBehaviour
 
         // One combined mesh => one draw call for the entire field (v1.0.5
         // used 800 GameObjects / 800 draw calls). Foliage-paint tool pinned
-        // to MAX density: 150k tufts over the whole 200x200 ground (r=100),
-        // single-segment blades (identical silhouette at this size, 2/3 the
-        // verts) with radial-falloff sampling — full carpet density near the
-        // camera, tapering with distance so screen-space density stays
-        // constant all the way out to the fog. Blades stay at 25% of v1.0.7
-        // size. Deterministic seed so the field looks identical on every launch.
+        // to MAX density with a tightened spawn radius: 150k tufts over the
+        // whole 200x200 ground (r=100), single-segment blades (identical
+        // silhouette at this size, 2/3 the verts) with tight radial-falloff
+        // sampling — spawn radius 12 (down from 20) packs tufts ~2x closer
+        // near the camera for a denser carpet, tapering with distance so
+        // screen-space density stays constant all the way out to the fog.
+        // Blades stay at 25% of v1.0.7 size. Deterministic seed so the
+        // field looks identical on every launch.
         var rng = new System.Random(20260919);
         var verts = new System.Collections.Generic.List<Vector3>();
         var normals = new System.Collections.Generic.List<Vector3>();
@@ -306,10 +308,11 @@ public class CrystalVizBootstrap : MonoBehaviour
         for (int i = 0; i < count; i++)
         {
             float a = (float)rng.NextDouble() * Mathf.PI * 2f;
-            // Max-density paint falloff: density ~ 1/(1+(r/20)^2).
-            // Inverse-CDF sampling: r = 20*sqrt(26^u - 1), u in [0,1).
-            // ~37 tufts per unit^2 at the center; full 200x200 ground covered.
-            float r = 20f * Mathf.Sqrt((float)(System.Math.Pow(26.0, rng.NextDouble()) - 1.0));
+            // Tight-packing paint falloff: density ~ 1/(1+(r/12)^2).
+            // Inverse-CDF sampling: r = 12*sqrt(70.44^u - 1), u in [0,1).
+            // ~78 tufts per unit^2 at the center (2x tighter packing);
+            // full 200x200 ground covered.
+            float r = 12f * Mathf.Sqrt((float)(System.Math.Pow(70.44, rng.NextDouble()) - 1.0));
             var mtx = Matrix4x4.TRS(
                 new Vector3(Mathf.Cos(a) * r, 0f, Mathf.Sin(a) * r),
                 Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f),
