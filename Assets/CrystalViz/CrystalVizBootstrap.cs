@@ -289,24 +289,26 @@ public class CrystalVizBootstrap : MonoBehaviour
         mat.SetFloat("_WindSpeed", 1.7f);
 
         // One combined mesh => one draw call for the entire field (v1.0.5
-        // used 800 GameObjects / 800 draw calls). Tiny-but-dense: blades at
-        // 25% of v1.0.7 size, packed ~3x denser so the field reads as one
-        // completely filled carpet with no gaps. Deterministic seed so the
-        // field looks identical on every launch.
+        // used 800 GameObjects / 800 draw calls). Foliage-paint tool pinned
+        // to MAX density: the grass covers the whole 200x200 ground (r=100)
+        // with radial-falloff sampling — full carpet density near the camera,
+        // tapering with distance so screen-space density stays constant all
+        // the way out to the fog. Blades stay at 25% of v1.0.7 size.
+        // Deterministic seed so the field looks identical on every launch.
         var rng = new System.Random(20260919);
         var verts = new System.Collections.Generic.List<Vector3>();
         var normals = new System.Collections.Generic.List<Vector3>();
         var uvs = new System.Collections.Generic.List<Vector2>();
         var tris = new System.Collections.Generic.List<int>();
 
-        const int count = 30000;
-        const float radius = 28f;
+        const int count = 100000;
         for (int i = 0; i < count; i++)
         {
             float a = (float)rng.NextDouble() * Mathf.PI * 2f;
-            // sqrt-ish falloff: denser near the trunk, thinning toward the
-            // horizon, but tufts reach everywhere.
-            float r = radius * Mathf.Pow((float)rng.NextDouble(), 0.6f);
+            // Max-density paint falloff: density ~ 1/(1+(r/20)^2).
+            // Inverse-CDF sampling: r = 20*sqrt(26^u - 1), u in [0,1).
+            // ~24 tufts per unit^2 at the center; full 200x200 ground covered.
+            float r = 20f * Mathf.Sqrt((float)(System.Math.Pow(26.0, rng.NextDouble()) - 1.0));
             var mtx = Matrix4x4.TRS(
                 new Vector3(Mathf.Cos(a) * r, 0f, Mathf.Sin(a) * r),
                 Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f),
@@ -315,7 +317,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         }
 
         var mesh = new Mesh { name = "GrassField" };
-        // 30000 tufts x 30 verts = 900k verts: needs 32-bit indices.
+        // 100000 tufts x 30 verts = 3.0M verts: needs 32-bit indices.
         mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
         mesh.SetVertices(verts);
         mesh.SetNormals(normals);
