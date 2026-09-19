@@ -46,37 +46,62 @@ public class ParametricTree : MonoBehaviour
         trunkFilter = GetComponent<MeshFilter>();
         trunkRenderer = GetComponent<MeshRenderer>();
 
+        // Resolve a shader with fallbacks. We NEVER abort here: even a magenta
+        // error-shader material is better than an invisible tree, because it
+        // proves the geometry is building (a missing URP/Lit in CI otherwise
+        // fails silently and the tree just never appears).
         var lit = Shader.Find("Universal Render Pipeline/Lit");
         if (lit == null)
         {
-            Debug.LogError("ParametricTree: 'Universal Render Pipeline/Lit' not found. " +
-                "Pin it in the build's ShaderVariantCollection.");
-            return;
+            Debug.LogWarning("ParametricTree: 'Universal Render Pipeline/Lit' not found; trying 'Standard'.");
+            lit = Shader.Find("Standard");
+        }
+        if (lit == null)
+        {
+            Debug.LogWarning("ParametricTree: 'Standard' not found either; using 'Hidden/InternalErrorShader' " +
+                "(magenta) so the geometry is at least visible.");
+            lit = Shader.Find("Hidden/InternalErrorShader");
+        }
+        if (lit == null)
+        {
+            // Should be impossible: InternalErrorShader ships with every Unity build.
+            Debug.LogError("ParametricTree: no shader found at all. Tree geometry will still build; " +
+                "materials may render magenta.");
         }
 
         // Bark texture if the OldTree assets are still in Resources; otherwise
         // fall back to a flat bark-brown albedo (vertex colors add variation).
         var bark = Resources.Load<Texture2D>("Models/OldTree/bark04");
-        var trunkMat = new Material(lit);
-        if (bark != null)
+        if (lit != null)
         {
-            trunkMat.SetTexture("_BaseMap", bark);
-            trunkMat.color = Color.white;
+            var trunkMat = new Material(lit);
+            if (bark != null)
+            {
+                trunkMat.SetTexture("_BaseMap", bark);
+                trunkMat.color = Color.white;
+            }
+            else
+            {
+                trunkMat.color = new Color(0.36f, 0.23f, 0.13f);
+            }
+            trunkRenderer.material = trunkMat;
         }
         else
         {
-            trunkMat.color = new Color(0.36f, 0.23f, 0.13f);
+            Debug.LogError("ParametricTree: no shader resolved; trunk will use the renderer's default material.");
         }
-        trunkRenderer.material = trunkMat;
 
         var leafGO = new GameObject("Leaves");
         leafGO.transform.SetParent(transform, false);
         leafFilter = leafGO.AddComponent<MeshFilter>();
         leafRenderer = leafGO.AddComponent<MeshRenderer>();
-        var leafMat = new Material(lit);
-        leafMat.color = Color.white;
-        leafMat.SetFloat("_Cull", 0f); // double-sided: leaf quads are visible from both sides
-        leafRenderer.material = leafMat;
+        if (lit != null)
+        {
+            var leafMat = new Material(lit);
+            leafMat.color = Color.white;
+            leafMat.SetFloat("_Cull", 0f); // double-sided: leaf quads are visible from both sides
+            leafRenderer.material = leafMat;
+        }
 
         trunkMesh = new Mesh { name = "ParametricTrunk" };
         trunkMesh.MarkDynamic();
@@ -94,7 +119,11 @@ public class ParametricTree : MonoBehaviour
     public void SetGrowth(float g)
     {
         g = Mathf.Clamp01(g);
-        if (trunkMesh == null) return; // Awake failed (missing shader); stay silent
+        if (trunkMesh == null)
+        {
+            Debug.LogWarning("ParametricTree.SetGrowth: trunkMesh is null — Awake did not complete; cannot build tree.");
+            return;
+        }
         if (Mathf.Abs(g - lastBuiltG) < RebuildEpsilon) return;
         lastBuiltG = g;
 
