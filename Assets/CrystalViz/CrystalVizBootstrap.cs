@@ -124,7 +124,7 @@ public class CrystalVizBootstrap : MonoBehaviour
     /// <summary>
     /// Slowly scrolling cloud backdrop: a large quad parented to the camera
     /// (so it always fills the frame) textured with Assets/CrystalViz/Resources/
-    /// clouds.png drifting left to right via the CrystalViz/ScrollingClouds
+    /// clouds.jpg drifting left to right via the CrystalViz/ScrollingClouds
     /// shader. The shader has no fog code, so scene fog never washes it out.
     /// Missing texture or shader => quietly skipped, never a crash.
     /// </summary>
@@ -165,8 +165,8 @@ public class CrystalVizBootstrap : MonoBehaviour
         quad.name = "CloudBackdrop";
         DestroyNow(quad.GetComponent<Collider>());
         quad.transform.SetParent(cam.transform, false);
-        quad.transform.localPosition = new Vector3(0f, 0f, -dist);
-        quad.transform.localRotation = Quaternion.identity; // Quad faces +Z => toward camera
+        quad.transform.localPosition = new Vector3(0f, 0f, dist); // +Z: in FRONT of the camera (cameras look along local +Z)
+        quad.transform.localRotation = Quaternion.identity; // back face toward camera; Cull Off renders it, u still runs left-to-right on screen
         quad.transform.localScale = new Vector3(w * margin, h * margin, 1f);
         var mat = new Material(shader);
         mat.mainTexture = cloudTex;
