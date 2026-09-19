@@ -114,6 +114,27 @@ public static class CrystalVizBuild
             }
         }
 
+        // The scrolling-cloud backdrop shader is also created at runtime via
+        // Shader.Find; pin its (single) variant so it survives stripping.
+        // A missing shader here is fine — the bootstrap skips the backdrop.
+        var cloudShader = Shader.Find("CrystalViz/ScrollingClouds");
+        if (cloudShader != null)
+        {
+            foreach (var pt in passTypes)
+            {
+                try
+                {
+                    var v = new ShaderVariantCollection.ShaderVariant(cloudShader, pt, new string[0]);
+                    if (svc.Add(v)) added++;
+                }
+                catch (ArgumentException) { skipped++; }
+            }
+        }
+        else
+        {
+            Debug.LogWarning("CrystalVizBuild: 'CrystalViz/ScrollingClouds' not found; cloud backdrop will be skipped at runtime.");
+        }
+
         const string dir = "Assets/CrystalViz/Resources";
         Directory.CreateDirectory(dir);
         string path = dir + "/CrystalVizVariants.shadervariants";
@@ -132,7 +153,7 @@ public static class CrystalVizBuild
         PlayerSettings.companyName = "Headspce";
         PlayerSettings.productName = "Crystal Viz";
         PlayerSettings.SetApplicationIdentifier(UnityEditor.Build.NamedBuildTarget.Android, "com.headspce.crystalviz");
-        PlayerSettings.bundleVersion = "1.0.2";
+        PlayerSettings.bundleVersion = "1.0.3";
         PlayerSettings.defaultInterfaceOrientation = UIOrientation.Portrait;
 
         var runNumber = Environment.GetEnvironmentVariable("GITHUB_RUN_NUMBER");

@@ -2,7 +2,7 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// Sun-orbit slider: a vertical slider pinned to the left edge of the screen.
+/// Sun-orbit slider: a vertical slider pinned to the right edge of the screen.
 /// Sliding UP rotates the sun clockwise around the crystal sphere; sliding DOWN
 /// rotates it counter-clockwise. The whole UI is built in code (no prefabs) so
 /// the scene file stays tiny and everything is version-controlled as C#.
@@ -98,24 +98,24 @@ public class SunOrbitControl : MonoBehaviour
         canvasGo.AddComponent<CanvasScaler>();
         canvasGo.AddComponent<GraphicRaycaster>();
 
-        // Modern glassmorphism skin: procedural textures (dark glass track,
-        // glowing cyan fill, glowing knob) generated once — no image assets.
-        var trackSprite = MakeBarSprite(48, 64, 22,
+        // Transparent glass skin: procedural textures (dark glass track,
+        // translucent fill, transparent glass knob) generated once — no image assets.
+        var trackSprite = MakeBarSprite(24, 64, 11,
             new Color(0.17f, 0.19f, 0.23f, 0.78f), new Color(0.07f, 0.09f, 0.13f, 0.78f),
             0, Color.clear);
-        var fillSprite = MakeBarSprite(48, 64, 22,
-            new Color(0.50f, 0.95f, 1.00f, 0.95f), new Color(0.05f, 0.72f, 0.95f, 0.95f),
-            16, new Color(0.25f, 0.85f, 1.00f, 1f));
+        var fillSprite = MakeBarSprite(24, 64, 11,
+            new Color(0.50f, 0.95f, 1.00f, 0.28f), new Color(0.05f, 0.72f, 0.95f, 0.28f),
+            8, new Color(0.25f, 0.85f, 1.00f, 0.35f));
         var knobTex = MakeKnobTexture(96);
 
-        // Slider root: vertical strip hugging the left edge.
+        // Slider root: slim vertical strip hugging the RIGHT edge (half width).
         var root = new GameObject("SunSlider", typeof(RectTransform), typeof(Slider));
         root.transform.SetParent(canvasGo.transform, false);
         var rrt = root.GetComponent<RectTransform>();
-        rrt.anchorMin = new Vector2(0f, 0f);
-        rrt.anchorMax = new Vector2(0f, 1f);
-        rrt.offsetMin = new Vector2(20f, 150f);
-        rrt.offsetMax = new Vector2(116f, -150f);
+        rrt.anchorMin = new Vector2(1f, 0f);
+        rrt.anchorMax = new Vector2(1f, 1f);
+        rrt.offsetMin = new Vector2(-68f, 150f);
+        rrt.offsetMax = new Vector2(-20f, -150f);
 
         slider = root.GetComponent<Slider>();
         slider.minValue = 0f;
@@ -127,7 +127,7 @@ public class SunOrbitControl : MonoBehaviour
         bg.transform.SetParent(root.transform, false);
         var bgrt = bg.GetComponent<RectTransform>();
         bgrt.anchorMin = Vector2.zero; bgrt.anchorMax = Vector2.one;
-        bgrt.offsetMin = new Vector2(24f, 0f); bgrt.offsetMax = new Vector2(-24f, 0f);
+        bgrt.offsetMin = new Vector2(12f, 0f); bgrt.offsetMax = new Vector2(-12f, 0f);
         var bgImg = bg.GetComponent<Image>();
         bgImg.sprite = trackSprite;
         bgImg.type = Image.Type.Sliced;
@@ -137,7 +137,7 @@ public class SunOrbitControl : MonoBehaviour
         fillArea.transform.SetParent(root.transform, false);
         var fart = fillArea.GetComponent<RectTransform>();
         fart.anchorMin = Vector2.zero; fart.anchorMax = Vector2.one;
-        fart.offsetMin = new Vector2(6f, 0f); fart.offsetMax = new Vector2(-6f, 0f);
+        fart.offsetMin = new Vector2(3f, 0f); fart.offsetMax = new Vector2(-3f, 0f);
         var fill = new GameObject("Fill", typeof(RectTransform), typeof(Image));
         fill.transform.SetParent(fillArea.transform, false);
         var fillImg = fill.GetComponent<Image>();
@@ -158,7 +158,7 @@ public class SunOrbitControl : MonoBehaviour
         handle.transform.SetParent(handleArea.transform, false);
         var hrt = handle.GetComponent<RectTransform>();
         hrt.pivot = new Vector2(0.5f, 0.5f);
-        hrt.sizeDelta = new Vector2(96f, 96f);
+        hrt.sizeDelta = new Vector2(48f, 48f);
         knobRT = hrt;
         var knobSprite = Sprite.Create(knobTex,
             new Rect(0, 0, knobTex.width, knobTex.height),
@@ -171,8 +171,8 @@ public class SunOrbitControl : MonoBehaviour
         var labelGo = new GameObject("AngleLabel", typeof(RectTransform), typeof(Text));
         labelGo.transform.SetParent(canvasGo.transform, false);
         var lrt = labelGo.GetComponent<RectTransform>();
-        lrt.anchorMin = new Vector2(0f, 0f); lrt.anchorMax = new Vector2(0f, 0f);
-        lrt.anchoredPosition = new Vector2(68f, 92f);
+        lrt.anchorMin = new Vector2(1f, 0f); lrt.anchorMax = new Vector2(1f, 0f);
+        lrt.anchoredPosition = new Vector2(-44f, 92f);
         lrt.sizeDelta = new Vector2(140f, 44f);
         var txt = labelGo.GetComponent<Text>();
         txt.font = GetDefaultFont(); // may be null; Text renders nothing without one
@@ -228,8 +228,8 @@ public class SunOrbitControl : MonoBehaviour
     }
 
     /// <summary>
-    /// Glassy circular knob texture: bright disc, cyan rim, soft cyan aura.
-    /// Rendered via Image + Sprite.Create (Tight mesh).
+    /// Transparent glass knob texture: faint disc, soft rim, top sheen — the
+    /// scene shows through it. Rendered via Image + Sprite.Create (Tight mesh).
     /// </summary>
     static Texture2D MakeKnobTexture(int size)
     {
@@ -237,8 +237,6 @@ public class SunOrbitControl : MonoBehaviour
         tex.filterMode = FilterMode.Bilinear;
         float c = size / 2f;
         float cr = size * 0.23f;
-        Color cyan = new Color(0.30f, 0.88f, 1.00f);
-        Color glass = new Color(0.93f, 0.97f, 1.00f);
         for (int y = 0; y < size; y++)
         {
             for (int x = 0; x < size; x++)
@@ -246,16 +244,11 @@ public class SunOrbitControl : MonoBehaviour
                 float px = x + 0.5f - c;
                 float py = y + 0.5f - c;
                 float d = Mathf.Sqrt(px * px + py * py);
-                float aura = Mathf.Pow(Mathf.Clamp01(1f - d / c), 2.4f) * 0.55f;
                 float disc = 1f - Mathf.SmoothStep(cr - 1.5f, cr + 1.5f, d);
-                float rim = (1f - Mathf.SmoothStep(0f, 3f, Mathf.Abs(d - (cr - 2f)))) * disc;
-                float sheen = disc * Mathf.Clamp01(0.5f - py / (2f * cr)) * 0.35f;
-                float r = cyan.r * aura + glass.r * disc + rim * 0.6f + sheen;
-                float g = cyan.g * aura + glass.g * disc + rim * 0.9f + sheen;
-                float bch = cyan.b * aura + glass.b * disc + rim + sheen;
-                float a = Mathf.Clamp01(aura * (1f - disc) + disc);
-                tex.SetPixel(x, y, new Color(
-                    Mathf.Clamp01(r), Mathf.Clamp01(g), Mathf.Clamp01(bch), a));
+                float rim = (1f - Mathf.SmoothStep(0f, 2.5f, Mathf.Abs(d - (cr - 2f)))) * disc;
+                float sheen = disc * Mathf.Clamp01(0.5f - py / (2f * cr)) * 0.30f;
+                float a = disc * 0.10f + rim * 0.60f + sheen * 0.55f;
+                tex.SetPixel(x, y, new Color(0.82f, 0.93f, 1.00f, Mathf.Clamp01(a)));
             }
         }
         tex.Apply();

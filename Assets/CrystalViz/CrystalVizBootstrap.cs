@@ -29,6 +29,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         Random.InitState(1234); // deterministic branches every run
         BuildCamera();
         BuildEnvironment();
+        BuildCloudBackdrop();
         BuildSun();
         BuildDiorama();
         var ctrl = gameObject.AddComponent<SunOrbitControl>();
@@ -116,6 +117,52 @@ public class CrystalVizBootstrap : MonoBehaviour
         fill.intensity = 0.35f;
         fill.shadows = LightShadows.None;
         fill.transform.rotation = Quaternion.Euler(50f, -130f, 0f);
+    }
+
+    // ------------------------------------------------------- cloud backdrop
+
+    /// <summary>
+    /// Slowly scrolling cloud backdrop: a large quad parented to the camera
+    /// (so it always fills the frame) textured with Assets/CrystalViz/Resources/
+    /// clouds.png drifting left to right via the CrystalViz/ScrollingClouds
+    /// shader. The shader has no fog code, so scene fog never washes it out.
+    /// Missing texture or shader => quietly skipped, never a crash.
+    /// </summary>
+    void BuildCloudBackdrop()
+    {
+        var cloudTex = Resources.Load<Texture2D>("clouds");
+        if (cloudTex == null)
+        {
+            Debug.Log("CrystalViz: no 'clouds' texture in Resources; skipping cloud backdrop.");
+            return;
+        }
+        cloudTex.wrapMode = TextureWrapMode.Repeat;
+        var shader = Shader.Find("CrystalViz/ScrollingClouds");
+        if (shader == null)
+        {
+            Debug.LogWarning("CrystalViz: 'CrystalViz/ScrollingClouds' shader not found; skipping cloud backdrop.");
+            return;
+        }
+
+        var cam = Camera.main;
+        if (cam == null) return;
+        const float dist = 30f; // well inside the far plane, shader ignores fog
+        float h = 2f * dist * Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);
+        float w = h * cam.aspect;
+
+        var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        quad.name = "CloudBackdrop";
+        DestroyNow(quad.GetComponent<Collider>());
+        quad.transform.SetParent(cam.transform, false);
+        quad.transform.localPosition = new Vector3(0f, 0f, -dist);
+        quad.transform.localRotation = Quaternion.identity; // Quad faces +Z => toward camera
+        quad.transform.localScale = new Vector3(w * 1.1f, h * 1.1f, 1f);
+        var mat = new Material(shader);
+        mat.mainTexture = cloudTex;
+        var rend = quad.GetComponent<Renderer>();
+        rend.material = mat;
+        rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        rend.receiveShadows = false;
     }
 
     // --------------------------------------------------------------------- sun
