@@ -46,7 +46,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         if (shader == null)
         {
             Debug.LogError("CrystalViz: 'Universal Render Pipeline/Lit' not found in this build. " +
-                "Pin it in Always Included Shaders (CI does this automatically).");
+                "CI builds a ShaderVariantCollection for it automatically.");
             return null;
         }
         return new Material(shader);

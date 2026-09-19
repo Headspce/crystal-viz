@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 /// <summary>
 /// Command-line build entry point for CI.
@@ -16,50 +18,108 @@ public static class CrystalVizBuild
 {
     /// <summary>
     /// The whole scene is generated at runtime via Shader.Find, and the build
-    /// contains only CrystalViz.unity (an empty scene), so Unity would strip
+    /// contains only CrystalViz.unity (a near-empty scene), so Unity would strip
     /// URP/Lit and every material would render magenta on device (this is
-    /// exactly what v1.0.0 did). Pin the shader into Always Included Shaders
-    /// via SerializedObject so no shader GUID hardcoding is needed.
+    /// exactly what v1.0.0 did).
+    ///
+    /// The first fix attempt pinned URP/Lit into Always Included Shaders, but
+    /// that forces Unity to compile EVERY surviving variant of the shader
+    /// (~590k for the ForwardLit pass under the PC pipeline asset) and the
+    /// build hung for 6+ hours compiling them.
+    ///
+    /// This instead writes a ShaderVariantCollection containing a generous
+    /// superset of the keyword combinations the runtime diorama can actually
+    /// hit: opaque + transparent surfaces, main-light shadows (with/without
+    /// cascades and screen-space), additional lights, linear/exp fog, DBuffer
+    /// decals on/off, across every pass type. Collection entries that match no
+    /// real variant cost nothing; the matched set is a few dozen variants, so
+    /// the build finishes in minutes and nothing renders magenta.
     /// </summary>
-    public static void EnsureLitShaderIncluded()
+    public static void EnsureVariantCollection()
     {
         var lit = Shader.Find("Universal Render Pipeline/Lit");
         if (lit == null)
         {
-            Debug.LogError("CrystalVizBuild: 'Universal Render Pipeline/Lit' not found in the editor; cannot pin it.");
+            Debug.LogError("CrystalVizBuild: 'Universal Render Pipeline/Lit' not found in the editor; cannot build variant collection.");
             return;
         }
+
+        // Defensive: remove any Always-Included pin left by the old fix — it
+        // explodes compile time and is superseded by the variant collection.
         var gs = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>("ProjectSettings/GraphicsSettings.asset");
-        if (gs == null)
+        if (gs != null)
         {
-            Debug.LogError("CrystalVizBuild: GraphicsSettings.asset not found.");
-            return;
-        }
-        var so = new SerializedObject(gs);
-        var arr = so.FindProperty("m_AlwaysIncludedShaders");
-        for (int i = 0; i < arr.arraySize; i++)
-        {
-            if (arr.GetArrayElementAtIndex(i).objectReferenceValue == lit)
+            var so = new SerializedObject(gs);
+            var arr = so.FindProperty("m_AlwaysIncludedShaders");
+            bool removed = false;
+            for (int i = arr.arraySize - 1; i >= 0; i--)
             {
-                Debug.Log("CrystalVizBuild: URP/Lit already in Always Included Shaders.");
-                return;
+                if (arr.GetArrayElementAtIndex(i).objectReferenceValue == lit)
+                {
+                    arr.DeleteArrayElementAtIndex(i);
+                    removed = true;
+                }
+            }
+            if (removed)
+            {
+                so.ApplyModifiedProperties();
+                Debug.Log("CrystalVizBuild: removed URP/Lit from Always Included Shaders (superseded by variant collection).");
             }
         }
-        arr.arraySize++;
-        arr.GetArrayElementAtIndex(arr.arraySize - 1).objectReferenceValue = lit;
-        so.ApplyModifiedProperties();
+
+        string[] keywords =
+        {
+            "_MAIN_LIGHT_SHADOWS", "_MAIN_LIGHT_SHADOWS_CASCADE", "_MAIN_LIGHT_SHADOWS_SCREEN",
+            "_ADDITIONAL_LIGHTS", "_ADDITIONAL_LIGHTS_VERTEX", "_ADDITIONAL_LIGHT_SHADOWS",
+            "FOG_LINEAR", "FOG_EXP", "FOG_EXP2",
+            "_SURFACE_TYPE_TRANSPARENT", "_ALPHATEST_ON", "_EMISSION",
+        };
+        string[] dbuffer = { "_DBUFFER_MRT1", "_DBUFFER_MRT2", "_DBUFFER_MRT3" };
+        var passTypes = (PassType[])Enum.GetValues(typeof(PassType));
+
+        var svc = ScriptableObject.CreateInstance<ShaderVariantCollection>();
+        int added = 0;
+        int n = keywords.Length;
+        var combo = new List<string>(n + 3);
+        for (int mask = 0; mask < (1 << n); mask++)
+        {
+            combo.Clear();
+            for (int b = 0; b < n; b++)
+                if ((mask & (1 << b)) != 0) combo.Add(keywords[b]);
+            // Two DBuffer flavors per combo: decals off, and decals on.
+            for (int db = 0; db < 2; db++)
+            {
+                int baseCount = combo.Count;
+                if (db == 1) combo.AddRange(dbuffer);
+                var kws = combo.ToArray();
+                foreach (var pt in passTypes)
+                {
+                    svc.Add(new ShaderVariant(lit, pt, kws));
+                    added++;
+                }
+                if (db == 1) combo.RemoveRange(baseCount, dbuffer.Length);
+            }
+        }
+
+        const string dir = "Assets/CrystalViz/Resources";
+        Directory.CreateDirectory(dir);
+        string path = dir + "/CrystalVizVariants.shadervariants";
+        if (AssetDatabase.LoadAssetAtPath<ShaderVariantCollection>(path) != null)
+            AssetDatabase.DeleteAsset(path);
+        AssetDatabase.CreateAsset(svc, path);
         AssetDatabase.SaveAssets();
-        Debug.Log("CrystalVizBuild: pinned URP/Lit into Always Included Shaders.");
+        AssetDatabase.Refresh();
+        Debug.Log($"CrystalVizBuild: wrote {added} variant entries to {path}; URP/Lit variants pinned surgically.");
     }
 
     public static void BuildAndroid()
     {
-        EnsureLitShaderIncluded();
+        EnsureVariantCollection();
 
         PlayerSettings.companyName = "Headspce";
         PlayerSettings.productName = "Crystal Viz";
         PlayerSettings.SetApplicationIdentifier(BuildTargetGroup.Android, "com.headspce.crystalviz");
-        PlayerSettings.bundleVersion = "1.0.1";
+        PlayerSettings.bundleVersion = "1.0.2";
         PlayerSettings.defaultInterfaceOrientation = UIOrientation.Portrait;
 
         var runNumber = Environment.GetEnvironmentVariable("GITHUB_RUN_NUMBER");
