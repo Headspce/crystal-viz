@@ -32,11 +32,13 @@ public class CrystalVizBootstrap : MonoBehaviour
         BuildHorizonHaze();
         BuildSun();
         BuildDiorama();
-        // NOTE: SunOrbitControl (dev sun-positioning slider) is intentionally
-        // NOT attached: its right-edge slider UI leaked into screenshots and
-        // player builds. The sun is locked at its approved azimuth via
-        // BuildSun()->PlaceSun(54f). Re-attach the component in-editor only if
-        // the sun ever needs repositioning.
+        // Player light control: the right-edge sun slider is back by player
+        // request (Tyler missed the light adjustment bar). SunOrbitControl
+        // builds its UI in Start(), which never runs in the CI screenshot
+        // path (edit mode), so captures stay clean while player builds get
+        // the working slider.
+        var sunCtrl = gameObject.AddComponent<SunOrbitControl>();
+        sunCtrl.bootstrap = this;
     }
 
     /// <summary>
@@ -135,19 +137,66 @@ public class CrystalVizBootstrap : MonoBehaviour
 
     /// <summary>
     /// Sky backdrop: a giant inverted sphere (radius 200, inside the 250 far
-    /// plane) wearing the fully procedural CrystalViz/AnimeSkybox shader —
+    /// plane) wearing the painted equirectangular anime sky texture —
+    /// bright puffy cumulus on saturated blue, with soft green rolling hills
+    /// at the horizon, ultra-slowly panning (one full cycle ~30 minutes).
+    /// Falls back to the procedural CrystalViz/AnimeSkybox shader if the
+    /// texture or textured shader is missing: never a crash, never a blank
+    /// sky. A mesh dome instead of RenderSettings.skybox: the CI screenshot
+    /// renders the camera directly in edit mode, where the skybox pass does
+    /// not draw (verified: sky rendered as flat clear color), while plain
+    /// meshes render reliably on that path.
+    /// </summary>
+    void BuildSkyDome()
+    {
+        var tex = Resources.Load<Texture2D>("anime-sky");
+        var texShader = Shader.Find("CrystalViz/AnimeSkyTextured");
+        if (tex != null && texShader != null)
+        {
+            skyDomeMat = new Material(texShader);
+            skyDomeMat.mainTexture = tex;
+            var dome = BuildDomeMesh();
+            dome.GetComponent<Renderer>().material = skyDomeMat;
+            var drift = dome.AddComponent<SkyTextureDrift>();
+            drift.skyMaterial = skyDomeMat;
+            Debug.Log("CrystalViz: textured anime sky dome installed (r=200).");
+            return;
+        }
+        if (tex == null) Debug.LogWarning("CrystalViz: 'anime-sky' texture not found in Resources; trying procedural sky.");
+        if (texShader == null) Debug.LogWarning("CrystalViz: 'CrystalViz/AnimeSkyTextured' shader not found; trying procedural sky.");
+        BuildProceduralSkyDome();
+    }
+
+    /// <summary>
+    /// Builds the inverted sky sphere centered on the camera. Shared by the
+    /// textured and procedural sky paths.
+    /// </summary>
+    static GameObject BuildDomeMesh()
+    {
+        // Inverted sphere: Cull Front in the shader shows the interior.
+        // Centered on the camera so painted directions match view directions.
+        var dome = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        dome.name = "SkyDome";
+        DestroyNow(dome.GetComponent<Collider>());
+        Camera mainCam = Camera.main;
+        dome.transform.position = mainCam != null ? mainCam.transform.position : Vector3.zero;
+        dome.transform.localScale = new Vector3(400f, 400f, 400f); // radius 200 < far plane 250
+        var rend = dome.GetComponent<Renderer>();
+        rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        rend.receiveShadows = false;
+        return dome;
+    }
+
+    /// <summary>
+    /// Fallback sky: the fully procedural CrystalViz/AnimeSkybox shader —
     /// deep-blue gradient zenith, bright warm horizon, dramatic cel-shaded
     /// cumulus billows and thin cirrus wisps drifting ultra-slowly. Pure math
     /// => no texture seam anywhere, no matter how long you stare at it. The
     /// horizon color equals the fog color so the ground melts into the sky
-    /// with no visible line, preserving the praised horizon blend. A mesh
-    /// dome instead of RenderSettings.skybox: the CI screenshot renders the
-    /// camera directly in edit mode, where the skybox pass does not draw
-    /// (verified: sky rendered as flat clear color), while plain meshes
-    /// render reliably on that path — the old textured sky plane proved it.
+    /// with no visible line, preserving the praised horizon blend.
     /// Missing shader => quietly skipped, never a crash.
     /// </summary>
-    void BuildSkyDome()
+    void BuildProceduralSkyDome()
     {
         var shader = Shader.Find("CrystalViz/AnimeSkybox");
         if (shader == null)
@@ -170,18 +219,8 @@ public class CrystalVizBootstrap : MonoBehaviour
         // Ultra-slow drift: a full cloud cycle takes many minutes.
         skyDomeMat.SetFloat("_WindSpeed", 0.004f);
 
-        // Inverted sphere: Cull Front in the shader shows the interior.
-        // Centered on the camera so painted directions match view directions.
-        var dome = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        dome.name = "SkyDome";
-        DestroyNow(dome.GetComponent<Collider>());
-        Camera mainCam = Camera.main;
-        dome.transform.position = mainCam != null ? mainCam.transform.position : Vector3.zero;
-        dome.transform.localScale = new Vector3(400f, 400f, 400f); // radius 200 < far plane 250
-        var rend = dome.GetComponent<Renderer>();
-        rend.material = skyDomeMat;
-        rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        rend.receiveShadows = false;
+        var dome = BuildDomeMesh();
+        dome.GetComponent<Renderer>().material = skyDomeMat;
         SyncSkySun();
         Debug.Log("CrystalViz: procedural anime sky dome installed (r=200).");
     }
@@ -275,8 +314,8 @@ public class CrystalVizBootstrap : MonoBehaviour
     /// growing tree is the centerpiece at origin; it replaces the old static
     /// OldTree. ParametricTree builds the geometry, TreeGrowthController owns
     /// tap input + persistence, StageIndicatorUI shows the stage avatar, and
-    /// TreeResetButton adds the opaque black bottom-left test-loop reset
-    /// button (sapling at zero taps, re-tappable to mature).
+    /// TreeResetButton adds the glowing infinity reset mark at the
+    /// bottom-left (true sprout at zero taps, re-tappable to mature).
     /// NOTE: the CI screenshot path builds the scene in edit mode, where
     /// AddComponent does NOT fire Awake() and Start()/Update() never run.
     /// Each component exposes an idempotent Initialize() that is called
@@ -294,8 +333,8 @@ public class CrystalVizBootstrap : MonoBehaviour
         var ctrl = treeGO.AddComponent<TreeGrowthController>();
         ctrl.Initialize(); // assigns tree, restores taps, calls ApplyGrowth()
         treeGO.AddComponent<StageIndicatorUI>().Initialize();
-        // Test-loop reset button (opaque black, bottom-left): pressing it
-        // snaps the tree back to the sapling at zero taps for repeated
+        // Test-loop reset mark (glowing infinity, bottom-left): pressing it
+        // snaps the tree back to the true zero-tap sprout for repeated
         // growth playtesting. Explicit Initialize() for the edit-mode
         // screenshot path, same as the components above.
         treeGO.AddComponent<TreeResetButton>().Initialize();

@@ -2,11 +2,11 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// Test-loop reset button: an opaque black button pinned to the bottom-left
-/// of the screen. Pressing it calls TreeGrowthController.ResetToSprout(),
-/// which drops the tree back to the true zero-tap sprout with the tap counter
-/// at zero, so the full sprout -> mature growth can be re-tapped over and over
-/// during playtesting.
+/// Test-loop reset button: a small glowing infinity mark pinned to the
+/// bottom-left of the screen. Pressing it calls
+/// TreeGrowthController.ResetToSprout(), which drops the tree back to the
+/// true zero-tap sprout with the tap counter at zero, so the full
+/// sprout -> mature growth can be re-tapped over and over during playtesting.
 ///
 /// Raw Input is used (not uGUI Button + EventSystem) to match the tree's
 /// tap detection, which also reads Input directly: a press inside the button
@@ -80,15 +80,28 @@ public class TreeResetButton : MonoBehaviour
         buttonRect.anchorMax = new Vector2(0f, 0f);
         buttonRect.pivot = new Vector2(0f, 0f);
         buttonRect.anchoredPosition = new Vector2(48f, 48f);
-        buttonRect.sizeDelta = new Vector2(150f, 150f);
-        // Opaque black, no label: a plain test-loop button. Uses an explicit
-        // 1x1 white sprite tinted black (same proven pattern as the stage
-        // avatar's circle sprite) rather than a sprite-less Image.
+        buttonRect.sizeDelta = new Vector2(75f, 75f); // half the old 150px: a quiet mark, not a button
+        // Glowing infinity mark on transparency: no box, no border — just the
+        // symbol. Loaded from Resources and turned into a sprite at runtime
+        // (same proven pattern as the stage avatars), so texture import
+        // settings can't break it.
         var img = btnGO.AddComponent<Image>();
-        var whiteTex = Texture2D.whiteTexture;
-        img.sprite = Sprite.Create(whiteTex, new Rect(0f, 0f, whiteTex.width, whiteTex.height),
-            new Vector2(0.5f, 0.5f));
-        img.color = Color.black;
+        var infTex = Resources.Load<Texture2D>("infinity-reset");
+        if (infTex != null)
+        {
+            img.sprite = Sprite.Create(infTex,
+                new Rect(0f, 0f, infTex.width, infTex.height),
+                new Vector2(0.5f, 0.5f), 100f);
+            img.color = Color.white; // keep the painted glow as-is
+        }
+        else
+        {
+            Debug.LogWarning("TreeResetButton: 'infinity-reset' texture not found in Resources; falling back to plain mark.");
+            var whiteTex = Texture2D.whiteTexture;
+            img.sprite = Sprite.Create(whiteTex, new Rect(0f, 0f, whiteTex.width, whiteTex.height),
+                new Vector2(0.5f, 0.5f));
+            img.color = new Color(1f, 1f, 1f, 0.35f);
+        }
         Debug.Log($"TreeResetButton: built {buttonRect.rect} on {canvasGO.name}.");
     }
 }

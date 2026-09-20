@@ -138,7 +138,17 @@ public class StageIndicatorUI : MonoBehaviour
         rootRt.anchorMin = new Vector2(0.5f, 1f);
         rootRt.anchorMax = new Vector2(0.5f, 1f);
         rootRt.pivot = new Vector2(0.5f, 1f);
-        rootRt.anchoredPosition = new Vector2(0f, -36f);
+        // Camera-cutout clearance: start the indicator below Screen.safeArea
+        // so it never hides under a notch or punch-hole camera (Tyler's
+        // Motorola has a top-center cutout; other phones vary). The inset is
+        // converted to reference units for the CanvasScaler (1080x1920).
+        // In the CI screenshot path the safe area is the full game view, so
+        // this is a no-op there and captures stay pixel-identical.
+        float topInsetRef = 0f;
+        Rect safe = Screen.safeArea;
+        if (Screen.height > 0f && safe.yMax < Screen.height)
+            topInsetRef = (Screen.height - safe.yMax) / Screen.height * 1920f;
+        rootRt.anchoredPosition = new Vector2(0f, -36f - topInsetRef);
         rootRt.sizeDelta = new Vector2(240f, 280f);
 
         Sprite circle = MakeCircleSprite(256);

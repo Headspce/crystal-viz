@@ -64,9 +64,9 @@ public static class CrystalVizScreenshot
         }
         bootstrap.BuildScene(); // edit-mode equivalent of Awake
 
-        // SunOrbitControl is dev-only and no longer attached (its slider UI
-        // used to leak into screenshots); the sun sits at its locked azimuth
-        // from BuildSun()->PlaceSun(54f).
+        // SunOrbitControl IS attached by the bootstrap (player light slider),
+        // but its UI is built in Start(), which never runs in edit mode —
+        // so the slider stays out of captures while player builds get it.
 
         var cam = Camera.main;
         if (cam == null)

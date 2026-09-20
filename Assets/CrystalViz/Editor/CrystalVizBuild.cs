@@ -163,6 +163,28 @@ public static class CrystalVizBuild
             Debug.LogWarning("CrystalVizBuild: 'CrystalViz/AnimeSkybox' not found; sky dome will be skipped at runtime.");
         }
 
+        // The textured anime sky shader (equirectangular painted sky) is
+        // also created at runtime via Shader.Find; pin its (single) variant
+        // so it survives stripping. Missing => bootstrap falls back to the
+        // procedural AnimeSkybox above.
+        var skyTexShader = Shader.Find("CrystalViz/AnimeSkyTextured");
+        if (skyTexShader != null)
+        {
+            foreach (var pt in passTypes)
+            {
+                try
+                {
+                    var v = new ShaderVariantCollection.ShaderVariant(skyTexShader, pt, new string[0]);
+                    if (svc.Add(v)) added++;
+                }
+                catch (ArgumentException) { skipped++; }
+            }
+        }
+        else
+        {
+            Debug.LogWarning("CrystalVizBuild: 'CrystalViz/AnimeSkyTextured' not found; textured sky will fall back to procedural.");
+        }
+
         // The wildflower shader is also created at runtime via
         // Shader.Find; pin its variants (shadow/additional-light/fog
         // multi_compiles) so they survive stripping. A missing shader here
