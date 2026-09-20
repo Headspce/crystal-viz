@@ -41,10 +41,30 @@ public class ParametricTree : MonoBehaviour
     readonly List<int> tList = new List<int>();
     readonly List<Vector3> tips = new List<Vector3>(); // outermost branch tips (leaf anchors)
 
+    bool initialized;
+
     void Awake()
     {
+        Initialize();
+    }
+
+    /// <summary>
+    /// Builds materials and the trunk/leaf meshes. Called from Awake() in
+    /// play mode; the CI screenshot path builds the scene in edit mode, where
+    /// AddComponent does NOT fire Awake(), so CrystalVizBootstrap calls this
+    /// explicitly after AddComponent. Idempotent: safe to call twice.
+    /// </summary>
+    public void Initialize()
+    {
+        if (initialized) return;
+        initialized = true;
+
+        // RequireComponent adds these at AddComponent time, but belt-and-braces
+        // in case the edit-mode path ever skips that.
         trunkFilter = GetComponent<MeshFilter>();
+        if (trunkFilter == null) trunkFilter = gameObject.AddComponent<MeshFilter>();
         trunkRenderer = GetComponent<MeshRenderer>();
+        if (trunkRenderer == null) trunkRenderer = gameObject.AddComponent<MeshRenderer>();
 
         // Resolve a shader with fallbacks. We NEVER abort here: even a magenta
         // error-shader material is better than an invisible tree, because it
@@ -75,7 +95,7 @@ public class ParametricTree : MonoBehaviour
 
         // DIAGNOSTIC (temporary): loud logging so the edit-mode CI screenshot log
         // shows exactly what resolved and what got built.
-        Debug.LogWarning($"DIAG ParametricTree.Awake: shader={(lit != null ? lit.name : "NULL")}, " +
+        Debug.LogWarning($"DIAG ParametricTree.Initialize: shader={(lit != null ? lit.name : "NULL")}, " +
             $"bark={(bark != null ? "found" : "missing")}, trunkFilter={(trunkFilter != null ? "ok" : "NULL")}, " +
             $"trunkRenderer={(trunkRenderer != null ? "ok" : "NULL")}");
         if (lit != null)
@@ -116,7 +136,7 @@ public class ParametricTree : MonoBehaviour
         leafMesh.MarkDynamic();
         leafFilter.mesh = leafMesh;
         // DIAGNOSTIC (temporary)
-        Debug.LogWarning("DIAG ParametricTree.Awake: trunkMesh + leafMesh created and assigned to filters.");
+        Debug.LogWarning("DIAG ParametricTree.Initialize: trunkMesh + leafMesh created and assigned to filters.");
     }
 
     /// <summary>

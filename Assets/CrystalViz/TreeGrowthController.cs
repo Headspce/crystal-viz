@@ -40,12 +40,31 @@ public class TreeGrowthController : MonoBehaviour
         currentTaps <= 25 ? 1 :
         currentTaps <= 40 ? 2 : 3;
 
+    bool initialized;
+
     void Awake()
     {
+        Initialize();
+    }
+
+    /// <summary>
+    /// Assigns the tree, restores tap progress from PlayerPrefs, and builds
+    /// the mesh at the current growth. Called from Awake() in play mode; the
+    /// CI screenshot path builds the scene in edit mode, where AddComponent
+    /// does NOT fire Awake(), so CrystalVizBootstrap calls this explicitly
+    /// after AddComponent. Idempotent: safe to call twice.
+    /// </summary>
+    public void Initialize()
+    {
+        if (initialized) return;
+        initialized = true;
         tree = GetComponent<ParametricTree>();
         // DEBUG: start at 30 taps (young tree) for prototype screenshots; revert to 0 for release
         currentTaps = Mathf.Clamp(PlayerPrefs.GetInt(PrefsKey, 30), 0, totalTaps);
         displayedG = GrowthTarget;
+        // DIAGNOSTIC (temporary): prove the debug default applied and the tree ref resolved.
+        Debug.LogWarning($"DIAG TreeGrowthController.Initialize: currentTaps={currentTaps}, " +
+            $"displayedG={displayedG:F3}, tree={(tree != null ? "ok" : "NULL")}");
         // Build the mesh here, not just in Start(): CI screenshot captures run
         // in edit mode, where Start()/Update() never execute, leaving the
         // trunk/leaf meshes empty (invisible tree).

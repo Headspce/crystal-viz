@@ -29,8 +29,24 @@ public class StageIndicatorUI : MonoBehaviour
     RectTransform popRect;
     Coroutine popRoutine;
 
+    bool initialized;
+
     void Awake()
     {
+        Initialize();
+    }
+
+    /// <summary>
+    /// Loads stage sprites, builds the overlay canvas, and sets the initial
+    /// avatar + tap counter. Called from Awake() in play mode; the CI
+    /// screenshot path builds the scene in edit mode, where AddComponent does
+    /// NOT fire Awake(), so CrystalVizBootstrap calls this explicitly after
+    /// AddComponent. Idempotent: safe to call twice.
+    /// </summary>
+    public void Initialize()
+    {
+        if (initialized) return;
+        initialized = true;
         controller = GetComponent<TreeGrowthController>();
         for (int i = 0; i < StagePaths.Length; i++)
         {
@@ -46,10 +62,15 @@ public class StageIndicatorUI : MonoBehaviour
                 Debug.LogWarning($"StageIndicatorUI: texture '{StagePaths[i]}' not found in Resources.");
             }
         }
+        int loaded = 0;
+        foreach (var s in stageSprites) if (s != null) loaded++;
+        // DIAGNOSTIC (temporary)
+        Debug.LogWarning($"DIAG StageIndicatorUI.Initialize: controller={(controller != null ? "ok" : "NULL")}, " +
+            $"spritesLoaded={loaded}/4");
         BuildUI();
         // Start()/Update() never run in edit-mode screenshot captures, so set
         // the initial sprite and counter text here instead of waiting for them.
-        Refresh(controller.CurrentStage);
+        if (controller != null) Refresh(controller.CurrentStage);
     }
 
     void Start()

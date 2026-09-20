@@ -263,34 +263,22 @@ public class CrystalVizBootstrap : MonoBehaviour
     /// growing tree is the centerpiece at origin; it replaces the old static
     /// OldTree. ParametricTree builds the geometry, TreeGrowthController owns
     /// tap input + persistence, StageIndicatorUI shows the stage avatar.
-    /// Components find each other via GetComponent in Awake, so add order is
-    /// safe (all Awakes run before any Start).
+    /// NOTE: the CI screenshot path builds the scene in edit mode, where
+    /// AddComponent does NOT fire Awake() and Start()/Update() never run.
+    /// Each component exposes an idempotent Initialize() that is called
+    /// explicitly here in dependency order (and again from Awake() in play
+    /// mode — the guard makes that a harmless no-op).
     /// </summary>
     void BuildGrowingTree()
     {
         var treeGO = new GameObject("GrowingTree");
         treeGO.transform.position = Vector3.zero;
-        treeGO.AddComponent<ParametricTree>();
-        treeGO.AddComponent<TreeGrowthController>();
-        treeGO.AddComponent<StageIndicatorUI>();
-        // Explicit: CI screenshot captures run in edit mode, where Start()/
-        // Update() never execute. TreeGrowthController.Awake() already builds
-        // the mesh, but this makes it deterministic even if add order changes.
-        var ctrl = treeGO.GetComponent<TreeGrowthController>();
-        ctrl.ApplyGrowth();
+        treeGO.AddComponent<ParametricTree>().Initialize();
+        var ctrl = treeGO.AddComponent<TreeGrowthController>();
+        ctrl.Initialize(); // assigns tree, restores taps, calls ApplyGrowth()
+        treeGO.AddComponent<StageIndicatorUI>().Initialize();
         Debug.LogWarning($"DIAG BuildGrowingTree: GrowingTree created at {treeGO.transform.position}, " +
             $"Growth01={ctrl.Growth01}, CurrentStage={ctrl.CurrentStage}");
-        // DIAGNOSTIC (temporary): bright red cube at (0,2,0). If the cube shows
-        // in the screenshot but the tree doesn't, GameObject creation + camera +
-        // rendering at origin all work and the fault is inside ParametricTree's
-        // mesh/material. If the cube is ALSO invisible, the screenshot camera or
-        // scene setup is at fault, not the tree.
-        var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        cube.name = "DEBUG-RedCube";
-        cube.transform.position = new Vector3(0f, 2f, 0f);
-        var cubeRend = cube.GetComponent<Renderer>();
-        cubeRend.material.color = Color.red;
-        Debug.LogWarning("DIAG BuildGrowingTree: DEBUG-RedCube placed at (0,2,0), color set to red.");
         Debug.Log("CrystalViz: growing tree planted at origin.");
     }
 
