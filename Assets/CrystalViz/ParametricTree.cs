@@ -4,7 +4,10 @@ using System.Collections.Generic;
 /// <summary>
 /// Procedural parametric tree for CrystalViz's tap-to-grow feature.
 ///
-/// The trunk and all recursive branches are merged into ONE mesh; leaf quads
+/// The trunk and all recursive branches are merged into ONE mesh with two
+/// submeshes: submesh 0 is the trunk (level 0) wearing the fine 14-ridge
+/// bark, submesh 1 is every branch (level >= 1) wearing a chunkier 8-ridge
+/// bark so the ridges stay readable on thin tubes. Leaf quads
 /// clustered at the branch tips form a second merged mesh. Call SetGrowth(g)
 /// with g in [0,1] to rebuild the tree at any growth stage.
 ///
@@ -39,6 +42,13 @@ public class ParametricTree : MonoBehaviour
     readonly List<Vector2> uvList = new List<Vector2>();
     readonly List<Color> cList = new List<Color>();
     readonly List<int> tList = new List<int>();
+    // Branch scratch buffers: branches (level >= 1) accumulate here so the
+    // trunk mesh can be built with two submeshes (trunk bark / branch bark).
+    readonly List<Vector3> bvList = new List<Vector3>();
+    readonly List<Vector3> bnList = new List<Vector3>();
+    readonly List<Vector2> buvList = new List<Vector2>();
+    readonly List<Color> bcList = new List<Color>();
+    readonly List<int> btList = new List<int>();
     readonly List<Vector3> tips = new List<Vector3>(); // leaf anchors: branch tips + points along the outer branches
 
     bool initialized;
@@ -99,7 +109,7 @@ public class ParametricTree : MonoBehaviour
         {
             var trunkMat = new Material(lit);
             float[] barkHeight;
-            var barkTex = MakeBarkTexture(out barkHeight);
+            var barkTex = MakeBarkTexture(out barkHeight, BarkRidgeColumns);
             trunkMat.SetTexture("_BaseMap", barkTex);
             var barkBump = MakeBumpTexture(barkHeight, BarkTexSize);
             trunkMat.SetTexture("_BumpMap", barkBump);
@@ -107,7 +117,19 @@ public class ParametricTree : MonoBehaviour
             trunkMat.SetFloat("_Smoothness", 0.8f); // roughness ~0.2: soft sheen, not chalk
             trunkMat.SetFloat("_Metallic", 0f);
             trunkMat.color = Color.white;
-            trunkRenderer.material = trunkMat;
+            // Branches (submesh 1) wear the same dark-brown ridged bark with
+            // chunkier ridges so the texture reads on thin tubes.
+            var branchMat = new Material(lit);
+            float[] branchHeight;
+            var branchTex = MakeBarkTexture(out branchHeight, BranchRidgeColumns);
+            branchMat.SetTexture("_BaseMap", branchTex);
+            var branchBump = MakeBumpTexture(branchHeight, BarkTexSize);
+            branchMat.SetTexture("_BumpMap", branchBump);
+            branchMat.SetFloat("_BumpScale", 0.6f);
+            branchMat.SetFloat("_Smoothness", 0.8f);
+            branchMat.SetFloat("_Metallic", 0f);
+            branchMat.color = Color.white;
+            trunkRenderer.materials = new Material[] { trunkMat, branchMat };
         }
         else
         {
@@ -121,13 +143,13 @@ public class ParametricTree : MonoBehaviour
         if (lit != null)
         {
             var leafMat = new Material(lit);
-            // Green 1x1 texture for leaves (vertex colors add variation, but
-            // base green ensures visibility even if vertex colors don't apply).
-            var greenTex = new Texture2D(1, 1, TextureFormat.RGBA32, false);
-            greenTex.SetPixel(0, 0, new Color(0.25f, 0.55f, 0.18f, 1f));
-            greenTex.Apply();
-            leafMat.SetTexture("_BaseMap", greenTex);
+            // Textured leaf: pointed-oval silhouette with a center vein on a
+            // transparent background, cut out by alpha test. Near-white
+            // albedo so the per-leaf green vertex colors define the hue.
+            leafMat.SetTexture("_BaseMap", MakeLeafTexture());
             leafMat.color = Color.white;
+            leafMat.SetFloat("_AlphaClip", 1f); // URP/Lit alpha-test cutout
+            leafMat.SetFloat("_Cutoff", 0.5f);
             leafMat.SetFloat("_Cull", 0f); // double-sided: leaf quads are visible from both sides
             leafRenderer.material = leafMat;
         }
@@ -144,6 +166,7 @@ public class ParametricTree : MonoBehaviour
 
     const int BarkTexSize = 256;
     const int BarkRidgeColumns = 14; // ridges around the trunk (u tiles seamlessly)
+    const int BranchRidgeColumns = 8; // ridges around branches: chunkier so they read on thin tubes
 
     /// <summary>
     /// Builds a tileable dark-brown bark albedo: vertical ridges (ridged
@@ -152,7 +175,7 @@ public class ParametricTree : MonoBehaviour
     /// a periodic lattice; v tiles freely with Repeat wrap.
     /// Returns the albedo texture and outputs the raw height field for the bump map.
     /// </summary>
-    static Texture2D MakeBarkTexture(out float[] height)
+    static Texture2D MakeBarkTexture(out float[] height, int ridgeColumns)
     {
         int S = BarkTexSize;
         height = new float[S * S];
@@ -171,7 +194,7 @@ public class ParametricTree : MonoBehaviour
                 float v = (float)y / S;
                 // Ridges run along the trunk (v): high frequency around (u),
                 // stretched vertically.
-                float n = BarkFbm(u * BarkRidgeColumns, v * BarkRidgeColumns * 0.28f, BarkRidgeColumns);
+                float n = BarkFbm(u * ridgeColumns, v * ridgeColumns * 0.28f, ridgeColumns);
                 float r = 1f - Mathf.Abs(2f * n - 1f); // ridged multifractal
                 r = r * r;
                 // Fine grain so large flat areas don't read as plastic.
@@ -196,6 +219,43 @@ public class ParametricTree : MonoBehaviour
         {
             float h = height[i];
             tex.SetPixel(i % size, i / size, new Color(h, h, h, 1f));
+        }
+        tex.Apply();
+        return tex;
+    }
+
+    /// <summary>
+    /// Builds a small leaf albedo: a pointed-oval leaf silhouette with a
+    /// center vein and a slightly darker rim, near-white so the per-leaf
+    /// green vertex colors keep defining the hue. Transparent background for
+    /// alpha-test cutout (no more flat square quads).
+    /// </summary>
+    static Texture2D MakeLeafTexture()
+    {
+        const int S = 64;
+        var tex = new Texture2D(S, S, TextureFormat.RGBA32, false);
+        tex.wrapMode = TextureWrapMode.Clamp;
+        tex.filterMode = FilterMode.Bilinear;
+        for (int y = 0; y < S; y++)
+        {
+            for (int x = 0; x < S; x++)
+            {
+                float u = (float)x / (S - 1); // 0..1 across
+                float v = (float)y / (S - 1); // 0 stem .. 1 tip
+                // Pointed-oval width profile: narrow at stem and tip,
+                // widest about a third of the way up.
+                float w = Mathf.Pow(Mathf.Sin(Mathf.PI * Mathf.Pow(1f - v, 0.75f)), 0.8f) * 0.5f;
+                float d = Mathf.Abs(u - 0.5f);
+                if (d >= w)
+                {
+                    tex.SetPixel(x, y, new Color(0f, 0f, 0f, 0f));
+                    continue;
+                }
+                float vein = 1f - Mathf.SmoothStep(0f, 0.035f + (1f - v) * 0.02f, d);
+                float rim = Mathf.SmoothStep(w * 0.72f, w, d);
+                float shade = 1f - 0.18f * rim - 0.10f * vein;
+                tex.SetPixel(x, y, new Color(shade, shade, shade * 0.96f, 1f));
+            }
         }
         tex.Apply();
         return tex;
@@ -255,8 +315,8 @@ public class ParametricTree : MonoBehaviour
         if (Mathf.Abs(g - lastBuiltG) < RebuildEpsilon) return;
         lastBuiltG = g;
 
-        float trunkLen = Mathf.Lerp(0.3f, 7f, g);
-        float trunkRad = Mathf.Lerp(0.03f, 0.35f, g);
+        float trunkLen = Mathf.Lerp(0.3f, 4.6f, g);
+        float trunkRad = Mathf.Lerp(0.03f, 0.28f, g);
         int maxLevel = Mathf.FloorToInt(g * 3.99f); // 0..3 tiers of branches above the trunk
 
         var rng = new System.Random(Seed);
@@ -274,9 +334,40 @@ public class ParametricTree : MonoBehaviour
                         Vector3 lean, System.Random rng)
     {
         vList.Clear(); nList.Clear(); uvList.Clear(); cList.Clear(); tList.Clear();
+        bvList.Clear(); bnList.Clear(); buvList.Clear(); bcList.Clear(); btList.Clear();
         tips.Clear();
         GrowBranch(Vector3.zero, lean, trunkLen, trunkRad, 0, maxLevel, g, rng, rootFlare: true);
-        AssignMesh(trunkMesh, vList, nList, uvList, cList, tList);
+        AssignTrunkMesh();
+    }
+
+    /// <summary>
+    /// Merges the trunk and branch streams into one vertex buffer and assigns
+    /// two submeshes: 0 = trunk (fine bark), 1 = branches (chunky bark).
+    /// Branch triangle indices rebase past the trunk vertices.
+    /// </summary>
+    void AssignTrunkMesh()
+    {
+        int tv = vList.Count;
+        var V = new List<Vector3>(tv + bvList.Count);
+        V.AddRange(vList); V.AddRange(bvList);
+        var N = new List<Vector3>(tv + bnList.Count);
+        N.AddRange(nList); N.AddRange(bnList);
+        var U = new List<Vector2>(tv + buvList.Count);
+        U.AddRange(uvList); U.AddRange(buvList);
+        var C = new List<Color>(tv + bcList.Count);
+        C.AddRange(cList); C.AddRange(bcList);
+        var BT = new List<int>(btList.Count);
+        for (int i = 0; i < btList.Count; i++) BT.Add(btList[i] + tv);
+
+        trunkMesh.Clear();
+        trunkMesh.subMeshCount = 2;
+        trunkMesh.SetVertices(V);
+        trunkMesh.SetNormals(N);
+        trunkMesh.SetUVs(0, U);
+        trunkMesh.SetColors(C);
+        trunkMesh.SetTriangles(tList, 0);
+        trunkMesh.SetTriangles(BT, 1);
+        trunkMesh.RecalculateBounds(); // correct frustum culling for procedural geometry
     }
 
     /// <summary>
@@ -310,7 +401,7 @@ public class ParametricTree : MonoBehaviour
             pts[i] = SampleCurve(ctrl, (float)i / (rings - 1));
 
         float tipRadius = baseRadius * 0.32f;
-        AppendTube(pts, baseRadius, tipRadius, BranchTint(rng), rootFlare);
+        AppendTube(pts, baseRadius, tipRadius, BranchTint(rng), rootFlare, level == 0);
 
         // Leaf anchors along the outer part of every branch (not just the
         // tips) so the canopy fills in as one lush mass instead of puffs
@@ -362,10 +453,18 @@ public class ParametricTree : MonoBehaviour
     /// <summary>
     /// Appends a tapered tube along pts using parallel-transport frames
     /// (twist-free). Triangle winding is outward-facing for right-handed
-    /// (tangent, normal, binormal) frames.
+    /// (tangent, normal, binormal) frames. Trunk tubes (isTrunk) accumulate
+    /// into the trunk streams; branches accumulate into the branch streams so
+    /// they can wear the chunkier branch bark as a second submesh.
     /// </summary>
-    void AppendTube(Vector3[] pts, float r0, float r1, Color tint, bool rootFlare)
+    void AppendTube(Vector3[] pts, float r0, float r1, Color tint, bool rootFlare, bool isTrunk)
     {
+        List<Vector3> V = isTrunk ? vList : bvList;
+        List<Vector3> Nr = isTrunk ? nList : bnList;
+        List<Vector2> Uv = isTrunk ? uvList : buvList;
+        List<Color> Cl = isTrunk ? cList : bcList;
+        List<int> Tr = isTrunk ? tList : btList;
+
         int n = pts.Length;
         Vector3[] T = new Vector3[n], N = new Vector3[n], B = new Vector3[n];
         for (int i = 0; i < n; i++)
@@ -385,7 +484,7 @@ public class ParametricTree : MonoBehaviour
         }
 
         int ringSize = RadialSegments + 1;
-        int baseIdx = vList.Count;
+        int baseIdx = V.Count;
         float vAcc = 0f;
         for (int i = 0; i < n; i++)
         {
@@ -398,10 +497,10 @@ public class ParametricTree : MonoBehaviour
             {
                 float ang = (float)j / RadialSegments * Mathf.PI * 2f;
                 Vector3 radial = N[i] * Mathf.Cos(ang) + B[i] * Mathf.Sin(ang);
-                vList.Add(pts[i] + radial * r);
-                nList.Add(radial);
-                uvList.Add(new Vector2((float)j / RadialSegments, vAcc * 2.0f)); // dense tiling: bark ridges stay crisp along the trunk
-                cList.Add(c);
+                V.Add(pts[i] + radial * r);
+                Nr.Add(radial);
+                Uv.Add(new Vector2((float)j / RadialSegments, vAcc * 2.0f)); // dense tiling: bark ridges stay crisp along the trunk
+                Cl.Add(c);
             }
         }
         for (int i = 0; i < n - 1; i++)
@@ -410,8 +509,8 @@ public class ParametricTree : MonoBehaviour
             {
                 int a0 = baseIdx + i * ringSize + j;
                 int b0 = a0 + ringSize;
-                tList.Add(a0); tList.Add(a0 + 1); tList.Add(b0);
-                tList.Add(a0 + 1); tList.Add(b0 + 1); tList.Add(b0);
+                Tr.Add(a0); Tr.Add(a0 + 1); Tr.Add(b0);
+                Tr.Add(a0 + 1); Tr.Add(b0 + 1); Tr.Add(b0);
             }
         }
     }

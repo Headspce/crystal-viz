@@ -2,13 +2,16 @@ Shader "CrystalViz/Wildflower"
 {
     // Wind-reactive wildflowers: same traveling-wave wind sway as the grass
     // field (bend grows toward the blossom, so stems stay planted), with the
-    // stem painted by a green gradient and the blossom tinted by per-vertex
-    // petal color. uv.x is 0 for stem verts, 1 for blossom verts; uv.y is
-    // 0 at the root and 1 at the blossom for gradient + wind weighting.
+    // stem painted by a green gradient and the blossom wearing a daisy-like
+    // petal-head texture (alpha cutout) tinted by per-vertex petal color.
+    // uv.x is 0 for stem verts, 1 for blossom verts; uv.y is 0 at the root
+    // and 1 at the blossom for gradient + wind weighting; uv1 carries the
+    // blossom-head texture coordinates.
     Properties
     {
         _RootColor ("Stem Root Color", Color) = (0.12, 0.30, 0.10, 1)
         _TipColor ("Stem Tip Color", Color) = (0.38, 0.64, 0.20, 1)
+        _BlossomMap ("Blossom Head Map", 2D) = "white" {}
         _WindStrength ("Wind Strength", Float) = 0.035
         _WindSpeed ("Wind Speed", Float) = 1.7
     }
@@ -39,6 +42,7 @@ Shader "CrystalViz/Wildflower"
                 float4 positionOS : POSITION;
                 float3 normalOS   : NORMAL;
                 float2 uv         : TEXCOORD0;
+                float2 uv1        : TEXCOORD1;
                 float4 color      : COLOR;
             };
 
@@ -46,15 +50,18 @@ Shader "CrystalViz/Wildflower"
             {
                 float4 positionHCS : SV_POSITION;
                 float2 uv          : TEXCOORD0;
-                float4 color       : TEXCOORD1;
-                float3 normalWS    : TEXCOORD2;
-                float3 positionWS  : TEXCOORD3;
-                float4 shadowCoord : TEXCOORD4;
-                half   fogFactor   : TEXCOORD5;
+                float2 uv1         : TEXCOORD1;
+                float4 color       : TEXCOORD2;
+                float3 normalWS    : TEXCOORD3;
+                float3 positionWS  : TEXCOORD4;
+                float4 shadowCoord : TEXCOORD5;
+                half   fogFactor   : TEXCOORD6;
             };
 
             half4 _RootColor;
             half4 _TipColor;
+            TEXTURE2D(_BlossomMap);
+            SAMPLER(sampler_BlossomMap);
             float _WindStrength;
             float _WindSpeed;
 
@@ -76,6 +83,7 @@ Shader "CrystalViz/Wildflower"
                 OUT.positionWS = wp;
                 OUT.positionHCS = TransformWorldToHClip(wp);
                 OUT.uv = IN.uv;
+                OUT.uv1 = IN.uv1;
                 OUT.color = IN.color;
                 OUT.normalWS = TransformObjectToWorldNormal(IN.normalOS);
 
@@ -89,10 +97,14 @@ Shader "CrystalViz/Wildflower"
             half4 frag(Varyings IN) : SV_Target
             {
                 half3 stem = lerp(_RootColor.rgb, _TipColor.rgb, IN.uv.y);
-                // Petal color with a soft top-light lift so blossoms glow
-                // a touch in the sun.
-                half3 blossom = IN.color.rgb * (0.85 + 0.30 * IN.uv.y);
-                half3 albedo = lerp(stem, blossom, step(0.5, IN.uv.x));
+                // Blossom: petal-head texture (alpha cutout) tinted by the
+                // per-flower petal vertex color, with a soft top-light lift
+                // so blossoms glow a touch in the sun.
+                float isBlossom = step(0.5, IN.uv.x);
+                half4 blossomTex = SAMPLE_TEXTURE2D(_BlossomMap, sampler_BlossomMap, IN.uv1);
+                if (isBlossom > 0.5) clip(blossomTex.a - 0.5);
+                half3 blossom = IN.color.rgb * blossomTex.rgb * (0.85 + 0.30 * IN.uv.y);
+                half3 albedo = lerp(stem, blossom, isBlossom);
 
                 Light mainLight = GetMainLight(IN.shadowCoord);
                 // Wrapped diffuse keeps thin quads soft instead of black

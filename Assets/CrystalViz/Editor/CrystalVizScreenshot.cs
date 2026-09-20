@@ -18,6 +18,25 @@ public static class CrystalVizScreenshot
     {
         EditorSceneManager.OpenScene("Assets/CrystalViz/CrystalViz.unity");
 
+        // Optional tap override for staged screenshots:
+        //   -executeMethod CrystalVizScreenshot.Capture -cvizTaps 50
+        // Sets the saved tap count before the scene builds so the 50-tap
+        // mature tree can be verified without touching the playtest default.
+        int tapsOverride = -1;
+        var cli = System.Environment.GetCommandLineArgs();
+        for (int i = 0; i < cli.Length - 1; i++)
+        {
+            if (cli[i] == "-cvizTaps" && int.TryParse(cli[i + 1], out int t))
+                tapsOverride = Mathf.Clamp(t, 0, 50);
+        }
+        if (tapsOverride >= 0)
+        {
+            // Same key TreeGrowthController reads ("CrystalViz_TreeTaps").
+            PlayerPrefs.SetInt("CrystalViz_TreeTaps", tapsOverride);
+            PlayerPrefs.Save();
+            Debug.Log($"CrystalVizScreenshot: tap override {tapsOverride}.");
+        }
+
         var bootstrap = Object.FindFirstObjectByType<CrystalVizBootstrap>();
         if (bootstrap == null)
         {

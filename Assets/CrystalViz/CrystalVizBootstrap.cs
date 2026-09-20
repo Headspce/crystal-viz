@@ -100,8 +100,8 @@ public class CrystalVizBootstrap : MonoBehaviour
         RenderSettings.fog = true;
         RenderSettings.fogMode = FogMode.Linear;
         RenderSettings.fogColor = horizon;
-        RenderSettings.fogStartDistance = 45f;
-        RenderSettings.fogEndDistance = 100f;
+        RenderSettings.fogStartDistance = 40f;
+        RenderSettings.fogEndDistance = 80f;
         RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
         RenderSettings.ambientLight = new Color(0.42f, 0.43f, 0.46f, 1f);
 
@@ -460,6 +460,10 @@ public class CrystalVizBootstrap : MonoBehaviour
         var mat = new Material(flowerShader);
         mat.SetColor("_RootColor", new Color(0.12f, 0.30f, 0.10f, 1f));
         mat.SetColor("_TipColor", new Color(0.38f, 0.64f, 0.20f, 1f));
+        // Textured blossom: a daisy-like petal head on a transparent
+        // background, alpha-cut in the shader; near-white so the per-flower
+        // petal vertex color defines the hue.
+        mat.SetTexture("_BlossomMap", MakeBlossomTexture());
         // Same wind field as the grass so they ripple together; a touch
         // stronger since blossoms sit higher and catch more air.
         mat.SetFloat("_WindStrength", 0.035f);
@@ -469,6 +473,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         var verts = new System.Collections.Generic.List<Vector3>();
         var normals = new System.Collections.Generic.List<Vector3>();
         var uvs = new System.Collections.Generic.List<Vector2>();
+        var uvs2 = new System.Collections.Generic.List<Vector2>(); // blossom-head texture coords
         var colors = new System.Collections.Generic.List<Color>();
         var tris = new System.Collections.Generic.List<int>();
 
@@ -489,6 +494,11 @@ public class CrystalVizBootstrap : MonoBehaviour
             float a = (float)rng.NextDouble() * Mathf.PI * 2f;
             float r = 12f * Mathf.Sqrt((float)(System.Math.Pow(70.44, rng.NextDouble()) - 1.0));
             if (r < 0.9f) continue; // not inside the trunk
+            // Camera clearance (same as the grass field): a blossom within
+            // ~3 units of the camera fills the screen as a glitchy bar.
+            float fdx = Mathf.Cos(a) * r - 0f;
+            float fdz = Mathf.Sin(a) * r - 7.4f;
+            if (fdx * fdx + fdz * fdz < 9.0f) continue; // 3^2
             var mtx = Matrix4x4.TRS(
                 new Vector3(Mathf.Cos(a) * r, 0f, Mathf.Sin(a) * r),
                 Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f),
@@ -497,7 +507,7 @@ public class CrystalVizBootstrap : MonoBehaviour
             // Slight per-flower brightness jitter so the field doesn't look stamped.
             float j = 0.88f + (float)rng.NextDouble() * 0.18f;
             petal = new Color(petal.r * j, petal.g * j, petal.b * j, 1f);
-            AppendWildflower(verts, normals, uvs, colors, tris, mtx, rng, petal);
+            AppendWildflower(verts, normals, uvs, uvs2, colors, tris, mtx, rng, petal);
             planted++;
         }
 
@@ -506,6 +516,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         mesh.SetVertices(verts);
         mesh.SetNormals(normals);
         mesh.SetUVs(0, uvs);
+        mesh.SetUVs(1, uvs2);
         mesh.SetColors(colors);
         mesh.SetTriangles(tris, 0);
         mesh.RecalculateBounds();
@@ -530,6 +541,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         System.Collections.Generic.List<Vector3> verts,
         System.Collections.Generic.List<Vector3> normals,
         System.Collections.Generic.List<Vector2> uvs,
+        System.Collections.Generic.List<Vector2> uvs2,
         System.Collections.Generic.List<Color> colors,
         System.Collections.Generic.List<int> tris,
         Matrix4x4 mtx,
@@ -550,6 +562,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         for (int i = 0; i < 4; i++) normals.Add(Vector3.up);
         uvs.Add(new Vector2(0f, 0f)); uvs.Add(new Vector2(0f, 0f));
         uvs.Add(new Vector2(0f, 1f)); uvs.Add(new Vector2(0f, 1f));
+        for (int i = 0; i < 4; i++) uvs2.Add(Vector2.zero); // stem: no blossom texture
         for (int i = 0; i < 4; i++) colors.Add(Color.white);
         tris.Add(b); tris.Add(b + 2); tris.Add(b + 1);
         tris.Add(b + 1); tris.Add(b + 2); tris.Add(b + 3);
@@ -572,9 +585,48 @@ public class CrystalVizBootstrap : MonoBehaviour
             for (int i = 0; i < 4; i++) normals.Add(nrm);
             uvs.Add(new Vector2(1f, 0.85f)); uvs.Add(new Vector2(1f, 0.85f));
             uvs.Add(new Vector2(1f, 1f)); uvs.Add(new Vector2(1f, 1f));
+            // Blossom-head texture coords (uv1): full 0..1 quad.
+            uvs2.Add(new Vector2(0f, 0f)); uvs2.Add(new Vector2(1f, 0f));
+            uvs2.Add(new Vector2(0f, 1f)); uvs2.Add(new Vector2(1f, 1f));
             for (int i = 0; i < 4; i++) colors.Add(petal);
             tris.Add(qb); tris.Add(qb + 2); tris.Add(qb + 1);
             tris.Add(qb + 1); tris.Add(qb + 2); tris.Add(qb + 3);
         }
+    }
+
+    /// <summary>
+    /// Builds a small blossom-head albedo: a daisy-like flower with 8 rounded
+    /// petals and a warm center, near-white so the per-flower petal vertex
+    /// color defines the hue. Transparent background for alpha-test cutout.
+    /// </summary>
+    static Texture2D MakeBlossomTexture()
+    {
+        const int S = 64;
+        var tex = new Texture2D(S, S, TextureFormat.RGBA32, false);
+        tex.wrapMode = TextureWrapMode.Clamp;
+        tex.filterMode = FilterMode.Bilinear;
+        for (int y = 0; y < S; y++)
+        {
+            for (int x = 0; x < S; x++)
+            {
+                float u = ((float)x / (S - 1)) * 2f - 1f; // -1..1
+                float v = ((float)y / (S - 1)) * 2f - 1f;
+                float r = Mathf.Sqrt(u * u + v * v);
+                float ang = Mathf.Atan2(v, u);
+                // 8 rounded petals: radius modulated by angle.
+                float petal = 0.78f + 0.22f * Mathf.Pow(Mathf.Abs(Mathf.Cos(ang * 4f)), 0.7f);
+                if (r >= petal)
+                {
+                    tex.SetPixel(x, y, new Color(0f, 0f, 0f, 0f));
+                    continue;
+                }
+                float groove = Mathf.Pow(Mathf.Abs(Mathf.Sin(ang * 4f)), 0.5f);
+                float shade = 1f - 0.16f * groove;
+                float center = 1f - Mathf.SmoothStep(0f, 0.30f, r);
+                tex.SetPixel(x, y, new Color(shade, shade * (1f - 0.08f * center), shade * (1f - 0.22f * center), 1f));
+            }
+        }
+        tex.Apply();
+        return tex;
     }
 }

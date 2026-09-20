@@ -7,6 +7,11 @@ name: Screenshot CrystalViz
 
 on:
   workflow_dispatch:
+    inputs:
+      taps:
+        description: 'Tap count for the staged screenshot (0-50)'
+        required: false
+        default: '0'
 
 jobs:
   screenshot:
@@ -95,6 +100,7 @@ jobs:
             -quit -batchmode \
             -projectPath "${{ github.workspace }}" \
             -executeMethod CrystalVizScreenshot.Capture \
+            -cvizTaps "${{ inputs.taps }}" \
             -logFile Builds/Logs/Screenshot.log || echo "screenshot run exited non-zero"
 
       - name: Upload screenshot
