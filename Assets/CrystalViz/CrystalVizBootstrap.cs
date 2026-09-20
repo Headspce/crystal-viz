@@ -32,8 +32,11 @@ public class CrystalVizBootstrap : MonoBehaviour
         BuildHorizonHaze();
         BuildSun();
         BuildDiorama();
-        var ctrl = gameObject.AddComponent<SunOrbitControl>();
-        ctrl.bootstrap = this;
+        // NOTE: SunOrbitControl (dev sun-positioning slider) is intentionally
+        // NOT attached: its right-edge slider UI leaked into screenshots and
+        // player builds. The sun is locked at its approved azimuth via
+        // BuildSun()->PlaceSun(54f). Re-attach the component in-editor only if
+        // the sun ever needs repositioning.
     }
 
     /// <summary>

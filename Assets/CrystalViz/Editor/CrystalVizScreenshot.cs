@@ -46,11 +46,9 @@ public static class CrystalVizScreenshot
         }
         bootstrap.BuildScene(); // edit-mode equivalent of Awake
 
-        var ctrl = bootstrap.GetComponent<SunOrbitControl>();
-        if (ctrl != null)
-            ctrl.BuildForScreenshot();
-        else
-            Debug.LogWarning("CrystalVizScreenshot: no SunOrbitControl; slider UI will be missing.");
+        // SunOrbitControl is dev-only and no longer attached (its slider UI
+        // used to leak into screenshots); the sun sits at its locked azimuth
+        // from BuildSun()->PlaceSun(54f).
 
         var cam = Camera.main;
         if (cam == null)
