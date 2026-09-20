@@ -11,6 +11,13 @@ using UnityEngine.Events;
 ///
 /// Growth stages: 0-10 taps Sprout, 11-25 Sapling, 26-40 YoungTree, 41-50 Mature.
 /// Fires onStageChanged(newStage) whenever the stage transitions.
+///
+/// Test loop: the reset button (TreeResetButton) calls ResetToSapling(), which
+/// drops the tree back to the sapling stage with the tap counter at zero, so
+/// the sapling -> mature growth can be re-tapped perpetually. That mode
+/// ("sapling start") shifts the stage thresholds and the growth mapping so 0
+/// taps shows the sapling and 50 taps the mature tree; it persists via
+/// PlayerPrefs ("CrystalViz_TreeTaps_SaplingStart") like normal taps.
 /// </summary>
 public class TreeGrowthController : MonoBehaviour
 {
@@ -18,9 +25,20 @@ public class TreeGrowthController : MonoBehaviour
     public int currentTaps;
     public ParametricTree tree;
     public UnityEvent<int> onStageChanged = new UnityEvent<int>();
+    /// <summary>
+    /// Screen rect of the reset button, set by TreeResetButton. Taps landing
+    /// inside it are swallowed so pressing reset never also grows the tree.
+    /// </summary>
+    public RectTransform resetButtonRect;
 
     const string PrefsKey = "CrystalViz_TreeTaps";
+    const string SaplingStartKey = "CrystalViz_TreeTaps_SaplingStart";
     const float AnimDuration = 0.5f;
+    /// <summary>Growth value where the sapling stage begins (11 taps / 50).</summary>
+    const float SaplingGrowth = 11f / 50f;
+
+    /// <summary>True once the reset button has been pressed: 0 taps = sapling.</summary>
+    public bool saplingStart;
 
     float displayedG; // animated 0..1 value actually fed to the tree
     float animFrom;
@@ -28,17 +46,33 @@ public class TreeGrowthController : MonoBehaviour
     float animT = 1f; // >= 1 means settled
     int lastStage = -1;
 
-    /// <summary>Target growth from tap count (0..1).</summary>
-    public float GrowthTarget => totalTaps <= 0 ? 0f : (float)currentTaps / totalTaps;
+    /// <summary>
+    /// Target growth from tap count (0..1). In sapling-start mode 0 taps maps
+    /// to the sapling geometry instead of the sprout.
+    /// </summary>
+    public float GrowthTarget
+    {
+        get
+        {
+            if (totalTaps <= 0) return 0f;
+            float t = (float)currentTaps / totalTaps;
+            return saplingStart ? Mathf.Lerp(SaplingGrowth, 1f, t) : t;
+        }
+    }
 
     /// <summary>Currently displayed (animated) growth (0..1).</summary>
     public float Growth01 => displayedG;
 
-    /// <summary>0 Sprout, 1 Sapling, 2 YoungTree, 3 Mature.</summary>
+    /// <summary>
+    /// 0 Sprout, 1 Sapling, 2 YoungTree, 3 Mature. In sapling-start mode the
+    /// sprout stage is skipped: 0-24 Sapling, 25-39 YoungTree, 40-50 Mature.
+    /// </summary>
     public int CurrentStage =>
-        currentTaps <= 10 ? 0 :
-        currentTaps <= 25 ? 1 :
-        currentTaps <= 40 ? 2 : 3;
+        saplingStart
+            ? (currentTaps <= 24 ? 1 : currentTaps <= 39 ? 2 : 3)
+            : (currentTaps <= 10 ? 0 :
+               currentTaps <= 25 ? 1 :
+               currentTaps <= 40 ? 2 : 3);
 
     bool initialized;
 
@@ -60,6 +94,7 @@ public class TreeGrowthController : MonoBehaviour
         initialized = true;
         tree = GetComponent<ParametricTree>();
         currentTaps = Mathf.Clamp(PlayerPrefs.GetInt(PrefsKey, 0), 0, totalTaps);
+        saplingStart = PlayerPrefs.GetInt(SaplingStartKey, 0) == 1;
         displayedG = GrowthTarget;
         // Build the mesh here, not just in Start(): CI screenshot captures run
         // in edit mode, where Start()/Update() never execute, leaving the
@@ -81,15 +116,60 @@ public class TreeGrowthController : MonoBehaviour
         // the first touch also raises mouse-button events; the bool collapses
         // both into a single tap per frame.)
         bool tapped = Input.GetMouseButtonDown(0);
+        Vector2 tapPos = Input.mousePosition;
         if (!tapped && Input.touchCount > 0 && Input.GetTouch(0).phase == TouchPhase.Began)
+        {
             tapped = true;
-        if (tapped) RegisterTap();
+            tapPos = Input.GetTouch(0).position;
+        }
+        // A press on the reset button must not also grow the tree.
+        if (tapped && !IsOnResetButton(tapPos)) RegisterTap();
 
         if (animT < 1f)
         {
             animT = Mathf.Min(1f, animT + Time.deltaTime / AnimDuration);
             displayedG = Mathf.Lerp(animFrom, animTo, Smooth(animT));
             if (tree != null) tree.SetGrowth(displayedG);
+        }
+    }
+
+    /// <summary>True when the given screen position is inside the reset button.</summary>
+    bool IsOnResetButton(Vector2 screenPos)
+    {
+        if (resetButtonRect == null) return false;
+        // Null camera is correct here: the button lives on a
+        // ScreenSpaceOverlay canvas.
+        return RectTransformUtility.RectangleContainsScreenPoint(resetButtonRect, screenPos, null);
+    }
+
+    /// <summary>
+    /// Test-loop reset (reset button): the tree snaps back to the sapling
+    /// stage and the tap counter returns to zero, so the sapling -> mature
+    /// growth can be re-tapped perpetually. Snaps instantly (no grow
+    /// animation) so the test loop stays tight. Persists like normal taps.
+    /// Safe to call from UI buttons too.
+    /// </summary>
+    public void ResetToSapling()
+    {
+        currentTaps = 0;
+        saplingStart = true;
+        PlayerPrefs.SetInt(PrefsKey, 0);
+        PlayerPrefs.SetInt(SaplingStartKey, 1);
+        PlayerPrefs.Save();
+
+        displayedG = GrowthTarget; // sapling geometry
+        animT = 1f; // snap, don't animate
+        if (tree != null) tree.SetGrowth(displayedG);
+
+        int stage = CurrentStage;
+        if (stage != lastStage)
+        {
+            lastStage = stage;
+            onStageChanged.Invoke(stage);
+        }
+        else
+        {
+            lastStage = stage;
         }
     }
 

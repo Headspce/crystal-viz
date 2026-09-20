@@ -29,7 +29,25 @@ public static class CrystalVizScreenshot
             if (cli[i] == "-cvizTaps" && int.TryParse(cli[i + 1], out int t))
                 tapsOverride = Mathf.Clamp(t, 0, 50);
         }
-        if (tapsOverride >= 0)
+        // -cvizReset simulates pressing the reset button: sapling stage at
+        // zero taps. Seeded via PlayerPrefs BEFORE the scene builds so every
+        // component (tree, avatar, counter) initializes from that state,
+        // exactly as the real button press persists it.
+        bool resetToSapling = false;
+        for (int i = 0; i < cli.Length; i++)
+        {
+            if (cli[i] == "-cvizReset") { resetToSapling = true; break; }
+        }
+        if (resetToSapling)
+        {
+            // Same keys TreeGrowthController reads ("CrystalViz_TreeTaps" +
+            // the sapling-start flag ResetToSapling() persists).
+            PlayerPrefs.SetInt("CrystalViz_TreeTaps", 0);
+            PlayerPrefs.SetInt("CrystalViz_TreeTaps_SaplingStart", 1);
+            PlayerPrefs.Save();
+            Debug.Log("CrystalVizScreenshot: reset-button state (sapling, 0 taps).");
+        }
+        else if (tapsOverride >= 0)
         {
             // Same key TreeGrowthController reads ("CrystalViz_TreeTaps").
             PlayerPrefs.SetInt("CrystalViz_TreeTaps", tapsOverride);

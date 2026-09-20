@@ -12,6 +12,11 @@ on:
         description: 'Tap count for the staged screenshot (0-50)'
         required: false
         default: '0'
+      reset:
+        description: 'Simulate the reset button: sapling stage at 0 taps'
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   screenshot:
@@ -101,6 +106,7 @@ jobs:
             -projectPath "${{ github.workspace }}" \
             -executeMethod CrystalVizScreenshot.Capture \
             -cvizTaps "${{ inputs.taps }}" \
+            ${{ inputs.reset && '-cvizReset' || '' }} \
             -logFile Builds/Logs/Screenshot.log || echo "screenshot run exited non-zero"
 
       - name: Upload screenshot

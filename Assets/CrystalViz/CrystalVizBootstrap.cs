@@ -274,7 +274,9 @@ public class CrystalVizBootstrap : MonoBehaviour
     /// Interactive tap-to-grow tree (sprout -> mature over 50 taps). The
     /// growing tree is the centerpiece at origin; it replaces the old static
     /// OldTree. ParametricTree builds the geometry, TreeGrowthController owns
-    /// tap input + persistence, StageIndicatorUI shows the stage avatar.
+    /// tap input + persistence, StageIndicatorUI shows the stage avatar, and
+    /// TreeResetButton adds the opaque black bottom-left test-loop reset
+    /// button (sapling at zero taps, re-tappable to mature).
     /// NOTE: the CI screenshot path builds the scene in edit mode, where
     /// AddComponent does NOT fire Awake() and Start()/Update() never run.
     /// Each component exposes an idempotent Initialize() that is called
@@ -292,6 +294,11 @@ public class CrystalVizBootstrap : MonoBehaviour
         var ctrl = treeGO.AddComponent<TreeGrowthController>();
         ctrl.Initialize(); // assigns tree, restores taps, calls ApplyGrowth()
         treeGO.AddComponent<StageIndicatorUI>().Initialize();
+        // Test-loop reset button (opaque black, bottom-left): pressing it
+        // snaps the tree back to the sapling at zero taps for repeated
+        // growth playtesting. Explicit Initialize() for the edit-mode
+        // screenshot path, same as the components above.
+        treeGO.AddComponent<TreeResetButton>().Initialize();
         Debug.Log("CrystalViz: growing tree planted at origin.");
     }
 
