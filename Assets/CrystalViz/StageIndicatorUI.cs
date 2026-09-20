@@ -62,11 +62,6 @@ public class StageIndicatorUI : MonoBehaviour
                 Debug.LogWarning($"StageIndicatorUI: texture '{StagePaths[i]}' not found in Resources.");
             }
         }
-        int loaded = 0;
-        foreach (var s in stageSprites) if (s != null) loaded++;
-        // DIAGNOSTIC (temporary)
-        Debug.LogWarning($"DIAG StageIndicatorUI.Initialize: controller={(controller != null ? "ok" : "NULL")}, " +
-            $"spritesLoaded={loaded}/4");
         BuildUI();
         // Start()/Update() never run in edit-mode screenshot captures, so set
         // the initial sprite and counter text here instead of waiting for them.

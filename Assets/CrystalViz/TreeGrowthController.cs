@@ -59,12 +59,8 @@ public class TreeGrowthController : MonoBehaviour
         if (initialized) return;
         initialized = true;
         tree = GetComponent<ParametricTree>();
-        // DEBUG: start at 30 taps (young tree) for prototype screenshots; revert to 0 for release
         currentTaps = Mathf.Clamp(PlayerPrefs.GetInt(PrefsKey, 0), 0, totalTaps);
         displayedG = GrowthTarget;
-        // DIAGNOSTIC (temporary): prove the debug default applied and the tree ref resolved.
-        Debug.LogWarning($"DIAG TreeGrowthController.Initialize: currentTaps={currentTaps}, " +
-            $"displayedG={displayedG:F3}, tree={(tree != null ? "ok" : "NULL")}");
         // Build the mesh here, not just in Start(): CI screenshot captures run
         // in edit mode, where Start()/Update() never execute, leaving the
         // trunk/leaf meshes empty (invisible tree).

@@ -89,27 +89,18 @@ public class ParametricTree : MonoBehaviour
                 "materials may render magenta.");
         }
 
-        // Bark texture if the OldTree assets are still in Resources; otherwise
-        // fall back to a flat bark-brown albedo (vertex colors add variation).
-        var bark = Resources.Load<Texture2D>("Models/OldTree/bark04");
+        // Bark: use procedural brown 1x1 texture (vertex colors add variation).
 
-        // DIAGNOSTIC (temporary): loud logging so the edit-mode CI screenshot log
-        // shows exactly what resolved and what got built.
-        Debug.LogWarning($"DIAG ParametricTree.Initialize: shader={(lit != null ? lit.name : "NULL")}, " +
-            $"bark={(bark != null ? "found" : "missing")}, trunkFilter={(trunkFilter != null ? "ok" : "NULL")}, " +
-            $"trunkRenderer={(trunkRenderer != null ? "ok" : "NULL")}");
         if (lit != null)
         {
             var trunkMat = new Material(lit);
-            if (bark != null)
-            {
-                trunkMat.SetTexture("_BaseMap", bark);
-                trunkMat.color = Color.white;
-            }
-            else
-            {
-                trunkMat.color = new Color(0.36f, 0.23f, 0.13f);
-            }
+            // Use procedural 1x1 brown texture for _BaseMap (bypasses CI/Mesa
+            // dark-color-renders-black issue; bark04.png renders black in CI).
+            var brownTex = new Texture2D(1, 1, TextureFormat.RGBA32, false);
+            brownTex.SetPixel(0, 0, new Color(0.36f, 0.23f, 0.13f, 1f));
+            brownTex.Apply();
+            trunkMat.SetTexture("_BaseMap", brownTex);
+            trunkMat.color = Color.white;
             trunkRenderer.material = trunkMat;
         }
         else
@@ -124,6 +115,12 @@ public class ParametricTree : MonoBehaviour
         if (lit != null)
         {
             var leafMat = new Material(lit);
+            // Green 1x1 texture for leaves (vertex colors add variation, but
+            // base green ensures visibility even if vertex colors don't apply).
+            var greenTex = new Texture2D(1, 1, TextureFormat.RGBA32, false);
+            greenTex.SetPixel(0, 0, new Color(0.25f, 0.55f, 0.18f, 1f));
+            greenTex.Apply();
+            leafMat.SetTexture("_BaseMap", greenTex);
             leafMat.color = Color.white;
             leafMat.SetFloat("_Cull", 0f); // double-sided: leaf quads are visible from both sides
             leafRenderer.material = leafMat;
@@ -135,8 +132,6 @@ public class ParametricTree : MonoBehaviour
         leafMesh = new Mesh { name = "ParametricLeaves" };
         leafMesh.MarkDynamic();
         leafFilter.mesh = leafMesh;
-        // DIAGNOSTIC (temporary)
-        Debug.LogWarning("DIAG ParametricTree.Initialize: trunkMesh + leafMesh created and assigned to filters.");
     }
 
     /// <summary>
@@ -166,11 +161,6 @@ public class ParametricTree : MonoBehaviour
 
         BuildTrunkMesh(trunkLen, trunkRad, maxLevel, g, lean, rng);
         BuildLeafMesh(g, new System.Random(Seed + 1));
-        // DIAGNOSTIC (temporary): prove geometry exists and where it lives.
-        Debug.LogWarning($"DIAG ParametricTree.SetGrowth(g={g:F3}): trunkVerts={trunkMesh.vertexCount}, " +
-            $"trunkTris={trunkMesh.triangles.Length / 3}, trunkBounds={trunkMesh.bounds}, " +
-            $"leafVerts={leafMesh.vertexCount}, leafBounds={leafMesh.bounds}, " +
-            $"treePos={transform.position}");
     }
 
     // ------------------------------------------------------------ trunk mesh

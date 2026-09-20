@@ -273,12 +273,13 @@ public class CrystalVizBootstrap : MonoBehaviour
     {
         var treeGO = new GameObject("GrowingTree");
         treeGO.transform.position = Vector3.zero;
+        // Scale so the mature tree (50 taps) stands ~2.5 units tall, matching
+        // the visual volume of the old dead tree prototype.
+        treeGO.transform.localScale = Vector3.one * 0.26f;
         treeGO.AddComponent<ParametricTree>().Initialize();
         var ctrl = treeGO.AddComponent<TreeGrowthController>();
         ctrl.Initialize(); // assigns tree, restores taps, calls ApplyGrowth()
         treeGO.AddComponent<StageIndicatorUI>().Initialize();
-        Debug.LogWarning($"DIAG BuildGrowingTree: GrowingTree created at {treeGO.transform.position}, " +
-            $"Growth01={ctrl.Growth01}, CurrentStage={ctrl.CurrentStage}");
         Debug.Log("CrystalViz: growing tree planted at origin.");
     }
 
