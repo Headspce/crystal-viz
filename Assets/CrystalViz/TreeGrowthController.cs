@@ -60,7 +60,7 @@ public class TreeGrowthController : MonoBehaviour
         initialized = true;
         tree = GetComponent<ParametricTree>();
         // DEBUG: start at 30 taps (young tree) for prototype screenshots; revert to 0 for release
-        currentTaps = Mathf.Clamp(PlayerPrefs.GetInt(PrefsKey, 30), 0, totalTaps);
+        currentTaps = Mathf.Clamp(PlayerPrefs.GetInt(PrefsKey, 0), 0, totalTaps);
         displayedG = GrowthTarget;
         // DIAGNOSTIC (temporary): prove the debug default applied and the tree ref resolved.
         Debug.LogWarning($"DIAG TreeGrowthController.Initialize: currentTaps={currentTaps}, " +
