@@ -163,7 +163,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         skyDomeMat.SetColor("_CloudLight", new Color(1f, 1f, 1f, 1f));
         skyDomeMat.SetColor("_SunColor", new Color(1f, 0.93f, 0.78f, 1f));
         skyDomeMat.SetFloat("_CloudScale", 1.2f);
-        skyDomeMat.SetFloat("_Coverage", 0.6f);
+        skyDomeMat.SetFloat("_Coverage", 0.72f);
         // Ultra-slow drift: a full cloud cycle takes many minutes.
         skyDomeMat.SetFloat("_WindSpeed", 0.004f);
 
@@ -347,8 +347,17 @@ public class CrystalVizBootstrap : MonoBehaviour
             // ~78 tufts per unit^2 at the center (2x tighter packing);
             // full 200x200 ground covered.
             float r = 12f * Mathf.Sqrt((float)(System.Math.Pow(70.44, rng.NextDouble()) - 1.0));
+            float px = Mathf.Cos(a) * r;
+            float pz = Mathf.Sin(a) * r;
+            // Camera clearance: the camera sits at (0, 2.5, 7.4). A tuft
+            // within ~3 units of it fills the screen as a glitchy dark bar
+            // (seen pixel-identical at the right edge across builds). Skip
+            // it; the rng sequence stays deterministic per launch.
+            float cdx = px - 0f;
+            float cdz = pz - 7.4f;
+            if (cdx * cdx + cdz * cdz < 9.0f) continue; // 3^2
             var mtx = Matrix4x4.TRS(
-                new Vector3(Mathf.Cos(a) * r, 0f, Mathf.Sin(a) * r),
+                new Vector3(px, 0f, pz),
                 Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f),
                 // 1.6x larger clusters: tufts overlap and cover bare spots
                 // with zero extra geometry instances.
