@@ -229,9 +229,10 @@ public class ParametricTree : MonoBehaviour
 
     /// <summary>
     /// Builds a small leaf albedo: a pointed-oval leaf silhouette with a
-    /// center vein and a slightly darker rim, near-white so the per-leaf
-    /// green vertex colors keep defining the hue. Transparent background for
-    /// alpha-test cutout (no more flat square quads).
+    /// lighter center vein and a darker rim, in leaf green. Transparent
+    /// background for alpha-test cutout (no more flat square quads).
+    /// NOTE: the green is baked into the texture because URP/Lit ignores
+    /// mesh vertex colors — the old 1x1 green texture worked the same way.
     /// </summary>
     static Texture2D MakeLeafTexture()
     {
@@ -239,6 +240,8 @@ public class ParametricTree : MonoBehaviour
         var tex = new Texture2D(S, S, TextureFormat.RGBA32, false);
         tex.wrapMode = TextureWrapMode.Clamp;
         tex.filterMode = FilterMode.Bilinear;
+        // Leaf green, matching the old 1x1 base color (0.25, 0.55, 0.18).
+        Color baseGreen = new Color(0.27f, 0.56f, 0.19f);
         for (int y = 0; y < S; y++)
         {
             for (int x = 0; x < S; x++)
@@ -256,8 +259,9 @@ public class ParametricTree : MonoBehaviour
                 }
                 float vein = 1f - Mathf.SmoothStep(0f, 0.035f + (1f - v) * 0.02f, d);
                 float rim = Mathf.SmoothStep(w * 0.72f, w, d);
-                float shade = 1f - 0.18f * rim - 0.10f * vein;
-                tex.SetPixel(x, y, new Color(shade, shade, shade * 0.96f, 1f));
+                // Lighter yellow-green vein, darker rim for shape.
+                Color c = baseGreen * (1f - 0.22f * rim) + new Color(0.10f, 0.12f, 0.02f) * vein;
+                tex.SetPixel(x, y, new Color(c.r, c.g, c.b, 1f));
             }
         }
         tex.Apply();
