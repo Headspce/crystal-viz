@@ -172,7 +172,8 @@ public class CrystalVizBootstrap : MonoBehaviour
         var dome = GameObject.CreatePrimitive(PrimitiveType.Sphere);
         dome.name = "SkyDome";
         DestroyNow(dome.GetComponent<Collider>());
-        dome.transform.position = cam != null ? cam.transform.position : Vector3.zero;
+        Camera mainCam = Camera.main;
+        dome.transform.position = mainCam != null ? mainCam.transform.position : Vector3.zero;
         dome.transform.localScale = new Vector3(400f, 400f, 400f); // radius 200 < far plane 250
         var rend = dome.GetComponent<Renderer>();
         rend.material = skyDomeMat;
