@@ -194,9 +194,9 @@ public class StageIndicatorUI : MonoBehaviour
         textRt.anchoredPosition = new Vector2(0f, -186f);
         textRt.sizeDelta = new Vector2(240f, 60f);
         tapText = textGO.AddComponent<Text>();
-        tapText.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+        tapText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         if (tapText.font == null)
-            Debug.LogWarning("StageIndicatorUI: built-in Arial not found; tap counter may not render.");
+            Debug.LogWarning("StageIndicatorUI: built-in LegacyRuntime font not found; tap counter may not render.");
         tapText.fontSize = 40;
         tapText.alignment = TextAnchor.MiddleCenter;
         tapText.color = Color.white;
