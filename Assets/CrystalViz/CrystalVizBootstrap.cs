@@ -4,7 +4,7 @@ using UnityEngine;
 /// Crystal Viz bootstrap: builds the entire diorama at runtime so the shipped
 /// scene file stays tiny. The scene is a tap-to-grow parametric tree on a
 /// stylized grass field dotted with wind-blown wildflowers, under a
-/// procedural anime skybox, with a single sun that orbits the tree under
+/// procedural anime sky dome, with a single sun that orbits the tree under
 /// slider control (see SunOrbitControl).
 /// Attach to an empty GameObject in CrystalViz.unity; it finds MainCamera itself.
 /// </summary>
@@ -28,7 +28,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         Random.InitState(1234); // deterministic branches every run
         BuildCamera();
         BuildEnvironment();
-        BuildAnimeSkybox();
+        BuildSkyDome();
         BuildHorizonHaze();
         BuildSun();
         BuildDiorama();
@@ -78,7 +78,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         cam.transform.position = new Vector3(0f, 2.5f, 7.4f);
         cam.transform.LookAt(new Vector3(0f, 1.7f, 0f)); // frame tree + grass
         cam.fieldOfView = 40f;
-        cam.clearFlags = CameraClearFlags.Skybox; // procedural anime skybox (RenderSettings.skybox)
+        cam.clearFlags = CameraClearFlags.SolidColor; // sky is a mesh dome; solid clear is the proven path
         // Periwinkle sampled from the bottom edge of clouds.jpg: the sky,
         // the distance fog, and the clear color all meet at this one hue so
         // the ground melts into the horizon with no seam.
@@ -126,56 +126,71 @@ public class CrystalVizBootstrap : MonoBehaviour
         fill.transform.rotation = Quaternion.Euler(50f, -130f, 0f);
     }
 
-    // ------------------------------------------------------- anime skybox
+    // ------------------------------------------------------- sky dome
 
-    Material skyboxMat;
+    Material skyDomeMat;
 
     /// <summary>
-    /// Sky backdrop: a fully procedural anime skybox (CrystalViz/AnimeSkybox)
-    /// — deep-blue gradient zenith, bright warm horizon, dramatic cel-shaded
-    /// cumulus billows and thin cirrus wisps drifting ultra-slowly. Because
-    /// it is pure math there is no texture seam anywhere, no matter how long
-    /// you stare at it. The horizon color is set to exactly the fog color so
-    /// the ground melts into the sky with no visible line. Replaces the old
-    /// single textured sky plane (which showed its image seam on long looks).
+    /// Sky backdrop: a giant inverted sphere (radius 200, inside the 250 far
+    /// plane) wearing the fully procedural CrystalViz/AnimeSkybox shader —
+    /// deep-blue gradient zenith, bright warm horizon, dramatic cel-shaded
+    /// cumulus billows and thin cirrus wisps drifting ultra-slowly. Pure math
+    /// => no texture seam anywhere, no matter how long you stare at it. The
+    /// horizon color equals the fog color so the ground melts into the sky
+    /// with no visible line, preserving the praised horizon blend. A mesh
+    /// dome instead of RenderSettings.skybox: the CI screenshot renders the
+    /// camera directly in edit mode, where the skybox pass does not draw
+    /// (verified: sky rendered as flat clear color), while plain meshes
+    /// render reliably on that path — the old textured sky plane proved it.
     /// Missing shader => quietly skipped, never a crash.
     /// </summary>
-    void BuildAnimeSkybox()
+    void BuildSkyDome()
     {
         var shader = Shader.Find("CrystalViz/AnimeSkybox");
         if (shader == null)
         {
-            Debug.LogWarning("CrystalViz: 'CrystalViz/AnimeSkybox' shader not found; skipping skybox.");
+            Debug.LogWarning("CrystalViz: 'CrystalViz/AnimeSkybox' shader not found; skipping sky dome.");
             return;
         }
-        skyboxMat = new Material(shader);
+        skyDomeMat = new Material(shader);
         // Must equal the fog color in BuildEnvironment: one hue for sky,
         // fog, haze band, and clear color => seamless horizon.
-        skyboxMat.SetColor("_HorizonColor", new Color(0.611f, 0.672f, 0.824f, 1f));
-        skyboxMat.SetColor("_MidColor", new Color(0.45f, 0.65f, 0.93f, 1f));
-        skyboxMat.SetColor("_ZenithColor", new Color(0.15f, 0.36f, 0.78f, 1f));
-        skyboxMat.SetColor("_CloudShadow", new Color(0.70f, 0.73f, 0.87f, 1f));
-        skyboxMat.SetColor("_CloudMid", new Color(0.93f, 0.94f, 0.99f, 1f));
-        skyboxMat.SetColor("_CloudLight", new Color(1f, 1f, 1f, 1f));
-        skyboxMat.SetColor("_SunColor", new Color(1f, 0.93f, 0.78f, 1f));
-        skyboxMat.SetFloat("_CloudScale", 1.2f);
-        skyboxMat.SetFloat("_Coverage", 0.6f);
+        skyDomeMat.SetColor("_HorizonColor", new Color(0.611f, 0.672f, 0.824f, 1f));
+        skyDomeMat.SetColor("_MidColor", new Color(0.45f, 0.65f, 0.93f, 1f));
+        skyDomeMat.SetColor("_ZenithColor", new Color(0.15f, 0.36f, 0.78f, 1f));
+        skyDomeMat.SetColor("_CloudShadow", new Color(0.70f, 0.73f, 0.87f, 1f));
+        skyDomeMat.SetColor("_CloudMid", new Color(0.93f, 0.94f, 0.99f, 1f));
+        skyDomeMat.SetColor("_CloudLight", new Color(1f, 1f, 1f, 1f));
+        skyDomeMat.SetColor("_SunColor", new Color(1f, 0.93f, 0.78f, 1f));
+        skyDomeMat.SetFloat("_CloudScale", 1.2f);
+        skyDomeMat.SetFloat("_Coverage", 0.6f);
         // Ultra-slow drift: a full cloud cycle takes many minutes.
-        skyboxMat.SetFloat("_WindSpeed", 0.004f);
-        RenderSettings.skybox = skyboxMat;
-        SyncSkyboxSun();
-        Debug.Log("CrystalViz: procedural anime skybox installed.");
+        skyDomeMat.SetFloat("_WindSpeed", 0.004f);
+
+        // Inverted sphere: Cull Front in the shader shows the interior.
+        // Centered on the camera so painted directions match view directions.
+        var dome = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        dome.name = "SkyDome";
+        DestroyNow(dome.GetComponent<Collider>());
+        dome.transform.position = cam != null ? cam.transform.position : Vector3.zero;
+        dome.transform.localScale = new Vector3(400f, 400f, 400f); // radius 200 < far plane 250
+        var rend = dome.GetComponent<Renderer>();
+        rend.material = skyDomeMat;
+        rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        rend.receiveShadows = false;
+        SyncSkySun();
+        Debug.Log("CrystalViz: procedural anime sky dome installed (r=200).");
     }
 
     /// <summary>
-    /// Points the skybox's painted sun at the real directional light so the
+    /// Points the dome's painted sun at the real directional light so the
     /// disc follows it as it orbits. Safe to call before either exists.
     /// </summary>
-    void SyncSkyboxSun()
+    void SyncSkySun()
     {
-        if (skyboxMat == null || sun == null) return;
+        if (skyDomeMat == null || sun == null) return;
         Vector3 dir = (sun.transform.position - FocusPoint).normalized;
-        skyboxMat.SetVector("_SunDir", new Vector4(dir.x, dir.y, dir.z, 0f));
+        skyDomeMat.SetVector("_SunDir", new Vector4(dir.x, dir.y, dir.z, 0f));
     }
 
     /// <summary>
@@ -239,7 +254,7 @@ public class CrystalVizBootstrap : MonoBehaviour
             Mathf.Cos(rad) * Mathf.Cos(el));
         sun.transform.position = FocusPoint + dir * sunDistance;
         sun.transform.LookAt(FocusPoint);
-        SyncSkyboxSun(); // painted sun disc follows the real light
+        SyncSkySun(); // painted sun disc follows the real light
     }
 
     // ------------------------------------------------------------------ diorama

@@ -142,9 +142,9 @@ public static class CrystalVizBuild
             Debug.LogWarning("CrystalVizBuild: 'CrystalViz/StylizedGrass' not found; grass field will be skipped at runtime.");
         }
 
-        // The anime skybox shader is also created at runtime via
+        // The anime sky shader is also created at runtime via
         // Shader.Find; pin its (single) variant so it survives stripping.
-        // A missing shader here is fine — the bootstrap skips the skybox.
+        // A missing shader here is fine — the bootstrap skips the sky dome.
         var skyShader = Shader.Find("CrystalViz/AnimeSkybox");
         if (skyShader != null)
         {
@@ -160,7 +160,7 @@ public static class CrystalVizBuild
         }
         else
         {
-            Debug.LogWarning("CrystalVizBuild: 'CrystalViz/AnimeSkybox' not found; skybox will be skipped at runtime.");
+            Debug.LogWarning("CrystalVizBuild: 'CrystalViz/AnimeSkybox' not found; sky dome will be skipped at runtime.");
         }
 
         // The wildflower shader is also created at runtime via
