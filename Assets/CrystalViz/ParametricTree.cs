@@ -150,6 +150,9 @@ public class ParametricTree : MonoBehaviour
             leafMat.color = Color.white;
             leafMat.SetFloat("_AlphaClip", 1f); // URP/Lit alpha-test cutout
             leafMat.SetFloat("_Cutoff", 0.5f);
+            // Setting the _AlphaClip float is not enough: the URP/Lit shader
+            // only runs the alpha-test branch with the _ALPHATEST_ON keyword.
+            leafMat.EnableKeyword("_ALPHATEST_ON");
             leafMat.SetFloat("_Cull", 0f); // double-sided: leaf quads are visible from both sides
             leafRenderer.material = leafMat;
         }
