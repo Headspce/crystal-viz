@@ -3,8 +3,9 @@ using UnityEngine;
 /// <summary>
 /// Crystal Viz bootstrap: builds the entire diorama at runtime so the shipped
 /// scene file stays tiny. The scene is a tap-to-grow parametric tree on a
-/// stylized grass field under a drifting cloud sky, with a single sun that
-/// orbits the tree under slider control (see SunOrbitControl).
+/// stylized grass field dotted with wind-blown wildflowers, under a
+/// procedural anime skybox, with a single sun that orbits the tree under
+/// slider control (see SunOrbitControl).
 /// Attach to an empty GameObject in CrystalViz.unity; it finds MainCamera itself.
 /// </summary>
 public class CrystalVizBootstrap : MonoBehaviour
@@ -27,7 +28,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         Random.InitState(1234); // deterministic branches every run
         BuildCamera();
         BuildEnvironment();
-        BuildCloudBackdrop();
+        BuildAnimeSkybox();
         BuildHorizonHaze();
         BuildSun();
         BuildDiorama();
@@ -77,7 +78,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         cam.transform.position = new Vector3(0f, 2.5f, 7.4f);
         cam.transform.LookAt(new Vector3(0f, 1.7f, 0f)); // frame tree + grass
         cam.fieldOfView = 40f;
-        cam.clearFlags = CameraClearFlags.SolidColor;
+        cam.clearFlags = CameraClearFlags.Skybox; // procedural anime skybox (RenderSettings.skybox)
         // Periwinkle sampled from the bottom edge of clouds.jpg: the sky,
         // the distance fog, and the clear color all meet at this one hue so
         // the ground melts into the horizon with no seam.
@@ -125,66 +126,56 @@ public class CrystalVizBootstrap : MonoBehaviour
         fill.transform.rotation = Quaternion.Euler(50f, -130f, 0f);
     }
 
-    // ------------------------------------------------------- cloud backdrop
+    // ------------------------------------------------------- anime skybox
+
+    Material skyboxMat;
 
     /// <summary>
-    /// Sky backdrop: ONE single massive upright plane standing at the horizon
-    /// behind the diorama (world-space, not camera-parented), textured with
-    /// Assets/CrystalViz/Resources/clouds.jpg drifting left to right at an
-    /// extremely slow crawl via the CrystalViz/ScrollingClouds shader. The
-    /// plane faces the camera upright, as if looking toward the horizon. The
-    /// shader has no fog code, so scene fog never washes it out. Missing
-    /// texture or shader => quietly skipped, never a crash.
+    /// Sky backdrop: a fully procedural anime skybox (CrystalViz/AnimeSkybox)
+    /// — deep-blue gradient zenith, bright warm horizon, dramatic cel-shaded
+    /// cumulus billows and thin cirrus wisps drifting ultra-slowly. Because
+    /// it is pure math there is no texture seam anywhere, no matter how long
+    /// you stare at it. The horizon color is set to exactly the fog color so
+    /// the ground melts into the sky with no visible line. Replaces the old
+    /// single textured sky plane (which showed its image seam on long looks).
+    /// Missing shader => quietly skipped, never a crash.
     /// </summary>
-    void BuildCloudBackdrop()
+    void BuildAnimeSkybox()
     {
-        var cloudTex = Resources.Load<Texture2D>("clouds");
-        if (cloudTex == null)
-        {
-            Debug.Log("CrystalViz: no 'clouds' texture in Resources; skipping cloud backdrop.");
-            return;
-        }
-        // One single tile stretched across the whole plane: one cloud type
-        // everywhere, no tiling seams. Mirrored wrap keeps the ultra-slow
-        // scroll from ever revealing a texture edge. The texture's mountain
-        // strip lands at the bottom of the plane, i.e. at the horizon.
-        cloudTex.wrapMode = TextureWrapMode.Mirror;
-        var shader = Shader.Find("CrystalViz/ScrollingClouds");
+        var shader = Shader.Find("CrystalViz/AnimeSkybox");
         if (shader == null)
         {
-            Debug.LogWarning("CrystalViz: 'CrystalViz/ScrollingClouds' shader not found; skipping cloud backdrop.");
+            Debug.LogWarning("CrystalViz: 'CrystalViz/AnimeSkybox' shader not found; skipping skybox.");
             return;
         }
+        skyboxMat = new Material(shader);
+        // Must equal the fog color in BuildEnvironment: one hue for sky,
+        // fog, haze band, and clear color => seamless horizon.
+        skyboxMat.SetColor("_HorizonColor", new Color(0.611f, 0.672f, 0.824f, 1f));
+        skyboxMat.SetColor("_MidColor", new Color(0.45f, 0.65f, 0.93f, 1f));
+        skyboxMat.SetColor("_ZenithColor", new Color(0.15f, 0.36f, 0.78f, 1f));
+        skyboxMat.SetColor("_CloudShadow", new Color(0.70f, 0.73f, 0.87f, 1f));
+        skyboxMat.SetColor("_CloudMid", new Color(0.93f, 0.94f, 0.99f, 1f));
+        skyboxMat.SetColor("_CloudLight", new Color(1f, 1f, 1f, 1f));
+        skyboxMat.SetColor("_SunColor", new Color(1f, 0.93f, 0.78f, 1f));
+        skyboxMat.SetFloat("_CloudScale", 1.2f);
+        skyboxMat.SetFloat("_Coverage", 0.6f);
+        // Ultra-slow drift: a full cloud cycle takes many minutes.
+        skyboxMat.SetFloat("_WindSpeed", 0.004f);
+        RenderSettings.skybox = skyboxMat;
+        SyncSkyboxSun();
+        Debug.Log("CrystalViz: procedural anime skybox installed.");
+    }
 
-        // Massive upright plane at the horizon, facing the camera (+Z).
-        // Camera sits near z=7.4 looking toward -Z, so the sky stands deep
-        // at -Z. Far plane is 250; this sits comfortably inside it.
-        const float skyDist = 60f;
-        const float skyW = 220f;
-        const float skyH = 60f;
-        const float skyCenterY = 12f;
-
-        var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
-        quad.name = "SkyPlane";
-        DestroyNow(quad.GetComponent<Collider>());
-        // Unity quads face +Z by default: upright, facing the camera. No
-        // rotation needed.
-        quad.transform.position = new Vector3(0f, skyCenterY, -skyDist);
-        quad.transform.localScale = new Vector3(skyW, skyH, 1f);
-        var mat = new Material(shader);
-        mat.mainTexture = cloudTex;
-        // One tile fills the entire sky: a single cloud image, enlarged,
-        // instead of a tiled grid.
-        if (mat.HasProperty("_Tiling"))
-            mat.SetVector("_Tiling", new Vector4(1f, 1f, 0f, 0f));
-        // Extremely slow drift: a fraction of the old camera-quad speed.
-        if (mat.HasProperty("_ScrollSpeed"))
-            mat.SetFloat("_ScrollSpeed", 0.0012f);
-        var rend = quad.GetComponent<Renderer>();
-        rend.material = mat;
-        rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        rend.receiveShadows = false;
-        Debug.Log($"CrystalViz: sky plane {skyW}x{skyH} at z={-skyDist}, upright, facing camera.");
+    /// <summary>
+    /// Points the skybox's painted sun at the real directional light so the
+    /// disc follows it as it orbits. Safe to call before either exists.
+    /// </summary>
+    void SyncSkyboxSun()
+    {
+        if (skyboxMat == null || sun == null) return;
+        Vector3 dir = (sun.transform.position - FocusPoint).normalized;
+        skyboxMat.SetVector("_SunDir", new Vector4(dir.x, dir.y, dir.z, 0f));
     }
 
     /// <summary>
@@ -248,6 +239,7 @@ public class CrystalVizBootstrap : MonoBehaviour
             Mathf.Cos(rad) * Mathf.Cos(el));
         sun.transform.position = FocusPoint + dir * sunDistance;
         sun.transform.LookAt(FocusPoint);
+        SyncSkyboxSun(); // painted sun disc follows the real light
     }
 
     // ------------------------------------------------------------------ diorama
@@ -256,6 +248,7 @@ public class CrystalVizBootstrap : MonoBehaviour
     {
         BuildGrowingTree();
         BuildGrassField();
+        BuildWildflowers();
     }
 
     /// <summary>
@@ -419,6 +412,144 @@ public class CrystalVizBootstrap : MonoBehaviour
                 tris.Add(r0); tris.Add(r1); tris.Add(r0 + 1);
                 tris.Add(r0 + 1); tris.Add(r1); tris.Add(r1 + 1);
             }
+        }
+    }
+
+    // ------------------------------------------------------- wildflowers
+
+    /// <summary>
+    /// Scattered wildflowers poking up through the grass: a thin stem plus a
+    /// crossed-quad blossom in white, yellow, pink, or lavender. They ride
+    /// the same wind field as the grass (CrystalViz/Wildflower shader), so
+    /// the whole meadow ripples together. ONE combined mesh, one draw call.
+    /// Missing shader => quietly skipped, never a crash.
+    /// </summary>
+    void BuildWildflowers()
+    {
+        var flowerShader = Shader.Find("CrystalViz/Wildflower");
+        if (flowerShader == null)
+        {
+            Debug.LogWarning("CrystalViz: 'CrystalViz/Wildflower' shader not found; skipping wildflowers.");
+            return;
+        }
+        var mat = new Material(flowerShader);
+        mat.SetColor("_RootColor", new Color(0.12f, 0.30f, 0.10f, 1f));
+        mat.SetColor("_TipColor", new Color(0.38f, 0.64f, 0.20f, 1f));
+        // Same wind field as the grass so they ripple together; a touch
+        // stronger since blossoms sit higher and catch more air.
+        mat.SetFloat("_WindStrength", 0.035f);
+        mat.SetFloat("_WindSpeed", 1.7f);
+
+        var rng = new System.Random(20260920);
+        var verts = new System.Collections.Generic.List<Vector3>();
+        var normals = new System.Collections.Generic.List<Vector3>();
+        var uvs = new System.Collections.Generic.List<Vector2>();
+        var colors = new System.Collections.Generic.List<Color>();
+        var tris = new System.Collections.Generic.List<int>();
+
+        var petals = new[]
+        {
+            new Color(0.96f, 0.96f, 0.93f, 1f), // white daisy
+            new Color(0.99f, 0.84f, 0.28f, 1f), // yellow
+            new Color(0.96f, 0.55f, 0.66f, 1f), // pink
+            new Color(0.66f, 0.56f, 0.90f, 1f), // lavender
+        };
+
+        // Same tight-packing falloff as the grass: scattered across the whole
+        // 200x200 ground, densest near the tree, kept clear of the trunk.
+        const int count = 6000;
+        int planted = 0;
+        for (int i = 0; i < count; i++)
+        {
+            float a = (float)rng.NextDouble() * Mathf.PI * 2f;
+            float r = 12f * Mathf.Sqrt((float)(System.Math.Pow(70.44, rng.NextDouble()) - 1.0));
+            if (r < 0.9f) continue; // not inside the trunk
+            var mtx = Matrix4x4.TRS(
+                new Vector3(Mathf.Cos(a) * r, 0f, Mathf.Sin(a) * r),
+                Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f),
+                Vector3.one * (0.8f + (float)rng.NextDouble() * 0.5f));
+            var petal = petals[rng.Next(petals.Length)];
+            // Slight per-flower brightness jitter so the field doesn't look stamped.
+            float j = 0.88f + (float)rng.NextDouble() * 0.18f;
+            petal = new Color(petal.r * j, petal.g * j, petal.b * j, 1f);
+            AppendWildflower(verts, normals, uvs, colors, tris, mtx, rng, petal);
+            planted++;
+        }
+
+        var mesh = new Mesh { name = "Wildflowers" };
+        mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+        mesh.SetVertices(verts);
+        mesh.SetNormals(normals);
+        mesh.SetUVs(0, uvs);
+        mesh.SetColors(colors);
+        mesh.SetTriangles(tris, 0);
+        mesh.RecalculateBounds();
+
+        var field = new GameObject("Wildflowers");
+        field.AddComponent<MeshFilter>().sharedMesh = mesh;
+        var mr = field.AddComponent<MeshRenderer>();
+        mr.sharedMaterial = mat;
+        mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        mr.receiveShadows = true;
+        Debug.Log($"CrystalViz: wildflowers planted ({planted}, {tris.Count / 3} tris, 1 draw call).");
+    }
+
+    /// <summary>
+    /// Appends one wildflower: a thin tapered stem quad plus two crossed
+    /// vertical blossom quads (slightly trapezoid, wider at the top) riding
+    /// at the stem tip. uv.x is 0 for stem / 1 for blossom; uv.y is 0 at the
+    /// root and 1 at the blossom for the gradient + wind weighting.
+    /// Flowers stand 0.16-0.32 tall: above the grass blades so they pop.
+    /// </summary>
+    static void AppendWildflower(
+        System.Collections.Generic.List<Vector3> verts,
+        System.Collections.Generic.List<Vector3> normals,
+        System.Collections.Generic.List<Vector2> uvs,
+        System.Collections.Generic.List<Color> colors,
+        System.Collections.Generic.List<int> tris,
+        Matrix4x4 mtx,
+        System.Random rng,
+        Color petal)
+    {
+        float h = 0.16f + (float)rng.NextDouble() * 0.16f;
+        float tilt = ((float)rng.NextDouble() - 0.5f) * 0.25f;
+
+        // Stem: single tapered quad, slight lean.
+        float sw = 0.006f;
+        Vector3 stemTop = new Vector3(tilt * h, h, 0f);
+        int b = verts.Count;
+        verts.Add(mtx.MultiplyPoint3x4(new Vector3(-sw, 0f, 0f)));
+        verts.Add(mtx.MultiplyPoint3x4(new Vector3(sw, 0f, 0f)));
+        verts.Add(mtx.MultiplyPoint3x4(stemTop + new Vector3(-sw * 0.5f, 0f, 0f)));
+        verts.Add(mtx.MultiplyPoint3x4(stemTop + new Vector3(sw * 0.5f, 0f, 0f)));
+        for (int i = 0; i < 4; i++) normals.Add(Vector3.up);
+        uvs.Add(new Vector2(0f, 0f)); uvs.Add(new Vector2(0f, 0f));
+        uvs.Add(new Vector2(0f, 1f)); uvs.Add(new Vector2(0f, 1f));
+        for (int i = 0; i < 4; i++) colors.Add(Color.white);
+        tris.Add(b); tris.Add(b + 2); tris.Add(b + 1);
+        tris.Add(b + 1); tris.Add(b + 2); tris.Add(b + 3);
+
+        // Blossom: two crossed vertical quads centered just above the stem tip.
+        float bw = 0.035f + (float)rng.NextDouble() * 0.025f;
+        float bh = bw * 1.2f;
+        Vector3 c = stemTop + new Vector3(0f, bh * 0.28f, 0f);
+        for (int q = 0; q < 2; q++)
+        {
+            float yaw = q * Mathf.PI * 0.5f;
+            Vector3 ax = new Vector3(Mathf.Cos(yaw), 0f, Mathf.Sin(yaw)); // width axis
+            Vector3 nrm = new Vector3(-Mathf.Sin(yaw), 0f, Mathf.Cos(yaw)); // face normal
+            int qb = verts.Count;
+            // Trapezoid: narrower at the bottom, wider at the top.
+            verts.Add(mtx.MultiplyPoint3x4(c - ax * bw * 0.30f + new Vector3(0f, -bh * 0.5f, 0f)));
+            verts.Add(mtx.MultiplyPoint3x4(c + ax * bw * 0.30f + new Vector3(0f, -bh * 0.5f, 0f)));
+            verts.Add(mtx.MultiplyPoint3x4(c - ax * bw * 0.55f + new Vector3(0f, bh * 0.5f, 0f)));
+            verts.Add(mtx.MultiplyPoint3x4(c + ax * bw * 0.55f + new Vector3(0f, bh * 0.5f, 0f)));
+            for (int i = 0; i < 4; i++) normals.Add(nrm);
+            uvs.Add(new Vector2(1f, 0.85f)); uvs.Add(new Vector2(1f, 0.85f));
+            uvs.Add(new Vector2(1f, 1f)); uvs.Add(new Vector2(1f, 1f));
+            for (int i = 0; i < 4; i++) colors.Add(petal);
+            tris.Add(qb); tris.Add(qb + 2); tris.Add(qb + 1);
+            tris.Add(qb + 1); tris.Add(qb + 2); tris.Add(qb + 3);
         }
     }
 }

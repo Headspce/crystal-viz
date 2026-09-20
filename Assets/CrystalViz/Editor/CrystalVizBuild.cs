@@ -32,9 +32,10 @@ public static class CrystalVizBuild
     /// hit: opaque + transparent surfaces, main-light shadows (with/without
     /// cascades and screen-space), additional lights, linear/exp fog, DBuffer
     /// decals on/off, across every pass type the Lit shader implements.
-    /// The custom CrystalViz shaders (ScrollingClouds, StylizedGrass,
-    /// HorizonHaze) are pinned too: ScrollingClouds has a single variant, while StylizedGrass
-    /// declares shadow/additional-light/fog multi_compiles, so it goes through
+    /// The custom CrystalViz shaders (AnimeSkybox, StylizedGrass, Wildflower,
+    /// HorizonHaze) are pinned too: AnimeSkybox has a single variant, while
+    /// StylizedGrass and Wildflower declare shadow/additional-light/fog
+    /// multi_compiles, so they go through
     /// the same keyword-combo probing — invalid combos throw and are skipped.
     /// Note (Unity 6 API): ShaderVariantCollection now derives from Object, not
     /// ScriptableObject (use `new`, not CreateInstance), ShaderVariant is the
@@ -141,17 +142,17 @@ public static class CrystalVizBuild
             Debug.LogWarning("CrystalVizBuild: 'CrystalViz/StylizedGrass' not found; grass field will be skipped at runtime.");
         }
 
-        // The scrolling-cloud backdrop shader is also created at runtime via
+        // The anime skybox shader is also created at runtime via
         // Shader.Find; pin its (single) variant so it survives stripping.
-        // A missing shader here is fine — the bootstrap skips the backdrop.
-        var cloudShader = Shader.Find("CrystalViz/ScrollingClouds");
-        if (cloudShader != null)
+        // A missing shader here is fine — the bootstrap skips the skybox.
+        var skyShader = Shader.Find("CrystalViz/AnimeSkybox");
+        if (skyShader != null)
         {
             foreach (var pt in passTypes)
             {
                 try
                 {
-                    var v = new ShaderVariantCollection.ShaderVariant(cloudShader, pt, new string[0]);
+                    var v = new ShaderVariantCollection.ShaderVariant(skyShader, pt, new string[0]);
                     if (svc.Add(v)) added++;
                 }
                 catch (ArgumentException) { skipped++; }
@@ -159,7 +160,21 @@ public static class CrystalVizBuild
         }
         else
         {
-            Debug.LogWarning("CrystalVizBuild: 'CrystalViz/ScrollingClouds' not found; cloud backdrop will be skipped at runtime.");
+            Debug.LogWarning("CrystalVizBuild: 'CrystalViz/AnimeSkybox' not found; skybox will be skipped at runtime.");
+        }
+
+        // The wildflower shader is also created at runtime via
+        // Shader.Find; pin its variants (shadow/additional-light/fog
+        // multi_compiles) so they survive stripping. A missing shader here
+        // is fine — the bootstrap skips the wildflowers.
+        var flowerShader = Shader.Find("CrystalViz/Wildflower");
+        if (flowerShader != null)
+        {
+            PinVariants(flowerShader);
+        }
+        else
+        {
+            Debug.LogWarning("CrystalVizBuild: 'CrystalViz/Wildflower' not found; wildflowers will be skipped at runtime.");
         }
 
         // The horizon-haze shader is also created at runtime via
