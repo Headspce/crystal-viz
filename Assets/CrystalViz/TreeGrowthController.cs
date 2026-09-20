@@ -59,7 +59,7 @@ public class TreeGrowthController : MonoBehaviour
         if (initialized) return;
         initialized = true;
         tree = GetComponent<ParametricTree>();
-        currentTaps = Mathf.Clamp(PlayerPrefs.GetInt(PrefsKey, 50 /* SCREENSHOT-ONLY: temp mature-tree default for visual verification; revert to 0 */), 0, totalTaps);
+        currentTaps = Mathf.Clamp(PlayerPrefs.GetInt(PrefsKey, 0), 0, totalTaps);
         displayedG = GrowthTarget;
         // Build the mesh here, not just in Start(): CI screenshot captures run
         // in edit mode, where Start()/Update() never execute, leaving the
