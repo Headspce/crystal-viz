@@ -59,8 +59,11 @@ public class TreeResetButton : MonoBehaviour
 
     void BuildUI()
     {
+        // Root-level canvas: NOT parented to the (0.26-scaled) tree object.
+        // A ScreenSpaceOverlay canvas ignores parent transforms in play mode,
+        // but the CI screenshot path re-points canvases at the camera
+        // (ScreenSpaceCamera), where inherited 3D scales can affect the UI.
         var canvasGO = new GameObject("ResetButtonCanvas");
-        canvasGO.transform.SetParent(transform, false);
         var canvas = canvasGO.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         canvas.sortingOrder = 90; // below the stage avatar canvas (100); different corner anyway
@@ -78,8 +81,14 @@ public class TreeResetButton : MonoBehaviour
         buttonRect.pivot = new Vector2(0f, 0f);
         buttonRect.anchoredPosition = new Vector2(48f, 48f);
         buttonRect.sizeDelta = new Vector2(150f, 150f);
-        // Opaque black, no label: a plain test-loop button.
+        // Opaque black, no label: a plain test-loop button. Uses an explicit
+        // 1x1 white sprite tinted black (same proven pattern as the stage
+        // avatar's circle sprite) rather than a sprite-less Image.
         var img = btnGO.AddComponent<Image>();
+        var whiteTex = Texture2D.whiteTexture;
+        img.sprite = Sprite.Create(whiteTex, new Rect(0f, 0f, whiteTex.width, whiteTex.height),
+            new Vector2(0.5f, 0.5f));
         img.color = Color.black;
+        Debug.Log($"TreeResetButton: built {buttonRect.rect} on {canvasGO.name}.");
     }
 }

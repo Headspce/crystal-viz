@@ -117,6 +117,14 @@ jobs:
           path: 'Screenshots/*.png'
           if-no-files-found: warn
 
+      - name: Upload editor log (diagnostics)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: crystalviz-screenshot-log
+          path: 'Builds/Logs/Screenshot.log'
+          if-no-files-found: warn
+
       - name: Upload editor log
         uses: actions/upload-artifact@v4
         if: always()

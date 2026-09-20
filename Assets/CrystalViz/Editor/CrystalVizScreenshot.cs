@@ -86,6 +86,8 @@ public static class CrystalVizScreenshot
             canvas.renderMode = RenderMode.ScreenSpaceCamera;
             canvas.worldCamera = cam;
             canvas.planeDistance = 1f;
+            Debug.Log($"CrystalVizScreenshot: canvas '{canvas.name}' -> ScreenSpaceCamera " +
+                      $"(sorting {canvas.sortingOrder}, children {canvas.transform.childCount}).");
         }
 
         // Portrait, close to Tyler's phone aspect.
