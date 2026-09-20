@@ -3,9 +3,9 @@ using UnityEngine.UI;
 
 /// <summary>
 /// Test-loop reset button: an opaque black button pinned to the bottom-left
-/// of the screen. Pressing it calls TreeGrowthController.ResetToSapling(),
-/// which drops the tree back to the sapling stage with the tap counter at
-/// zero, so the full sapling -> mature growth can be re-tapped over and over
+/// of the screen. Pressing it calls TreeGrowthController.ResetToSprout(),
+/// which drops the tree back to the true zero-tap sprout with the tap counter
+/// at zero, so the full sprout -> mature growth can be re-tapped over and over
 /// during playtesting.
 ///
 /// Raw Input is used (not uGUI Button + EventSystem) to match the tree's
@@ -54,7 +54,7 @@ public class TreeResetButton : MonoBehaviour
         // Null camera is correct here: the button lives on a
         // ScreenSpaceOverlay canvas.
         if (pressed && RectTransformUtility.RectangleContainsScreenPoint(buttonRect, pos, null))
-            controller.ResetToSapling();
+            controller.ResetToSprout();
     }
 
     void BuildUI()

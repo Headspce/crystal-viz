@@ -13,7 +13,7 @@ on:
         required: false
         default: '0'
       reset:
-        description: 'Simulate the reset button: sapling stage at 0 taps'
+        description: 'Simulate the reset button: true zero-tap sprout at 0 taps'
         required: false
         default: false
         type: boolean

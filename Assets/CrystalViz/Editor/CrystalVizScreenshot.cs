@@ -29,23 +29,23 @@ public static class CrystalVizScreenshot
             if (cli[i] == "-cvizTaps" && int.TryParse(cli[i + 1], out int t))
                 tapsOverride = Mathf.Clamp(t, 0, 50);
         }
-        // -cvizReset simulates pressing the reset button: sapling stage at
-        // zero taps. Seeded via PlayerPrefs BEFORE the scene builds so every
-        // component (tree, avatar, counter) initializes from that state,
-        // exactly as the real button press persists it.
-        bool resetToSapling = false;
+        // -cvizReset simulates pressing the reset button: true zero-tap
+        // sprout at 0 taps. Seeded via PlayerPrefs BEFORE the scene builds
+        // so every component (tree, avatar, counter) initializes from that
+        // state, exactly as the real button press persists it.
+        bool resetToSprout = false;
         for (int i = 0; i < cli.Length; i++)
         {
-            if (cli[i] == "-cvizReset") { resetToSapling = true; break; }
+            if (cli[i] == "-cvizReset") { resetToSprout = true; break; }
         }
-        if (resetToSapling)
+        if (resetToSprout)
         {
-            // Same keys TreeGrowthController reads ("CrystalViz_TreeTaps" +
-            // the sapling-start flag ResetToSapling() persists).
+            // Same keys TreeGrowthController reads ("CrystalViz_TreeTaps");
+            // the sapling-start flag is cleared, matching ResetToSprout().
             PlayerPrefs.SetInt("CrystalViz_TreeTaps", 0);
-            PlayerPrefs.SetInt("CrystalViz_TreeTaps_SaplingStart", 1);
+            PlayerPrefs.SetInt("CrystalViz_TreeTaps_SaplingStart", 0);
             PlayerPrefs.Save();
-            Debug.Log("CrystalVizScreenshot: reset-button state (sapling, 0 taps).");
+            Debug.Log("CrystalVizScreenshot: reset-button state (sprout, 0 taps).");
         }
         else if (tapsOverride >= 0)
         {

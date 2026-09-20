@@ -12,12 +12,12 @@ using UnityEngine.Events;
 /// Growth stages: 0-10 taps Sprout, 11-25 Sapling, 26-40 YoungTree, 41-50 Mature.
 /// Fires onStageChanged(newStage) whenever the stage transitions.
 ///
-/// Test loop: the reset button (TreeResetButton) calls ResetToSapling(), which
-/// drops the tree back to the sapling stage with the tap counter at zero, so
-/// the sapling -> mature growth can be re-tapped perpetually. That mode
-/// ("sapling start") shifts the stage thresholds and the growth mapping so 0
-/// taps shows the sapling and 50 taps the mature tree; it persists via
-/// PlayerPrefs ("CrystalViz_TreeTaps_SaplingStart") like normal taps.
+/// Test loop: the reset button (TreeResetButton) calls ResetToSprout(), which
+/// drops the tree back to the true zero-tap sprout with the tap counter at
+/// zero, so the sprout -> mature growth can be re-tapped perpetually. The
+/// persisted "sapling start" PlayerPrefs flag ("CrystalViz_TreeTaps_SaplingStart")
+/// is cleared by the reset, so post-reset growth follows the normal 0-50
+/// thresholds exactly like a fresh start.
 /// </summary>
 public class TreeGrowthController : MonoBehaviour
 {
@@ -37,7 +37,8 @@ public class TreeGrowthController : MonoBehaviour
     /// <summary>Growth value where the sapling stage begins (11 taps / 50).</summary>
     const float SaplingGrowth = 11f / 50f;
 
-    /// <summary>True once the reset button has been pressed: 0 taps = sapling.</summary>
+    /// <summary>Legacy "sapling start" mode flag (0 taps = sapling). The reset
+    /// button clears it, so post-reset growth is the normal 0-50 progression.</summary>
     public bool saplingStart;
 
     float displayedG; // animated 0..1 value actually fed to the tree
@@ -143,21 +144,21 @@ public class TreeGrowthController : MonoBehaviour
     }
 
     /// <summary>
-    /// Test-loop reset (reset button): the tree snaps back to the sapling
-    /// stage and the tap counter returns to zero, so the sapling -> mature
-    /// growth can be re-tapped perpetually. Snaps instantly (no grow
-    /// animation) so the test loop stays tight. Persists like normal taps.
-    /// Safe to call from UI buttons too.
+    /// Test-loop reset (reset button): the tree snaps back to the true
+    /// zero-tap sprout and the tap counter returns to zero, so the full
+    /// sprout -> mature growth can be re-tapped perpetually. Snaps instantly
+    /// (no grow animation) so the test loop stays tight. Persists like
+    /// normal taps. Safe to call from UI buttons too.
     /// </summary>
-    public void ResetToSapling()
+    public void ResetToSprout()
     {
         currentTaps = 0;
-        saplingStart = true;
+        saplingStart = false;
         PlayerPrefs.SetInt(PrefsKey, 0);
-        PlayerPrefs.SetInt(SaplingStartKey, 1);
+        PlayerPrefs.SetInt(SaplingStartKey, 0);
         PlayerPrefs.Save();
 
-        displayedG = GrowthTarget; // sapling geometry
+        displayedG = GrowthTarget; // sprout geometry (growth 0)
         animT = 1f; // snap, don't animate
         if (tree != null) tree.SetGrowth(displayedG);
 
