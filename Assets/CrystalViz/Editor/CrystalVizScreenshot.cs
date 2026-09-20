@@ -62,6 +62,12 @@ public static class CrystalVizScreenshot
             EditorApplication.Exit(1);
             return;
         }
+        // Simulate a phone camera cutout: the CI game view is full-bleed,
+        // so Screen.safeArea never insets there. A 90px top cutout on the
+        // 720x1600 capture is representative of a punch-hole camera +
+        // status bar (Tyler's Motorola). This visibly proves the stage
+        // indicator clears the cutout instead of hiding under it.
+        StageIndicatorUI.TestSafeAreaOverride = new Rect(0f, 0f, 720f, 1600f - 90f);
         bootstrap.BuildScene(); // edit-mode equivalent of Awake
 
         // SunOrbitControl IS attached by the bootstrap (player light slider),

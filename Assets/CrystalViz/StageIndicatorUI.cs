@@ -31,6 +31,14 @@ public class StageIndicatorUI : MonoBehaviour
 
     bool initialized;
 
+    /// <summary>
+    /// Test hook for CI: when set, BuildUI uses this rect instead of
+    /// Screen.safeArea, letting the screenshot path simulate a phone camera
+    /// cutout (Screen.safeArea is full-bleed in CI, so the inset would
+    /// otherwise never be exercised). Never set in player builds.
+    /// </summary>
+    internal static Rect? TestSafeAreaOverride = null;
+
     void Awake()
     {
         Initialize();
@@ -142,10 +150,12 @@ public class StageIndicatorUI : MonoBehaviour
         // so it never hides under a notch or punch-hole camera (Tyler's
         // Motorola has a top-center cutout; other phones vary). The inset is
         // converted to reference units for the CanvasScaler (1080x1920).
-        // In the CI screenshot path the safe area is the full game view, so
-        // this is a no-op there and captures stay pixel-identical.
+        // TestSafeAreaOverride lets CI simulate a cutout; in the CI
+        // screenshot path the real safe area is the full game view, so
+        // without the override this is a no-op and captures stay
+        // pixel-identical.
         float topInsetRef = 0f;
-        Rect safe = Screen.safeArea;
+        Rect safe = TestSafeAreaOverride ?? Screen.safeArea;
         if (Screen.height > 0f && safe.yMax < Screen.height)
             topInsetRef = (Screen.height - safe.yMax) / Screen.height * 1920f;
         rootRt.anchoredPosition = new Vector2(0f, -36f - topInsetRef);
