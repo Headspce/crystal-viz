@@ -72,6 +72,12 @@ public class ParametricTree : MonoBehaviour
         // Bark texture if the OldTree assets are still in Resources; otherwise
         // fall back to a flat bark-brown albedo (vertex colors add variation).
         var bark = Resources.Load<Texture2D>("Models/OldTree/bark04");
+
+        // DIAGNOSTIC (temporary): loud logging so the edit-mode CI screenshot log
+        // shows exactly what resolved and what got built.
+        Debug.LogWarning($"DIAG ParametricTree.Awake: shader={(lit != null ? lit.name : "NULL")}, " +
+            $"bark={(bark != null ? "found" : "missing")}, trunkFilter={(trunkFilter != null ? "ok" : "NULL")}, " +
+            $"trunkRenderer={(trunkRenderer != null ? "ok" : "NULL")}");
         if (lit != null)
         {
             var trunkMat = new Material(lit);
@@ -109,6 +115,8 @@ public class ParametricTree : MonoBehaviour
         leafMesh = new Mesh { name = "ParametricLeaves" };
         leafMesh.MarkDynamic();
         leafFilter.mesh = leafMesh;
+        // DIAGNOSTIC (temporary)
+        Debug.LogWarning("DIAG ParametricTree.Awake: trunkMesh + leafMesh created and assigned to filters.");
     }
 
     /// <summary>
@@ -138,6 +146,11 @@ public class ParametricTree : MonoBehaviour
 
         BuildTrunkMesh(trunkLen, trunkRad, maxLevel, g, lean, rng);
         BuildLeafMesh(g, new System.Random(Seed + 1));
+        // DIAGNOSTIC (temporary): prove geometry exists and where it lives.
+        Debug.LogWarning($"DIAG ParametricTree.SetGrowth(g={g:F3}): trunkVerts={trunkMesh.vertexCount}, " +
+            $"trunkTris={trunkMesh.triangles.Length / 3}, trunkBounds={trunkMesh.bounds}, " +
+            $"leafVerts={leafMesh.vertexCount}, leafBounds={leafMesh.bounds}, " +
+            $"treePos={transform.position}");
     }
 
     // ------------------------------------------------------------ trunk mesh
