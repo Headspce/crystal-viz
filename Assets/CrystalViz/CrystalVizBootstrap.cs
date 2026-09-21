@@ -138,26 +138,36 @@ public class CrystalVizBootstrap : MonoBehaviour
 
     /// <summary>
     /// Sky backdrop: a giant inverted sphere (radius 200, inside the 250 far
-    /// plane) wearing the fully procedural CrystalViz/AnimeSkybox shader —
-    /// painted blue gradient, cel-shaded cumulus, thin cirrus wisps drifting
-    /// ultra-slowly, horizon color matched to the fog for a seamless blend.
-    /// Pure math => no texture seam anywhere, no matter how long you stare
-    /// at it. A mesh dome instead of RenderSettings.skybox: the CI screenshot
-    /// renders the camera directly in edit mode, where the skybox pass does
-    /// not draw (verified: sky rendered as flat clear color), while plain
-    /// meshes render reliably on that path.
+    /// plane) wearing the authentic "FREE - SkyBox Anime Sky" panorama by
+    /// Paul (@paul_paul_paul), CC-BY 4.0 — the clean original texture from
+    /// the authenticated Sketchfab download (2026-09-21), downscaled to
+    /// 4096x2048. Sampled equirectangular by view direction on the sphere,
+    /// so there is no UV seam anywhere; ultra-slow drift (one full cycle
+    /// ~30 minutes) via SkyTextureDrift. Falls back to the procedural
+    /// CrystalViz/AnimeSkybox shader if the texture or textured shader is
+    /// missing: never a crash, never a blank sky. A mesh dome instead of
+    /// RenderSettings.skybox: the CI screenshot renders the camera directly
+    /// in edit mode, where the skybox pass does not draw (verified: sky
+    /// rendered as flat clear color), while plain meshes render reliably on
+    /// that path.
     /// </summary>
     void BuildSkyDome()
     {
-        // Fully procedural anime sky dome (CrystalViz/AnimeSkybox shader).
-        // The textured path was retired in v1.0.21: the Sketchfab panorama's
-        // publicly served texture carries diagonal stripe artifacts baked
-        // into Sketchfab's viewer pipeline (anti-theft degradation; the clean
-        // original is only available via authenticated download), which is
-        // what produced the striped sky in v1.0.20. The procedural dome is
-        // the v1.0.18-approved look: painted gradient, cel-shaded cumulus,
-        // cirrus wisps, fog-matched horizon.
-        Debug.Log("CrystalViz: procedural anime sky dome installed (r=200).");
+        var tex = Resources.Load<Texture2D>("anime-sky");
+        var texShader = Shader.Find("CrystalViz/AnimeSkyTextured");
+        if (tex != null && texShader != null)
+        {
+            skyDomeMat = new Material(texShader);
+            skyDomeMat.mainTexture = tex;
+            var dome = BuildDomeMesh();
+            dome.GetComponent<Renderer>().material = skyDomeMat;
+            var drift = dome.AddComponent<SkyTextureDrift>();
+            drift.skyMaterial = skyDomeMat;
+            Debug.Log("CrystalViz: textured anime sky dome installed (r=200).");
+            return;
+        }
+        if (tex == null) Debug.LogWarning("CrystalViz: 'anime-sky' texture not found in Resources; trying procedural sky.");
+        if (texShader == null) Debug.LogWarning("CrystalViz: 'CrystalViz/AnimeSkyTextured' shader not found; trying procedural sky.");
         BuildProceduralSkyDome();
     }
 
