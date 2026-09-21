@@ -368,7 +368,10 @@ public class CrystalVizBootstrap : MonoBehaviour
         {
             float fr = r / (float)rings; // 0 near-top -> 1 base edge
             float ringR = radius * Mathf.Sin(fr * Mathf.PI * 0.5f);
-            float y = height * Mathf.Pow(Mathf.Cos(fr * Mathf.PI * 0.5f), 1.25f);
+            // Clamp: cos(pi/2) is ~-4.4e-8 in float, and Pow(negative, 1.25)
+            // is NaN -- one NaN vertex poisons RecalculateBounds and the
+            // whole mesh gets frustum-culled (invisible hills, no errors).
+            float y = height * Mathf.Pow(Mathf.Max(0f, Mathf.Cos(fr * Mathf.PI * 0.5f)), 1.25f);
             for (int s = 0; s < segs; s++)
             {
                 float a = (s / (float)segs) * Mathf.PI * 2f;
