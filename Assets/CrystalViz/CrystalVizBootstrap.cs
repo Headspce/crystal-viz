@@ -311,20 +311,21 @@ public class CrystalVizBootstrap : MonoBehaviour
         var uvs = new System.Collections.Generic.List<Vector2>();
         var tris = new System.Collections.Generic.List<int>();
 
-        // Band of peaks across the camera's view. Camera truth: pos (0,2.5,7.4),
-        // pitched 6.2 deg down, vertical FOV 40 -> horizontal half-FOV only
-        // 9.53 deg, frame top at +13.8 deg elevation. Five peaks, x in
-        // [-11, 11], z in [-44, -54]: each ~7 deg wide with dips between
-        // crests, tallest crest (13) at 11.5 deg elevation -> sky above every
-        // peak. Fog (40-80) gives natural aerial perspective; the haze band
-        // at z=-55 layers behind.
-        const int hills = 5;
+        // Rolling ridge on the horizon. Camera truth: pos (0,2.5,7.4), pitched
+        // 6.2 deg down, vertical FOV 40 -> horizontal half-FOV 9.53 deg,
+        // frame top at +13.8 deg elevation. Four broad low swells, x in
+        // [-15.5, 15.5], z in [-46, -54]: each ~17 deg wide so they merge
+        // into one undulating ridge, crests at 3-5 deg elevation (well below
+        // frame top, sky above), gentle h/r ~0.7 domes. Fog (40-80) keeps
+        // them green with soft atmospheric tops; the paler haze band at
+        // z=-55 layers behind like a farther mountain ridge.
+        const int hills = 4;
         for (int i = 0; i < hills; i++)
         {
-            float x = -11f + i * 5.5f + ((float)rng.NextDouble() - 0.5f) * 3f;
-            float z = -44f - (float)rng.NextDouble() * 10f;
-            float h = 9f + (float)rng.NextDouble() * 4f;       // 9-13 tall
-            float rad = 2.8f + (float)rng.NextDouble() * 1f;  // 2.8-3.8 wide
+            float x = -13.5f + i * 9f + ((float)rng.NextDouble() - 0.5f) * 4f;
+            float z = -46f - (float)rng.NextDouble() * 8f;
+            float h = 4.5f + (float)rng.NextDouble() * 2.5f;  // 4.5-7 tall
+            float rad = 7f + (float)rng.NextDouble() * 3f;   // 7-10 wide
             AppendHill(verts, normals, uvs, tris,
                 new Vector3(x, 0f, z),
                 h, rad, rng);
