@@ -116,8 +116,11 @@ public class SunOrbitControl : MonoBehaviour
         var rrt = root.GetComponent<RectTransform>();
         rrt.anchorMin = new Vector2(1f, 0f);
         rrt.anchorMax = new Vector2(1f, 1f);
-        rrt.offsetMin = new Vector2(-68f, 150f);
-        rrt.offsetMax = new Vector2(-20f, -150f);
+        // Shifted ~2 screen px inward from the right edge (player request
+        // 2026-09-21): a fingertip on the strip no longer collides with the
+        // screen border before the knob reaches the end of its travel.
+        rrt.offsetMin = new Vector2(-76f, 150f);
+        rrt.offsetMax = new Vector2(-28f, -150f);
         rrt.pivot = new Vector2(1f, 0.5f);
         rrt.localScale = new Vector3(0.25f, 0.25f, 1f);
 

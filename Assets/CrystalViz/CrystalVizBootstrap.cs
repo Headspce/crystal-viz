@@ -31,6 +31,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         BuildEnvironment();
         BuildSkyDome();
         BuildHorizonHaze();
+        BuildHorizonHills();
         BuildSun();
         BuildDiorama();
         // Player light control: the right-edge sun slider is back by player
@@ -273,6 +274,134 @@ public class CrystalVizBootstrap : MonoBehaviour
         Debug.Log("CrystalViz: horizon haze band placed at z=-55.");
     }
 
+    /// <summary>
+    /// Grassy mountainous hills ringing the horizon (player request
+    /// 2026-09-21): a ring of smooth randomized mounds far out on the
+    /// meadow, so the horizon reads as rolling green hills with the
+    /// panorama's blue mountains layered behind them. Reuses the
+    /// CrystalViz/StylizedGrass shader (no new shader, no new variants):
+    /// uv.y runs 0 at the base to 1 at the crest for the root-to-tip
+    /// gradient, wind and gust push are zeroed so the hills never move, but
+    /// the gust light-wave still sweeps them, tying them into the meadow's
+    /// weather. ONE combined mesh, one draw call. Distance fog hazes them
+    /// into the horizon like the ground plane.
+    /// Missing shader => quietly skipped, never a crash.
+    /// </summary>
+    void BuildHorizonHills()
+    {
+        var grassShader = Shader.Find("CrystalViz/StylizedGrass");
+        if (grassShader == null)
+        {
+            Debug.LogWarning("CrystalViz: 'CrystalViz/StylizedGrass' shader not found; skipping horizon hills.");
+            return;
+        }
+        var mat = new Material(grassShader);
+        mat.SetColor("_RootColor", new Color(0.11f, 0.29f, 0.10f, 1f));
+        mat.SetColor("_TipColor", new Color(0.46f, 0.68f, 0.22f, 1f));
+        mat.SetFloat("_WindStrength", 0f);   // hills don't sway
+        mat.SetFloat("_WindSpeed", 1.7f);
+        mat.SetFloat("_GustStrength", 0f);  // ...or get combed flat
+        mat.SetFloat("_GustSpeed", 1.8f);
+        mat.SetFloat("_GustFreq", 0.035f);  // shared bands: hills catch the light wave
+        mat.SetFloat("_GustLighten", 0.28f);
+
+        var rng = new System.Random(20260921);
+        var verts = new System.Collections.Generic.List<Vector3>();
+        var normals = new System.Collections.Generic.List<Vector3>();
+        var uvs = new System.Collections.Generic.List<Vector2>();
+        var tris = new System.Collections.Generic.List<int>();
+
+        // Ring of mounds at radius 64-80: inside the 200x200 ground (r=100)
+        // even at max extent, and well inside the r=200 sky dome.
+        const int hills = 14;
+        for (int i = 0; i < hills; i++)
+        {
+            float ang = (i / (float)hills) * Mathf.PI * 2f + (float)rng.NextDouble() * 0.35f;
+            float dist = 64f + (float)rng.NextDouble() * 16f;
+            float h = 6f + (float)rng.NextDouble() * 10f;    // 6-16 tall
+            float rad = 12f + (float)rng.NextDouble() * 6f; // 12-18 wide
+            AppendHill(verts, normals, uvs, tris,
+                new Vector3(Mathf.Cos(ang) * dist, 0f, Mathf.Sin(ang) * dist),
+                h, rad, rng);
+        }
+
+        var mesh = new Mesh { name = "HorizonHills" };
+        mesh.SetVertices(verts);
+        mesh.SetNormals(normals);
+        mesh.SetUVs(0, uvs);
+        mesh.SetTriangles(tris, 0);
+        mesh.RecalculateBounds();
+
+        var go = new GameObject("HorizonHills");
+        go.AddComponent<MeshFilter>().sharedMesh = mesh;
+        var mr = go.AddComponent<MeshRenderer>();
+        mr.sharedMaterial = mat;
+        mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        mr.receiveShadows = true;
+        Debug.Log($"CrystalViz: horizon hills raised ({hills} mounds, {tris.Count / 3} tris, 1 draw call).");
+    }
+
+    /// <summary>
+    /// Appends one smooth grassy mound: a polar grid with a single top
+    /// vertex, cosine-falloff profile, and a sinusoidal wobble so no two
+    /// hills share a silhouette. uv.y is 1 at the crest, 0 at the base.
+    /// The grass shader is double-sided (Cull Off), so winding is cosmetic.
+    /// </summary>
+    static void AppendHill(
+        System.Collections.Generic.List<Vector3> verts,
+        System.Collections.Generic.List<Vector3> normals,
+        System.Collections.Generic.List<Vector2> uvs,
+        System.Collections.Generic.List<int> tris,
+        Vector3 center, float height, float radius, System.Random rng)
+    {
+        const int rings = 6;
+        const int segs = 16;
+        float phase = (float)rng.NextDouble() * Mathf.PI * 2f;
+
+        int topIdx = verts.Count;
+        verts.Add(center + new Vector3(0f, height, 0f));
+        normals.Add(Vector3.up);
+        uvs.Add(new Vector2(0.5f, 1f));
+
+        for (int r = 1; r <= rings; r++)
+        {
+            float fr = r / (float)rings; // 0 near-top -> 1 base edge
+            float ringR = radius * Mathf.Sin(fr * Mathf.PI * 0.5f);
+            float y = height * Mathf.Pow(Mathf.Cos(fr * Mathf.PI * 0.5f), 1.25f);
+            for (int s = 0; s < segs; s++)
+            {
+                float a = (s / (float)segs) * Mathf.PI * 2f;
+                float wobble = 1f
+                    + 0.14f * Mathf.Sin(a * 3f + phase) * fr
+                    + 0.08f * Mathf.Sin(a * 5f + phase * 1.7f) * fr;
+                Vector3 p = center + new Vector3(Mathf.Cos(a) * ringR * wobble, y, Mathf.Sin(a) * ringR * wobble);
+                verts.Add(p);
+                Vector3 n = (Vector3.up * (1f - fr * 0.7f)
+                    + new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * (fr * 0.75f)).normalized;
+                normals.Add(n);
+                uvs.Add(new Vector2(s / (float)segs, 1f - fr));
+            }
+        }
+
+        for (int s = 0; s < segs; s++) // fan: top -> first ring
+        {
+            int a0 = topIdx + 1 + s;
+            int a1 = topIdx + 1 + (s + 1) % segs;
+            tris.Add(topIdx); tris.Add(a1); tris.Add(a0);
+        }
+        for (int r = 1; r < rings; r++) // quads between rings
+        {
+            int r0 = topIdx + 1 + (r - 1) * segs;
+            int r1 = topIdx + 1 + r * segs;
+            for (int s = 0; s < segs; s++)
+            {
+                int s1 = (s + 1) % segs;
+                tris.Add(r0 + s); tris.Add(r1 + s); tris.Add(r0 + s1);
+                tris.Add(r0 + s1); tris.Add(r1 + s); tris.Add(r1 + s1);
+            }
+        }
+    }
+
     // --------------------------------------------------------------------- sun
 
     void BuildSun()
@@ -370,16 +499,18 @@ public class CrystalVizBootstrap : MonoBehaviour
         var mat = new Material(grassShader);
         mat.SetColor("_RootColor", new Color(0.15f, 0.34f, 0.11f, 1f));
         mat.SetColor("_TipColor", new Color(0.58f, 0.82f, 0.26f, 1f));
-        // Wind bend is in world units: scaled to the tiny blades so the sway
-        // reads as a shimmer, not a thrash.
-        mat.SetFloat("_WindStrength", 0.02f);
+        // Perpetual breeze + distinct gust fronts with calm breaks in between
+        // (player request 2026-09-21): the meadow always breathes, and every
+        // few seconds a visible wave combs through it, then settles.
+        mat.SetFloat("_WindStrength", 0.045f);
         mat.SetFloat("_WindSpeed", 1.7f);
         // Gust fronts: explicit here (not just shader defaults) so grass and
-        // wildflowers provably share the same wave bands. Fewer, slower
-        // gusts (player request 2026-09-21).
-        mat.SetFloat("_GustStrength", 0.38f);
+        // wildflowers provably share the same wave bands. Wider, slower
+        // bands (player request 2026-09-21): long calm stretches between
+        // fronts so the field reads as breezy with breaks.
+        mat.SetFloat("_GustStrength", 0.45f);
         mat.SetFloat("_GustSpeed", 1.8f);
-        mat.SetFloat("_GustFreq", 0.06f);
+        mat.SetFloat("_GustFreq", 0.035f);
         mat.SetFloat("_GustLighten", 0.28f);
 
         // One combined mesh => one draw call for the entire field (v1.0.5
@@ -450,8 +581,9 @@ public class CrystalVizBootstrap : MonoBehaviour
     /// mesh lists, transformed by the tuft's matrix. Normals all point up
     /// for the soft stylized look; uv.y is 0 at the root and 1 at the tip
     /// so the shader can gradient-color and wind-sway by height.
-    /// Blades are tiny (75% smaller than v1.0.7) and densely packed:
-    /// 5 blades x 2 segments.
+    /// Blades are tiny (75% smaller than v1.0.7) and densely packed.
+    /// Height varies widely per blade (player request 2026-09-21) so the
+    /// field has a natural uneven silhouette: 4-6 blades per tuft.
     /// </summary>
     static void AppendGrassTuft(
         System.Collections.Generic.List<Vector3> verts,
@@ -461,14 +593,14 @@ public class CrystalVizBootstrap : MonoBehaviour
         Matrix4x4 mtx,
         System.Random rng)
     {
-        const int blades = 5;
-        const int segs = 1; // single-segment blades: at 0.07-0.125 tall the
+        int blades = 4 + rng.Next(3); // 4-6 blades per tuft
+        const int segs = 1; // single-segment blades: at 0.05-0.15 tall the
                             // silhouette is identical to 2-seg, at 2/3 the verts
         for (int b = 0; b < blades; b++)
         {
             float ang = (b / (float)blades) * Mathf.PI * 2f + (float)rng.NextDouble() * 0.9f;
             float tilt = 0.25f + (float)rng.NextDouble() * 0.35f;   // outward lean
-            float height = 0.07f + (float)rng.NextDouble() * 0.055f;
+            float height = 0.05f + (float)rng.NextDouble() * 0.10f; // 0.05-0.15: wide variation
             float width = 0.0075f + (float)rng.NextDouble() * 0.0045f;
             float curl = 0.012f + (float)rng.NextDouble() * 0.015f;  // tip curl
             Vector3 outward = new Vector3(Mathf.Cos(ang), 0f, Mathf.Sin(ang));
@@ -520,19 +652,22 @@ public class CrystalVizBootstrap : MonoBehaviour
         var mat = new Material(flowerShader);
         mat.SetColor("_RootColor", new Color(0.12f, 0.30f, 0.10f, 1f));
         mat.SetColor("_TipColor", new Color(0.38f, 0.64f, 0.20f, 1f));
-        // Textured blossom: a daisy-like petal head on a transparent
-        // background, alpha-cut in the shader; near-white so the per-flower
-        // petal vertex color defines the hue.
-        mat.SetTexture("_BlossomMap", MakeBlossomTexture());
+        // Blossom atlas: 4 head shapes (daisy, round wildflower, aster,
+        // coneflower) in a 2x2 grid; each flower picks a cell, so the field
+        // has real shape variety, not just color variety (player request
+        // 2026-09-21). Near-white so the per-flower petal vertex color
+        // defines the hue.
+        mat.SetTexture("_BlossomMap", MakeBlossomAtlas());
         // Same wind field as the grass so they ripple together; a touch
         // stronger since blossoms sit higher and catch more air. Gust bands
         // are shared with the grass (same direction/speed/frequency) so the
-        // whole meadow moves as one wave front.
-        mat.SetFloat("_WindStrength", 0.035f);
+        // whole meadow moves as one wave front. Perpetual breeze with calm
+        // breaks between fronts (player request 2026-09-21).
+        mat.SetFloat("_WindStrength", 0.06f);
         mat.SetFloat("_WindSpeed", 1.7f);
-        mat.SetFloat("_GustStrength", 0.30f);
+        mat.SetFloat("_GustStrength", 0.38f);
         mat.SetFloat("_GustSpeed", 1.8f);
-        mat.SetFloat("_GustFreq", 0.06f);
+        mat.SetFloat("_GustFreq", 0.035f);
         mat.SetFloat("_GustLighten", 0.28f);
 
         var rng = new System.Random(20260920);
@@ -573,7 +708,8 @@ public class CrystalVizBootstrap : MonoBehaviour
             // Slight per-flower brightness jitter so the field doesn't look stamped.
             float j = 0.88f + (float)rng.NextDouble() * 0.18f;
             petal = new Color(petal.r * j, petal.g * j, petal.b * j, 1f);
-            AppendWildflower(verts, normals, uvs, uvs2, colors, tris, mtx, rng, petal);
+            int cell = rng.Next(4); // blossom-head shape from the atlas
+            AppendWildflower(verts, normals, uvs, uvs2, colors, tris, mtx, rng, petal, cell);
             planted++;
         }
 
@@ -601,7 +737,10 @@ public class CrystalVizBootstrap : MonoBehaviour
     /// vertical blossom quads (slightly trapezoid, wider at the top) riding
     /// at the stem tip. uv.x is 0 for stem / 1 for blossom; uv.y is 0 at the
     /// root and 1 at the blossom for the gradient + wind weighting.
-    /// Flowers stand 0.16-0.32 tall: above the grass blades so they pop.
+    /// Flowers stand 0.15-0.35 tall: above the grass blades so they pop.
+    /// <paramref name="cell"/> picks the blossom-head shape from the 2x2
+    /// atlas (uv1 is mapped into that cell), and the blossom's proportions
+    /// vary per flower for natural shape variety.
     /// </summary>
     static void AppendWildflower(
         System.Collections.Generic.List<Vector3> verts,
@@ -612,9 +751,10 @@ public class CrystalVizBootstrap : MonoBehaviour
         System.Collections.Generic.List<int> tris,
         Matrix4x4 mtx,
         System.Random rng,
-        Color petal)
+        Color petal,
+        int cell)
     {
-        float h = 0.16f + (float)rng.NextDouble() * 0.16f;
+        float h = 0.15f + (float)rng.NextDouble() * 0.20f;
         float tilt = ((float)rng.NextDouble() - 0.5f) * 0.25f;
 
         // Stem: single tapered quad, slight lean.
@@ -634,9 +774,14 @@ public class CrystalVizBootstrap : MonoBehaviour
         tris.Add(b + 1); tris.Add(b + 2); tris.Add(b + 3);
 
         // Blossom: two crossed vertical quads centered just above the stem tip.
-        float bw = 0.035f + (float)rng.NextDouble() * 0.025f;
-        float bh = bw * 1.2f;
+        // Width and proportions vary per flower (player request 2026-09-21).
+        float bw = 0.030f + (float)rng.NextDouble() * 0.035f;
+        float bh = bw * (0.9f + (float)rng.NextDouble() * 0.6f);
         Vector3 c = stemTop + new Vector3(0f, bh * 0.28f, 0f);
+        // Atlas cell origin: uv1 maps the full blossom quad into one of the
+        // 2x2 cells so each flower wears a different head shape.
+        float cu = (cell % 2) * 0.5f;
+        float cv = (cell / 2) * 0.5f;
         for (int q = 0; q < 2; q++)
         {
             float yaw = q * Mathf.PI * 0.5f;
@@ -651,9 +796,12 @@ public class CrystalVizBootstrap : MonoBehaviour
             for (int i = 0; i < 4; i++) normals.Add(nrm);
             uvs.Add(new Vector2(1f, 0.85f)); uvs.Add(new Vector2(1f, 0.85f));
             uvs.Add(new Vector2(1f, 1f)); uvs.Add(new Vector2(1f, 1f));
-            // Blossom-head texture coords (uv1): full 0..1 quad.
-            uvs2.Add(new Vector2(0f, 0f)); uvs2.Add(new Vector2(1f, 0f));
-            uvs2.Add(new Vector2(0f, 1f)); uvs2.Add(new Vector2(1f, 1f));
+            // Blossom-head texture coords (uv1): full 0..1 quad mapped into
+            // this flower's atlas cell.
+            uvs2.Add(new Vector2(cu, cv));
+            uvs2.Add(new Vector2(cu + 0.5f, cv));
+            uvs2.Add(new Vector2(cu, cv + 0.5f));
+            uvs2.Add(new Vector2(cu + 0.5f, cv + 0.5f));
             for (int i = 0; i < 4; i++) colors.Add(petal);
             tris.Add(qb); tris.Add(qb + 2); tris.Add(qb + 1);
             tris.Add(qb + 1); tris.Add(qb + 2); tris.Add(qb + 3);
@@ -661,35 +809,53 @@ public class CrystalVizBootstrap : MonoBehaviour
     }
 
     /// <summary>
-    /// Builds a small blossom-head albedo: a daisy-like flower with 8 rounded
-    /// petals and a warm center, near-white so the per-flower petal vertex
-    /// color defines the hue. Transparent background for alpha-test cutout.
+    /// Builds the blossom-head atlas: a 2x2 grid of petal-head shapes on
+    /// transparency, alpha-cut in the shader — 8-petal daisy, 5-petal round
+    /// wildflower, 12-petal aster, 6-petal coneflower. Near-white so the
+    /// per-flower petal vertex color defines the hue.
     /// </summary>
-    static Texture2D MakeBlossomTexture()
+    static Texture2D MakeBlossomAtlas()
     {
-        const int S = 64;
+        const int S = 128; // 2x2 cells of 64px
+        const int C = 64;
         var tex = new Texture2D(S, S, TextureFormat.RGBA32, false);
         tex.wrapMode = TextureWrapMode.Clamp;
         tex.filterMode = FilterMode.Bilinear;
-        for (int y = 0; y < S; y++)
+        // Per-cell recipe: petal count, groove depth (shape fullness), center size.
+        var recipes = new (int petals, float groove, float center)[]
         {
-            for (int x = 0; x < S; x++)
+            (8, 0.30f, 0.30f),  // daisy
+            (5, 0.45f, 0.34f),  // round wildflower
+            (12, 0.35f, 0.22f), // aster
+            (6, 0.40f, 0.45f),  // coneflower
+        };
+        for (int cell = 0; cell < 4; cell++)
+        {
+            int cx = cell % 2, cy = cell / 2;
+            var (petals, groove, centerR) = recipes[cell];
+            for (int y = 0; y < C; y++)
             {
-                float u = ((float)x / (S - 1)) * 2f - 1f; // -1..1
-                float v = ((float)y / (S - 1)) * 2f - 1f;
-                float r = Mathf.Sqrt(u * u + v * v);
-                float ang = Mathf.Atan2(v, u);
-                // 8 rounded petals: radius modulated by angle.
-                float petal = 0.78f + 0.22f * Mathf.Pow(Mathf.Abs(Mathf.Cos(ang * 4f)), 0.7f);
-                if (r >= petal)
+                for (int x = 0; x < C; x++)
                 {
-                    tex.SetPixel(x, y, new Color(0f, 0f, 0f, 0f));
-                    continue;
+                    float u = ((float)x / (C - 1)) * 2f - 1f; // -1..1
+                    float v = ((float)y / (C - 1)) * 2f - 1f;
+                    float r = Mathf.Sqrt(u * u + v * v);
+                    float ang = Mathf.Atan2(v, u);
+                    // Rounded petals: radius modulated by angle.
+                    float petal = (1f - groove) + groove * Mathf.Pow(Mathf.Abs(Mathf.Cos(ang * petals * 0.5f)), 0.7f);
+                    Color c;
+                    if (r >= petal)
+                    {
+                        c = new Color(0f, 0f, 0f, 0f);
+                    }
+                    else
+                    {
+                        float shade = 1f - 0.16f * Mathf.Pow(Mathf.Abs(Mathf.Sin(ang * petals * 0.5f)), 0.5f);
+                        float center = 1f - Mathf.SmoothStep(0f, centerR, r);
+                        c = new Color(shade, shade * (1f - 0.08f * center), shade * (1f - 0.22f * center), 1f);
+                    }
+                    tex.SetPixel(cx * C + x, cy * C + y, c);
                 }
-                float groove = Mathf.Pow(Mathf.Abs(Mathf.Sin(ang * 4f)), 0.5f);
-                float shade = 1f - 0.16f * groove;
-                float center = 1f - Mathf.SmoothStep(0f, 0.30f, r);
-                tex.SetPixel(x, y, new Color(shade, shade * (1f - 0.08f * center), shade * (1f - 0.22f * center), 1f));
             }
         }
         tex.Apply();

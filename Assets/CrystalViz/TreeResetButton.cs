@@ -95,7 +95,7 @@ public class TreeResetButton : MonoBehaviour
         discRt.sizeDelta = new Vector2(120f, 120f);
         var discImg = discGO.AddComponent<Image>();
         discImg.sprite = MakeDiscSprite(160, new Color(0.06f, 0.11f, 0.24f, 0.55f),
-            Color.black, 10); // colors baked into the sprite
+            Color.black, 5); // colors baked into the sprite; thinner rim (player request 2026-09-21)
         discImg.color = Color.white;
 
         var markGO = new GameObject("InfinityMark", typeof(RectTransform));
@@ -105,7 +105,7 @@ public class TreeResetButton : MonoBehaviour
         markRt.anchorMax = new Vector2(0.5f, 0.5f);
         markRt.pivot = new Vector2(0.5f, 0.5f);
         markRt.anchoredPosition = Vector2.zero;
-        markRt.sizeDelta = new Vector2(94f, 94f); // 25% larger than the previous 75
+        markRt.sizeDelta = new Vector2(94f, 70f); // vertically squished: top and bottom closer together (player request 2026-09-21)
         // Glowing infinity mark on transparency: no box, no border — just the
         // symbol. Loaded from Resources and turned into a sprite at runtime
         // (same proven pattern as the stage avatars), so texture import
