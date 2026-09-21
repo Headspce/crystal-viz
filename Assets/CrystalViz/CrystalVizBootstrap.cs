@@ -320,7 +320,9 @@ public class CrystalVizBootstrap : MonoBehaviour
         {
             float ang = (i / (float)hills) * Mathf.PI * 2f + (float)rng.NextDouble() * 0.35f;
             float dist = 40f + (float)rng.NextDouble() * 12f;
-            float h = 6f + (float)rng.NextDouble() * 10f;    // 6-16 tall
+            // 12-20 tall: crests rise clearly above the 12-tall haze band so
+            // the mounds read as hills against the sky, not hidden behind it.
+            float h = 12f + (float)rng.NextDouble() * 8f;
             float rad = 12f + (float)rng.NextDouble() * 6f; // 12-18 wide
             AppendHill(verts, normals, uvs, tris,
                 new Vector3(Mathf.Cos(ang) * dist, 0f, Mathf.Sin(ang) * dist),
