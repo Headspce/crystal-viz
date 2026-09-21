@@ -311,18 +311,15 @@ public class CrystalVizBootstrap : MonoBehaviour
         var uvs = new System.Collections.Generic.List<Vector2>();
         var tris = new System.Collections.Generic.List<int>();
 
-        // Ring of mounds at radius 40-52: IN FRONT of the haze band (z=-55)
-        // so the green mounds occlude it and read as hills, with the haze
-        // and the panorama's blue mountains layered behind them. Well
-        // inside the 200x200 ground (r=100) and the r=200 sky dome.
+        // Ring of mounds at radius 30-40: close enough that distance fog
+        // leaves them clearly green, in front of the haze band (z=-55),
+        // crests (8-13) rising above the haze top for a rolling-hill read.
         const int hills = 14;
         for (int i = 0; i < hills; i++)
         {
             float ang = (i / (float)hills) * Mathf.PI * 2f + (float)rng.NextDouble() * 0.35f;
-            float dist = 40f + (float)rng.NextDouble() * 12f;
-            // 12-20 tall: crests rise clearly above the 12-tall haze band so
-            // the mounds read as hills against the sky, not hidden behind it.
-            float h = 12f + (float)rng.NextDouble() * 8f;
+            float dist = 30f + (float)rng.NextDouble() * 10f;
+            float h = 8f + (float)rng.NextDouble() * 5f;      // 8-13 tall
             float rad = 12f + (float)rng.NextDouble() * 6f; // 12-18 wide
             AppendHill(verts, normals, uvs, tris,
                 new Vector3(Mathf.Cos(ang) * dist, 0f, Mathf.Sin(ang) * dist),
