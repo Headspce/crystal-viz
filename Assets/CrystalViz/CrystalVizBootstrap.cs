@@ -311,18 +311,18 @@ public class CrystalVizBootstrap : MonoBehaviour
         var uvs = new System.Collections.Generic.List<Vector2>();
         var tris = new System.Collections.Generic.List<int>();
 
-        // Ring of mounds at radius 40-55: far enough that several peaks fit
-        // across the narrow portrait frame, close enough that distance fog
-        // (40-80) leaves them clearly green, in front of the haze band (z=-55).
-        // Crests (9-15) sit just under the top of the frame: hills on the
-        // horizon with sky above, not a wall filling the view.
-        const int hills = 16;
+        // Ring of mounds at radius 42-55: small enough (4-7 wide) that several
+        // separate peaks fit across the narrow portrait frame, far enough for
+        // a true horizon read, close enough that fog (40-80) only softens the
+        // farthest ones. Crests (8-15) rise above the meadow with sky between
+        // the peaks: a mountainous grassy horizon, not a wall.
+        const int hills = 18;
         for (int i = 0; i < hills; i++)
         {
             float ang = (i / (float)hills) * Mathf.PI * 2f + (float)rng.NextDouble() * 0.35f;
-            float dist = 40f + (float)rng.NextDouble() * 15f;
-            float h = 9f + (float)rng.NextDouble() * 6f;      // 9-15 tall
-            float rad = 7f + (float)rng.NextDouble() * 4f;   // 7-11 wide
+            float dist = 42f + (float)rng.NextDouble() * 13f;
+            float h = 8f + (float)rng.NextDouble() * 7f;      // 8-15 tall
+            float rad = 4f + (float)rng.NextDouble() * 3f;   // 4-7 wide
             AppendHill(verts, normals, uvs, tris,
                 new Vector3(Mathf.Cos(ang) * dist, 0f, Mathf.Sin(ang) * dist),
                 h, rad, rng);
