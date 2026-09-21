@@ -35,9 +35,11 @@ public class StageIndicatorUI : MonoBehaviour
     /// Test hook for CI: when set, BuildUI uses this rect instead of
     /// Screen.safeArea, letting the screenshot path simulate a phone camera
     /// cutout (Screen.safeArea is full-bleed in CI, so the inset would
-    /// otherwise never be exercised). Never set in player builds.
+    /// otherwise never be exercised). Public (not internal) so the
+    /// Editor-assembly screenshot tool can set it. Never set in player
+    /// builds.
     /// </summary>
-    internal static Rect? TestSafeAreaOverride = null;
+    public static Rect? TestSafeAreaOverride = null;
 
     void Awake()
     {
