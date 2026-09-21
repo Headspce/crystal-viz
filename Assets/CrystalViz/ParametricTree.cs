@@ -140,21 +140,30 @@ public class ParametricTree : MonoBehaviour
         leafGO.transform.SetParent(transform, false);
         leafFilter = leafGO.AddComponent<MeshFilter>();
         leafRenderer = leafGO.AddComponent<MeshRenderer>();
-        if (lit != null)
+        var leafShader = Shader.Find("CrystalViz/LeafWind");
+        if (leafShader != null)
         {
-            var leafMat = new Material(lit);
+            var leafMat = new Material(leafShader);
             // Textured leaf: pointed-oval silhouette with a center vein on a
-            // transparent background, cut out by alpha test. Near-white
-            // albedo so the per-leaf green vertex colors define the hue.
+            // transparent background, cut out by alpha test in the shader.
+            // Near-white albedo so the per-leaf green vertex colors define
+            // the hue. Wind uniforms mirror the meadow grass so the canopy
+            // shivers and catches the same traveling gust fronts.
             leafMat.SetTexture("_BaseMap", MakeLeafTexture());
-            leafMat.color = Color.white;
-            leafMat.SetFloat("_AlphaClip", 1f); // URP/Lit alpha-test cutout
-            leafMat.SetFloat("_Cutoff", 0.5f);
-            // Setting the _AlphaClip float is not enough: the URP/Lit shader
-            // only runs the alpha-test branch with the _ALPHATEST_ON keyword.
-            leafMat.EnableKeyword("_ALPHATEST_ON");
-            leafMat.SetFloat("_Cull", 0f); // double-sided: leaf quads are visible from both sides
+            leafMat.SetFloat("_WindStrength", 0.06f);
+            leafMat.SetFloat("_WindSpeed", 1.7f);
+            leafMat.SetFloat("_GustStrength", 0.15f);
+            leafMat.SetFloat("_GustSpeed", 1.8f);
+            leafMat.SetFloat("_GustFreq", 0.035f);
+            leafMat.SetFloat("_GustLighten", 0.28f);
             leafRenderer.material = leafMat;
+            // The custom leaf shader has no shadow-caster pass; leaves are
+            // small and dappled by the gust light-wave instead.
+            leafRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        }
+        else
+        {
+            Debug.LogWarning("ParametricTree: 'CrystalViz/LeafWind' not found; leaves will use the default material.");
         }
 
         trunkMesh = new Mesh { name = "ParametricTrunk" };

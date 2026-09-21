@@ -143,14 +143,15 @@ public class CrystalVizBootstrap : MonoBehaviour
     /// Paul (@paul_paul_paul), CC-BY 4.0 — the clean original texture from
     /// the authenticated Sketchfab download (2026-09-21), downscaled to
     /// 4096x2048. Sampled equirectangular by view direction on the sphere,
-    /// so there is no UV seam anywhere; ultra-slow drift (one full cycle
-    /// ~30 minutes) via SkyTextureDrift. Falls back to the procedural
+    /// so there is no UV seam anywhere; the dome turns ultra-slowly (one
+    /// revolution ~20 minutes) via SkyRotation. Falls back to the procedural
     /// CrystalViz/AnimeSkybox shader if the texture or textured shader is
     /// missing: never a crash, never a blank sky. A mesh dome instead of
     /// RenderSettings.skybox: the CI screenshot renders the camera directly
     /// in edit mode, where the skybox pass does not draw (verified: sky
     /// rendered as flat clear color), while plain meshes render reliably on
-    /// that path.
+    /// that path. The dome turns ultra-slowly (one revolution ~20 minutes)
+    /// via SkyRotation so the painted clouds drift across the sky.
     /// </summary>
     void BuildSkyDome()
     {
@@ -162,8 +163,7 @@ public class CrystalVizBootstrap : MonoBehaviour
             skyDomeMat.mainTexture = tex;
             var dome = BuildDomeMesh();
             dome.GetComponent<Renderer>().material = skyDomeMat;
-            var drift = dome.AddComponent<SkyTextureDrift>();
-            drift.skyMaterial = skyDomeMat;
+            dome.AddComponent<SkyRotation>();
             Debug.Log("CrystalViz: textured anime sky dome installed (r=200).");
             return;
         }
@@ -226,6 +226,7 @@ public class CrystalVizBootstrap : MonoBehaviour
 
         var dome = BuildDomeMesh();
         dome.GetComponent<Renderer>().material = skyDomeMat;
+        dome.AddComponent<SkyRotation>();
         SyncSkySun();
         Debug.Log("CrystalViz: procedural anime sky dome installed (r=200).");
     }
@@ -286,7 +287,21 @@ public class CrystalVizBootstrap : MonoBehaviour
     /// weather. ONE combined mesh, one draw call. Distance fog hazes them
     /// into the horizon like the ground plane.
     /// Missing shader => quietly skipped, never a crash.
+    ///
+    /// The mound definitions are kept in hillDefs so BuildGrassField can
+    /// scatter real grass tufts across the slopes (same blades, same wind,
+    /// scaled up to read at 60 units).
     /// </summary>
+    struct HillDef
+    {
+        public Vector3 center;
+        public float height;
+        public float radius;
+        public float phase;
+    }
+    readonly System.Collections.Generic.List<HillDef> hillDefs =
+        new System.Collections.Generic.List<HillDef>();
+
     void BuildHorizonHills()
     {
         var grassShader = Shader.Find("CrystalViz/StylizedGrass");
@@ -313,21 +328,29 @@ public class CrystalVizBootstrap : MonoBehaviour
 
         // Rolling ridge on the horizon. Camera truth: pos (0,2.5,7.4), pitched
         // 6.2 deg down, vertical FOV 40 -> horizontal half-FOV 9.53 deg,
-        // frame top at +13.8 deg elevation. Six broad gentle swells, x in
+        // frame top at +13.8 deg elevation. Six broad GENTLE swells, x in
         // [-19.5, 19.5], z staggered [-50, -62]: nearer swells rise higher,
         // farther ones sink lower and paler into the fog (43-74%) for natural
-        // aerial perspective. Crests at 1-3.5 deg elevation, h/r ~0.5 domes:
-        // a distant rolling green ridge under open sky, not looming blobs.
+        // aerial perspective. Crests at 1-3 deg elevation, h/r ~0.27:
+        // low rolling farmland swells, deliberately flattened (2026-09-21)
+        // so they read as landscape, not domes.
+        hillDefs.Clear();
         const int hills = 6;
         for (int i = 0; i < hills; i++)
         {
             float x = -17.5f + i * 7f + ((float)rng.NextDouble() - 0.5f) * 4f;
             float z = -50f - (float)rng.NextDouble() * 12f;
-            float h = 3.5f + (float)rng.NextDouble() * 2.5f;  // 3.5-6 tall
-            float rad = 8f + (float)rng.NextDouble() * 3f;    // 8-11 wide
-            AppendHill(verts, normals, uvs, tris,
-                new Vector3(x, 0f, z),
-                h, rad, rng);
+            float h = 2.4f + (float)rng.NextDouble() * 1.0f;  // 2.4-3.4 tall
+            float rad = 10f + (float)rng.NextDouble() * 3f;   // 10-13 wide
+            var def = new HillDef
+            {
+                center = new Vector3(x, 0f, z),
+                height = h,
+                radius = rad,
+                phase = (float)rng.NextDouble() * Mathf.PI * 2f,
+            };
+            hillDefs.Add(def);
+            AppendHill(verts, normals, uvs, tris, def);
         }
 
         var mesh = new Mesh { name = "HorizonHills" };
@@ -357,11 +380,14 @@ public class CrystalVizBootstrap : MonoBehaviour
         System.Collections.Generic.List<Vector3> normals,
         System.Collections.Generic.List<Vector2> uvs,
         System.Collections.Generic.List<int> tris,
-        Vector3 center, float height, float radius, System.Random rng)
+        HillDef def)
     {
+        Vector3 center = def.center;
+        float height = def.height;
+        float radius = def.radius;
+        float phase = def.phase;
         const int rings = 6;
         const int segs = 16;
-        float phase = (float)rng.NextDouble() * Mathf.PI * 2f;
 
         int topIdx = verts.Count;
         verts.Add(center + new Vector3(0f, height, 0f));
@@ -408,6 +434,57 @@ public class CrystalVizBootstrap : MonoBehaviour
                 tris.Add(r0 + s1); tris.Add(r1 + s); tris.Add(r1 + s1);
             }
         }
+    }
+
+    /// <summary>
+    /// Covers the horizon hills with the same grass as the meadow: tufts
+    /// scattered across each mound's surface using the exact profile formula
+    /// AppendHill uses, so blades sit on the slope instead of floating.
+    /// Tufts are aligned to the surface normal with a random yaw and scaled
+    /// 8-12x — at 50-60 units away, full-size blades would be sub-pixel, so
+    /// the scale-up is what makes the hills read as grassy rather than
+    /// smooth. They share the meadow's material and wind uniforms, so the
+    /// gust fronts sweep the hills in sync. Appends into the grass field's
+    /// mesh lists: still one combined mesh, one draw call.
+    /// </summary>
+    void AppendHillGrass(
+        System.Collections.Generic.List<Vector3> verts,
+        System.Collections.Generic.List<Vector3> normals,
+        System.Collections.Generic.List<Vector2> uvs,
+        System.Collections.Generic.List<int> tris,
+        System.Random rng)
+    {
+        int hillTufts = 0;
+        foreach (var def in hillDefs)
+        {
+            // ~7 tufts per unit^2 of mound footprint: a textured grassy
+            // cover, not a solid carpet (the smooth hill mesh shows between).
+            int count = Mathf.RoundToInt(Mathf.PI * def.radius * def.radius * 7f);
+            for (int i = 0; i < count; i++)
+            {
+                float fr = 0.08f + (float)rng.NextDouble() * 0.84f; // avoid exact crest/base
+                float a = (float)rng.NextDouble() * Mathf.PI * 2f;
+                // Same profile as AppendHill: ring radius, cosine-falloff
+                // height, sinusoidal wobble.
+                float ringR = def.radius * Mathf.Sin(fr * Mathf.PI * 0.5f);
+                float y = def.height * Mathf.Pow(Mathf.Max(0f, Mathf.Cos(fr * Mathf.PI * 0.5f)), 1.25f);
+                float wobble = 1f
+                    + 0.14f * Mathf.Sin(a * 3f + def.phase) * fr
+                    + 0.08f * Mathf.Sin(a * 5f + def.phase * 1.7f) * fr;
+                Vector3 radial = new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a));
+                Vector3 pos = def.center + new Vector3(radial.x * ringR * wobble, y, radial.z * ringR * wobble);
+                // Same normal model as AppendHill.
+                Vector3 n = (Vector3.up * (1f - fr * 0.7f) + radial * (fr * 0.75f)).normalized;
+                pos -= n * 0.15f; // sink the roots so tufts never float
+                Quaternion q = Quaternion.FromToRotation(Vector3.up, n)
+                    * Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f);
+                float s = 8f + (float)rng.NextDouble() * 4f; // 8-12x: reads at 60 units
+                AppendGrassTuft(verts, normals, uvs, tris,
+                    Matrix4x4.TRS(pos, q, Vector3.one * s), rng);
+                hillTufts++;
+            }
+        }
+        Debug.Log($"CrystalViz: hill slopes grassed ({hillTufts} tufts across {hillDefs.Count} mounds).");
     }
 
     // --------------------------------------------------------------------- sun
@@ -563,6 +640,11 @@ public class CrystalVizBootstrap : MonoBehaviour
                 Vector3.one * (0.7f + (float)rng.NextDouble() * 0.8f) * 1.6f);
             AppendGrassTuft(verts, normals, uvs, tris, mtx, rng);
         }
+
+        // Grass the horizon hill slopes into the same mesh (BuildHorizonHills
+        // runs before this in BuildScene, so hillDefs is populated; if the
+        // hills were skipped the list is empty and this is a no-op).
+        AppendHillGrass(verts, normals, uvs, tris, rng);
 
         var mesh = new Mesh { name = "GrassField" };
         // 150000 tufts x 20 verts = 3.0M verts: needs 32-bit indices.

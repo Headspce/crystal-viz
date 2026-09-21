@@ -142,6 +142,19 @@ public static class CrystalVizBuild
             Debug.LogWarning("CrystalVizBuild: 'CrystalViz/StylizedGrass' not found; grass field will be skipped at runtime.");
         }
 
+        // The leaf-wind shader is created at runtime via Shader.Find by
+        // ParametricTree; pin its variants so the canopy survives stripping.
+        // Missing => leaves fall back to the default material (with a warning).
+        var leafShader = Shader.Find("CrystalViz/LeafWind");
+        if (leafShader != null)
+        {
+            PinVariants(leafShader);
+        }
+        else
+        {
+            Debug.LogWarning("CrystalVizBuild: 'CrystalViz/LeafWind' not found; tree leaves will use the default material.");
+        }
+
         // The anime sky shader is also created at runtime via
         // Shader.Find; pin its (single) variant so it survives stripping.
         // A missing shader here is fine — the bootstrap skips the sky dome.
