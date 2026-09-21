@@ -311,20 +311,21 @@ public class CrystalVizBootstrap : MonoBehaviour
         var uvs = new System.Collections.Generic.List<Vector2>();
         var tris = new System.Collections.Generic.List<int>();
 
-        // Ring of mounds at radius 42-55: small enough (4-7 wide) that several
-        // separate peaks fit across the narrow portrait frame, far enough for
-        // a true horizon read, close enough that fog (40-80) only softens the
-        // farthest ones. Crests (8-15) rise above the meadow with sky between
-        // the peaks: a mountainous grassy horizon, not a wall.
-        const int hills = 18;
+        // Band of mounds across the camera's view (not a full ring: the portrait
+        // camera's ~30 deg horizontal FOV only sees a ~26-unit slice at hill
+        // depth). Seven overlapping peaks, x in [-18, 18], z in [-38, -48]:
+        // a continuous mountainous grassy horizon with sky above each crest.
+        // Near enough that fog (40-80) only softens the farthest ones; the
+        // haze band at z=-55 layers behind them.
+        const int hills = 7;
         for (int i = 0; i < hills; i++)
         {
-            float ang = (i / (float)hills) * Mathf.PI * 2f + (float)rng.NextDouble() * 0.35f;
-            float dist = 42f + (float)rng.NextDouble() * 13f;
-            float h = 8f + (float)rng.NextDouble() * 7f;      // 8-15 tall
-            float rad = 4f + (float)rng.NextDouble() * 3f;   // 4-7 wide
+            float x = -18f + i * 6f + ((float)rng.NextDouble() - 0.5f) * 4f;
+            float z = -38f - (float)rng.NextDouble() * 10f;
+            float h = 9f + (float)rng.NextDouble() * 6f;      // 9-15 tall
+            float rad = 4f + (float)rng.NextDouble() * 2.5f; // 4-6.5 wide
             AppendHill(verts, normals, uvs, tris,
-                new Vector3(Mathf.Cos(ang) * dist, 0f, Mathf.Sin(ang) * dist),
+                new Vector3(x, 0f, z),
                 h, rad, rng);
         }
 
