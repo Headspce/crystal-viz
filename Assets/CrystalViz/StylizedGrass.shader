@@ -6,6 +6,10 @@ Shader "CrystalViz/StylizedGrass"
         _TipColor ("Tip Color", Color) = (0.58, 0.82, 0.26, 1)
         _WindStrength ("Wind Strength", Float) = 0.16
         _WindSpeed ("Wind Speed", Float) = 1.7
+        _GustStrength ("Wind Gust Strength", Float) = 0.38
+        _GustSpeed ("Wind Gust Speed", Float) = 2.4
+        _GustFreq ("Wind Gust Frequency", Float) = 0.10
+        _GustLighten ("Wind Gust Lighten", Float) = 0.28
     }
     SubShader
     {
@@ -45,12 +49,17 @@ Shader "CrystalViz/StylizedGrass"
                 float3 positionWS  : TEXCOORD2;
                 float4 shadowCoord : TEXCOORD3;
                 half   fogFactor   : TEXCOORD4;
+                float  gust        : TEXCOORD5;
             };
 
             half4 _RootColor;
             half4 _TipColor;
             float _WindStrength;
             float _WindSpeed;
+            float _GustStrength;
+            float _GustSpeed;
+            float _GustFreq;
+            float _GustLighten;
 
             Varyings vert(Attributes IN)
             {
@@ -62,9 +71,22 @@ Shader "CrystalViz/StylizedGrass"
                 // bend growing toward the blade tip (uv.y^2) so roots stay planted.
                 float phase = _Time.y * _WindSpeed + wp.x * 0.35 + wp.z * 0.27;
                 float sway = sin(phase) * 0.6 + sin(phase * 2.3 + 1.7) * 0.4;
-                float bend = IN.uv.y * IN.uv.y * _WindStrength * sway;
+                float tipW = IN.uv.y * IN.uv.y;
+                float bend = tipW * _WindStrength * sway;
                 wp.x += bend;
                 wp.z += bend * 0.4;
+
+                // Zelda-style traveling gust fronts: a sharpened wave band
+                // sweeping across the field, combing the blades flat in the
+                // gust direction as it passes. Two detuned bands keep the
+                // rhythm from looking mechanical.
+                float2 gustDir = normalize(float2(0.8, 0.6));
+                float gustCoord = dot(wp.xz, gustDir) * _GustFreq - _Time.y * _GustSpeed;
+                float gust = pow(0.5 + 0.5 * sin(gustCoord), 3.0);
+                float gustB = pow(0.5 + 0.5 * sin(gustCoord * 0.41 + 2.1), 3.0);
+                float gustAmt = gust * 0.75 + gustB * 0.25;
+                wp.xz += gustDir * (tipW * _GustStrength * gustAmt);
+                OUT.gust = gustAmt;
 
                 OUT.positionWS = wp;
                 OUT.positionHCS = TransformWorldToHClip(wp);
@@ -89,6 +111,9 @@ Shader "CrystalViz/StylizedGrass"
                 float patch = sin(IN.positionWS.x * 0.11 + IN.positionWS.z * 0.07)
                             * sin(IN.positionWS.x * 0.05 - IN.positionWS.z * 0.13);
                 albedo *= 0.85 + 0.30 * (0.5 + 0.5 * patch);
+                // The gust band also catches the light: a bright wave visibly
+                // sweeping the meadow, Breath-of-the-Wild style.
+                albedo *= 1.0 + IN.gust * _GustLighten;
 
                 Light mainLight = GetMainLight(IN.shadowCoord);
                 // Wrapped diffuse: blades are up-normaled, so a plain NdotL

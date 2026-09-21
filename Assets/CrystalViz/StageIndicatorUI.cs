@@ -4,8 +4,8 @@ using System.Collections;
 
 /// <summary>
 /// Circular stage avatar pinned to the top-center of the screen (profile-pic
-/// style): a thin white ring border, the current stage sprite clipped to a
-/// circle inside it, and a "12 / 50" tap counter underneath.
+/// style): a thin sky-blue ring border, the current stage sprite clipped to a
+/// circle inside it, and a "12 / 50" tap counter on a dark pill underneath.
 ///
 /// Stage sprites are loaded as Texture2D from Resources/StageIcons and turned
 /// into Sprites at runtime, so any texture import type works. Subscribes to
@@ -180,7 +180,10 @@ public class StageIndicatorUI : MonoBehaviour
         Stretch(border.GetComponent<RectTransform>());
         var borderImg = border.AddComponent<Image>();
         borderImg.sprite = circle;
-        borderImg.color = Color.white;
+        // Sky-blue ring sampled from the anime sky behind the icon
+        // (v5 texture, upper-sky patch) so the avatar sits in the scene
+        // instead of floating as a stark white badge.
+        borderImg.color = new Color(0.318f, 0.572f, 0.890f, 1f);
 
         // Circular mask holding the stage sprite.
         var maskGO = NewRect("CircleMask", avatar.transform);
@@ -202,7 +205,20 @@ public class StageIndicatorUI : MonoBehaviour
         stageImage = stageGO.AddComponent<Image>();
         stageImage.preserveAspect = true;
 
-        // Tap counter under the avatar.
+        // Tap counter under the avatar: white text on a dark translucent
+        // pill so the numbers stay readable against the bright sky, plus a
+        // navy outline for extra bite.
+        var pillGO = NewRect("CounterPill", root.transform);
+        var pillRt = pillGO.GetComponent<RectTransform>();
+        pillRt.anchorMin = new Vector2(0.5f, 1f);
+        pillRt.anchorMax = new Vector2(0.5f, 1f);
+        pillRt.pivot = new Vector2(0.5f, 1f);
+        pillRt.anchoredPosition = new Vector2(0f, -186f);
+        pillRt.sizeDelta = new Vector2(210f, 58f);
+        var pillImg = pillGO.AddComponent<Image>();
+        pillImg.sprite = MakePillSprite(256, 72);
+        pillImg.color = new Color(0.05f, 0.10f, 0.22f, 0.55f);
+
         var textGO = NewRect("TapCounter", root.transform);
         var textRt = textGO.GetComponent<RectTransform>();
         textRt.anchorMin = new Vector2(0.5f, 1f);
@@ -217,9 +233,9 @@ public class StageIndicatorUI : MonoBehaviour
         tapText.fontSize = 40;
         tapText.alignment = TextAnchor.MiddleCenter;
         tapText.color = Color.white;
-        var shadow = textGO.AddComponent<Shadow>();
-        shadow.effectDistance = new Vector2(2f, -2f);
-        shadow.effectColor = new Color(0f, 0f, 0f, 0.6f);
+        var outline = textGO.AddComponent<Outline>();
+        outline.effectColor = new Color(0.04f, 0.08f, 0.18f, 0.95f);
+        outline.effectDistance = new Vector2(2.5f, -2.5f);
         // Update() never runs in edit-mode screenshot captures, so seed the
         // counter text now; Update() keeps it fresh in play mode.
         if (controller != null)
@@ -262,5 +278,29 @@ public class StageIndicatorUI : MonoBehaviour
         tex.SetPixels(pixels);
         tex.Apply();
         return Sprite.Create(tex, new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f), 100f);
+    }
+
+    /// <summary>Generates a soft-edged rounded-rect (pill) sprite for the tap-counter backing.</summary>
+    static Sprite MakePillSprite(int w, int h)
+    {
+        var tex = new Texture2D(w, h, TextureFormat.RGBA32, false);
+        var pixels = new Color[w * h];
+        float r = h / 2f;
+        for (int y = 0; y < h; y++)
+        {
+            for (int x = 0; x < w; x++)
+            {
+                // Distance to the pill's inner segment (horizontal capsule).
+                float cx = Mathf.Clamp(x + 0.5f, r, w - r);
+                float dx = (x + 0.5f) - cx;
+                float dy = (y + 0.5f) - r;
+                float d = Mathf.Sqrt(dx * dx + dy * dy);
+                float a = Mathf.Clamp01((r - d) / 1.5f);
+                pixels[y * w + x] = new Color(1f, 1f, 1f, a);
+            }
+        }
+        tex.SetPixels(pixels);
+        tex.Apply();
+        return Sprite.Create(tex, new Rect(0f, 0f, w, h), new Vector2(0.5f, 0.5f), 100f);
     }
 }

@@ -80,19 +80,42 @@ public class TreeResetButton : MonoBehaviour
         buttonRect.anchorMax = new Vector2(0f, 0f);
         buttonRect.pivot = new Vector2(0f, 0f);
         buttonRect.anchoredPosition = new Vector2(48f, 48f);
-        buttonRect.sizeDelta = new Vector2(75f, 75f); // half the old 150px: a quiet mark, not a button
+        buttonRect.sizeDelta = new Vector2(96f, 96f);
+        // Color scheme: the glowing infinity mark at 75% opacity (25% lighter
+        // than before) floating on a soft dark-navy disc, so it reads cleanly
+        // against both the bright grass and the dark soil. No box, no border.
+        var discGO = new GameObject("ResetDisc", typeof(RectTransform));
+        discGO.transform.SetParent(btnGO.transform, false);
+        var discRt = discGO.GetComponent<RectTransform>();
+        discRt.anchorMin = new Vector2(0.5f, 0.5f);
+        discRt.anchorMax = new Vector2(0.5f, 0.5f);
+        discRt.pivot = new Vector2(0.5f, 0.5f);
+        discRt.anchoredPosition = Vector2.zero;
+        discRt.sizeDelta = new Vector2(96f, 96f);
+        var discImg = discGO.AddComponent<Image>();
+        discImg.sprite = MakeDiscSprite(128);
+        discImg.color = new Color(0.06f, 0.11f, 0.24f, 0.55f);
+
+        var markGO = new GameObject("InfinityMark", typeof(RectTransform));
+        markGO.transform.SetParent(btnGO.transform, false);
+        var markRt = markGO.GetComponent<RectTransform>();
+        markRt.anchorMin = new Vector2(0.5f, 0.5f);
+        markRt.anchorMax = new Vector2(0.5f, 0.5f);
+        markRt.pivot = new Vector2(0.5f, 0.5f);
+        markRt.anchoredPosition = Vector2.zero;
+        markRt.sizeDelta = new Vector2(75f, 75f);
         // Glowing infinity mark on transparency: no box, no border — just the
         // symbol. Loaded from Resources and turned into a sprite at runtime
         // (same proven pattern as the stage avatars), so texture import
         // settings can't break it.
-        var img = btnGO.AddComponent<Image>();
+        var img = markGO.AddComponent<Image>();
         var infTex = Resources.Load<Texture2D>("infinity-reset");
         if (infTex != null)
         {
             img.sprite = Sprite.Create(infTex,
                 new Rect(0f, 0f, infTex.width, infTex.height),
                 new Vector2(0.5f, 0.5f), 100f);
-            img.color = Color.white; // keep the painted glow as-is
+            img.color = new Color(1f, 1f, 1f, 0.75f); // 25% lighter
         }
         else
         {
@@ -103,5 +126,27 @@ public class TreeResetButton : MonoBehaviour
             img.color = new Color(1f, 1f, 1f, 0.35f);
         }
         Debug.Log($"TreeResetButton: built {buttonRect.rect} on {canvasGO.name}.");
+    }
+
+    /// <summary>Generates a soft-edged filled disc sprite for the reset backing.</summary>
+    static Sprite MakeDiscSprite(int size)
+    {
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        var pixels = new Color[size * size];
+        float r = size / 2f;
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float dx = x - r + 0.5f;
+                float dy = y - r + 0.5f;
+                float d = Mathf.Sqrt(dx * dx + dy * dy);
+                float a = Mathf.Clamp01((r - d) / 2f);
+                pixels[y * size + x] = new Color(1f, 1f, 1f, a);
+            }
+        }
+        tex.SetPixels(pixels);
+        tex.Apply();
+        return Sprite.Create(tex, new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f), 100f);
     }
 }
