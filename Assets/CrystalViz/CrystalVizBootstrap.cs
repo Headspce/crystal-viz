@@ -313,19 +313,18 @@ public class CrystalVizBootstrap : MonoBehaviour
 
         // Rolling ridge on the horizon. Camera truth: pos (0,2.5,7.4), pitched
         // 6.2 deg down, vertical FOV 40 -> horizontal half-FOV 9.53 deg,
-        // frame top at +13.8 deg elevation. Four broad low swells, x in
-        // [-15.5, 15.5], z in [-46, -54]: each ~17 deg wide so they merge
-        // into one undulating ridge, crests at 3-5 deg elevation (well below
-        // frame top, sky above), gentle h/r ~0.7 domes. Fog (40-80) keeps
-        // them green with soft atmospheric tops; the paler haze band at
-        // z=-55 layers behind like a farther mountain ridge.
-        const int hills = 4;
+        // frame top at +13.8 deg elevation. Six broad gentle swells, x in
+        // [-19.5, 19.5], z staggered [-50, -62]: nearer swells rise higher,
+        // farther ones sink lower and paler into the fog (43-74%) for natural
+        // aerial perspective. Crests at 1-3.5 deg elevation, h/r ~0.5 domes:
+        // a distant rolling green ridge under open sky, not looming blobs.
+        const int hills = 6;
         for (int i = 0; i < hills; i++)
         {
-            float x = -13.5f + i * 9f + ((float)rng.NextDouble() - 0.5f) * 4f;
-            float z = -46f - (float)rng.NextDouble() * 8f;
-            float h = 4.5f + (float)rng.NextDouble() * 2.5f;  // 4.5-7 tall
-            float rad = 7f + (float)rng.NextDouble() * 3f;   // 7-10 wide
+            float x = -17.5f + i * 7f + ((float)rng.NextDouble() - 0.5f) * 4f;
+            float z = -50f - (float)rng.NextDouble() * 12f;
+            float h = 3.5f + (float)rng.NextDouble() * 2.5f;  // 3.5-6 tall
+            float rad = 8f + (float)rng.NextDouble() * 3f;    // 8-11 wide
             AppendHill(verts, normals, uvs, tris,
                 new Vector3(x, 0f, z),
                 h, rad, rng);
