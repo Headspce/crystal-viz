@@ -516,7 +516,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         // wildflowers provably share the same wave bands. Wider, slower
         // bands (player request 2026-09-21): long calm stretches between
         // fronts so the field reads as breezy with breaks.
-        mat.SetFloat("_GustStrength", 0.45f);
+        mat.SetFloat("_GustStrength", 0.12f); // lean, don't flatten: 0.45 combed blades flat and exposed the dark ground in pulsing waves
         mat.SetFloat("_GustSpeed", 1.8f);
         mat.SetFloat("_GustFreq", 0.035f);
         mat.SetFloat("_GustLighten", 0.28f);
@@ -673,7 +673,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         // breaks between fronts (player request 2026-09-21).
         mat.SetFloat("_WindStrength", 0.06f);
         mat.SetFloat("_WindSpeed", 1.7f);
-        mat.SetFloat("_GustStrength", 0.38f);
+        mat.SetFloat("_GustStrength", 0.12f); // same: sway, don't plaster
         mat.SetFloat("_GustSpeed", 1.8f);
         mat.SetFloat("_GustFreq", 0.035f);
         mat.SetFloat("_GustLighten", 0.28f);
