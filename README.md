@@ -10,11 +10,14 @@ prototype branch. Installable APKs ship via
 
 ## Credits & attribution
 
-- **Anime skybox panorama** — *"FREE - SkyBox Anime Sky"* by **Paul**
-  (@paul_paul_paul), licensed
-  [CC Attribution 4.0](http://creativecommons.org/licenses/by/4.0/).
-  Source: https://sketchfab.com/3d-models/free-skybox-anime-sky-56a60c1d1e8b44eabff138374f996d8f
-  (used as `Assets/CrystalViz/Resources/anime-sky.jpg` since v1.0.20).
+- **Anime sky** — fully procedural (the `CrystalViz/AnimeSkybox` shader:
+  painted gradient, cel-shaded cumulus, cirrus wisps). A Sketchfab panorama
+  (*"FREE - SkyBox Anime Sky"* by **Paul** (@paul_paul_paul),
+  [CC-BY 4.0](http://creativecommons.org/licenses/by/4.0/)) was tried in
+  v1.0.20, but Sketchfab's publicly served texture carries baked-in stripe
+  artifacts (viewer-pipeline anti-theft degradation; the clean file needs a
+  logged-in download), so it was removed again in v1.0.21 and the sky
+  returned to the procedural look.
 
 See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for the full list of
 third-party assets and their licenses.
