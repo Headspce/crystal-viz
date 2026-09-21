@@ -31,7 +31,6 @@ public class CrystalVizBootstrap : MonoBehaviour
         BuildEnvironment();
         BuildSkyDome();
         BuildHorizonHaze();
-        BuildCredits(); // CC-BY 4.0 skybox attribution (license requirement)
         BuildSun();
         BuildDiorama();
         // Player light control: the right-edge sun slider is back by player
@@ -272,44 +271,6 @@ public class CrystalVizBootstrap : MonoBehaviour
     }
 
     // --------------------------------------------------------------------- sun
-
-    /// <summary>
-    /// Attribution credit for the skybox panorama: "FREE - SkyBox Anime Sky"
-    /// by Paul (@paul_paul_paul), licensed CC-BY 4.0
-    /// (http://creativecommons.org/licenses/by/4.0/). Small, unobtrusive
-    /// text pinned to the bottom-right of the screen; kept visible (not
-    /// hidden behind UI) as the license requires attribution.
-    /// </summary>
-    void BuildCredits()
-    {
-        var canvasGO = new GameObject("CreditsCanvas");
-        var canvas = canvasGO.AddComponent<Canvas>();
-        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvas.sortingOrder = 80; // above the 3D scene, below the reset (90) and stage (100) UI
-        var scaler = canvasGO.AddComponent<CanvasScaler>();
-        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(1080f, 1920f);
-        scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
-        scaler.matchWidthOrHeight = 0.5f;
-
-        var textGO = new GameObject("SkyCredit", typeof(RectTransform));
-        textGO.transform.SetParent(canvasGO.transform, false);
-        var rt = textGO.GetComponent<RectTransform>();
-        rt.anchorMin = new Vector2(1f, 0f);
-        rt.anchorMax = new Vector2(1f, 0f);
-        rt.pivot = new Vector2(1f, 0f);
-        rt.anchoredPosition = new Vector2(-24f, 18f);
-        rt.sizeDelta = new Vector2(920f, 44f);
-        var txt = textGO.AddComponent<Text>();
-        txt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        if (txt.font == null)
-            Debug.LogWarning("CrystalViz: built-in LegacyRuntime font not found; skybox credit may not render.");
-        txt.fontSize = 24;
-        txt.alignment = TextAnchor.LowerRight;
-        txt.color = new Color(1f, 1f, 1f, 0.75f);
-        txt.text = "Skybox: Paul (@paul_paul_paul) - CC-BY 4.0";
-        Debug.Log("CrystalViz: skybox credit added.");
-    }
 
     void BuildSun()
     {

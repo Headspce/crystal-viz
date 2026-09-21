@@ -1,5 +1,14 @@
 # Third-party notices — CrystalViz
 
+## Anime skybox panorama
+
+- File: `Assets/CrystalViz/Resources/anime-sky.jpg`
+- Title: **"FREE - SkyBox Anime Sky"** by **Paul** (@paul_paul_paul)
+- License: **Creative Commons Attribution 4.0 (CC-BY 4.0)** — attribution required.
+- Source: https://sketchfab.com/3d-models/free-skybox-anime-sky-56a60c1d1e8b44eabff138374f996d8f
+- Used as the equirectangular sky-dome texture (v1.0.20+). Attribution lives
+  here and in the repo README rather than on screen.
+
 ## Dead tree model
 
 - Files: `Assets/CrystalViz/Resources/Models/OldTree/` (`old.fbx`, `bark04.png`, `stump02.png`, `branch06.png`)
