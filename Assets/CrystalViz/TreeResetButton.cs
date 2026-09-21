@@ -80,10 +80,11 @@ public class TreeResetButton : MonoBehaviour
         buttonRect.anchorMax = new Vector2(0f, 0f);
         buttonRect.pivot = new Vector2(0f, 0f);
         buttonRect.anchoredPosition = new Vector2(48f, 48f);
-        buttonRect.sizeDelta = new Vector2(96f, 96f);
+        buttonRect.sizeDelta = new Vector2(120f, 120f);
         // Color scheme: the glowing infinity mark at 75% opacity (25% lighter
-        // than before) floating on a soft dark-navy disc, so it reads cleanly
-        // against both the bright grass and the dark soil. No box, no border.
+        // than before) floating on a soft dark-navy disc with a crisp black
+        // rim, so it reads cleanly against both the bright grass and the
+        // dark soil. 25% larger than the previous pass (player request).
         var discGO = new GameObject("ResetDisc", typeof(RectTransform));
         discGO.transform.SetParent(btnGO.transform, false);
         var discRt = discGO.GetComponent<RectTransform>();
@@ -91,10 +92,11 @@ public class TreeResetButton : MonoBehaviour
         discRt.anchorMax = new Vector2(0.5f, 0.5f);
         discRt.pivot = new Vector2(0.5f, 0.5f);
         discRt.anchoredPosition = Vector2.zero;
-        discRt.sizeDelta = new Vector2(96f, 96f);
+        discRt.sizeDelta = new Vector2(120f, 120f);
         var discImg = discGO.AddComponent<Image>();
-        discImg.sprite = MakeDiscSprite(128);
-        discImg.color = new Color(0.06f, 0.11f, 0.24f, 0.55f);
+        discImg.sprite = MakeDiscSprite(160, new Color(0.06f, 0.11f, 0.24f, 0.55f),
+            Color.black, 10); // colors baked into the sprite
+        discImg.color = Color.white;
 
         var markGO = new GameObject("InfinityMark", typeof(RectTransform));
         markGO.transform.SetParent(btnGO.transform, false);
@@ -103,7 +105,7 @@ public class TreeResetButton : MonoBehaviour
         markRt.anchorMax = new Vector2(0.5f, 0.5f);
         markRt.pivot = new Vector2(0.5f, 0.5f);
         markRt.anchoredPosition = Vector2.zero;
-        markRt.sizeDelta = new Vector2(75f, 75f);
+        markRt.sizeDelta = new Vector2(94f, 94f); // 25% larger than the previous 75
         // Glowing infinity mark on transparency: no box, no border — just the
         // symbol. Loaded from Resources and turned into a sprite at runtime
         // (same proven pattern as the stage avatars), so texture import
@@ -128,8 +130,13 @@ public class TreeResetButton : MonoBehaviour
         Debug.Log($"TreeResetButton: built {buttonRect.rect} on {canvasGO.name}.");
     }
 
-    /// <summary>Generates a soft-edged filled disc sprite for the reset backing.</summary>
-    static Sprite MakeDiscSprite(int size)
+    /// <summary>
+    /// Generates a soft-edged filled disc sprite with a crisp outer border
+    /// ring: the rim pixels are <paramref name="borderColor"/>, the interior
+    /// is <paramref name="innerColor"/>. Colors are baked into the sprite so
+    /// the Image can stay plain white.
+    /// </summary>
+    static Sprite MakeDiscSprite(int size, Color innerColor, Color borderColor, float borderPx)
     {
         var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
         var pixels = new Color[size * size];
@@ -141,8 +148,13 @@ public class TreeResetButton : MonoBehaviour
                 float dx = x - r + 0.5f;
                 float dy = y - r + 0.5f;
                 float d = Mathf.Sqrt(dx * dx + dy * dy);
-                float a = Mathf.Clamp01((r - d) / 2f);
-                pixels[y * size + x] = new Color(1f, 1f, 1f, a);
+                float outer = Mathf.Clamp01((r - d) / 2f);
+                // Border ring: fully inside [r-borderPx, r] is the border
+                // color; feather both edges slightly for a clean sprite edge.
+                float border = Mathf.Clamp01((r - borderPx - d) / 1.5f);
+                Color c = Color.Lerp(innerColor, borderColor, 1f - border);
+                c.a *= outer;
+                pixels[y * size + x] = c;
             }
         }
         tex.SetPixels(pixels);

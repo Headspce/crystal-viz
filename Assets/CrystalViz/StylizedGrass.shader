@@ -7,8 +7,8 @@ Shader "CrystalViz/StylizedGrass"
         _WindStrength ("Wind Strength", Float) = 0.16
         _WindSpeed ("Wind Speed", Float) = 1.7
         _GustStrength ("Wind Gust Strength", Float) = 0.38
-        _GustSpeed ("Wind Gust Speed", Float) = 2.4
-        _GustFreq ("Wind Gust Frequency", Float) = 0.10
+        _GustSpeed ("Wind Gust Speed", Float) = 1.8
+        _GustFreq ("Wind Gust Frequency", Float) = 0.06
         _GustLighten ("Wind Gust Lighten", Float) = 0.28
     }
     SubShader

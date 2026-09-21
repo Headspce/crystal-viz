@@ -165,6 +165,18 @@ public class StageIndicatorUI : MonoBehaviour
 
         Sprite circle = MakeCircleSprite(256);
 
+        // Black outer outline ring around the whole avatar (player request).
+        var outlineGO = NewRect("AvatarOutline", root.transform);
+        var outlineRt = outlineGO.GetComponent<RectTransform>();
+        outlineRt.anchorMin = new Vector2(0.5f, 1f);
+        outlineRt.anchorMax = new Vector2(0.5f, 1f);
+        outlineRt.pivot = new Vector2(0.5f, 1f);
+        outlineRt.anchoredPosition = Vector2.zero;
+        outlineRt.sizeDelta = new Vector2(172f, 172f);
+        var outlineImg = outlineGO.AddComponent<Image>();
+        outlineImg.sprite = circle;
+        outlineImg.color = new Color(0f, 0f, 0f, 1f);
+
         // Avatar wrapper (this is what pops on stage change).
         var avatar = NewRect("Avatar", root.transform);
         var avatarRt = avatar.GetComponent<RectTransform>();
@@ -175,15 +187,15 @@ public class StageIndicatorUI : MonoBehaviour
         avatarRt.sizeDelta = new Vector2(162f, 162f);
         popRect = avatarRt;
 
-        // White ring border.
+        // Sky-blue ring border.
         var border = NewRect("Border", avatar.transform);
         Stretch(border.GetComponent<RectTransform>());
         var borderImg = border.AddComponent<Image>();
         borderImg.sprite = circle;
-        // Sky-blue ring sampled from the anime sky behind the icon
-        // (v5 texture, upper-sky patch) so the avatar sits in the scene
-        // instead of floating as a stark white badge.
-        borderImg.color = new Color(0.318f, 0.572f, 0.890f, 1f);
+        // Sky-blue ring, ~62% opaque so the sky shows through a little
+        // (player request), with the black outline ring sitting just outside
+        // it for definition.
+        borderImg.color = new Color(0.318f, 0.572f, 0.890f, 0.62f);
 
         // Circular mask holding the stage sprite.
         var maskGO = NewRect("CircleMask", avatar.transform);

@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.UI;
 
 /// <summary>
 /// Crystal Viz bootstrap: builds the entire diorama at runtime so the shipped
@@ -30,6 +31,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         BuildEnvironment();
         BuildSkyDome();
         BuildHorizonHaze();
+        BuildCredits(); // CC-BY 4.0 skybox attribution (license requirement)
         BuildSun();
         BuildDiorama();
         // Player light control: the right-edge sun slider is back by player
@@ -271,6 +273,44 @@ public class CrystalVizBootstrap : MonoBehaviour
 
     // --------------------------------------------------------------------- sun
 
+    /// <summary>
+    /// Attribution credit for the skybox panorama: "FREE - SkyBox Anime Sky"
+    /// by Paul (@paul_paul_paul), licensed CC-BY 4.0
+    /// (http://creativecommons.org/licenses/by/4.0/). Small, unobtrusive
+    /// text pinned to the bottom-right of the screen; kept visible (not
+    /// hidden behind UI) as the license requires attribution.
+    /// </summary>
+    void BuildCredits()
+    {
+        var canvasGO = new GameObject("CreditsCanvas");
+        var canvas = canvasGO.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = 80; // above the 3D scene, below the reset (90) and stage (100) UI
+        var scaler = canvasGO.AddComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1080f, 1920f);
+        scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+        scaler.matchWidthOrHeight = 0.5f;
+
+        var textGO = new GameObject("SkyCredit", typeof(RectTransform));
+        textGO.transform.SetParent(canvasGO.transform, false);
+        var rt = textGO.GetComponent<RectTransform>();
+        rt.anchorMin = new Vector2(1f, 0f);
+        rt.anchorMax = new Vector2(1f, 0f);
+        rt.pivot = new Vector2(1f, 0f);
+        rt.anchoredPosition = new Vector2(-24f, 18f);
+        rt.sizeDelta = new Vector2(920f, 44f);
+        var txt = textGO.AddComponent<Text>();
+        txt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        if (txt.font == null)
+            Debug.LogWarning("CrystalViz: built-in LegacyRuntime font not found; skybox credit may not render.");
+        txt.fontSize = 24;
+        txt.alignment = TextAnchor.LowerRight;
+        txt.color = new Color(1f, 1f, 1f, 0.75f);
+        txt.text = "Skybox: Paul (@paul_paul_paul) - CC-BY 4.0";
+        Debug.Log("CrystalViz: skybox credit added.");
+    }
+
     void BuildSun()
     {
         var go = new GameObject("Sun");
@@ -370,6 +410,13 @@ public class CrystalVizBootstrap : MonoBehaviour
         // reads as a shimmer, not a thrash.
         mat.SetFloat("_WindStrength", 0.02f);
         mat.SetFloat("_WindSpeed", 1.7f);
+        // Gust fronts: explicit here (not just shader defaults) so grass and
+        // wildflowers provably share the same wave bands. Fewer, slower
+        // gusts (player request 2026-09-21).
+        mat.SetFloat("_GustStrength", 0.38f);
+        mat.SetFloat("_GustSpeed", 1.8f);
+        mat.SetFloat("_GustFreq", 0.06f);
+        mat.SetFloat("_GustLighten", 0.28f);
 
         // One combined mesh => one draw call for the entire field (v1.0.5
         // used 800 GameObjects / 800 draw calls). Foliage-paint tool pinned
@@ -514,9 +561,15 @@ public class CrystalVizBootstrap : MonoBehaviour
         // petal vertex color defines the hue.
         mat.SetTexture("_BlossomMap", MakeBlossomTexture());
         // Same wind field as the grass so they ripple together; a touch
-        // stronger since blossoms sit higher and catch more air.
+        // stronger since blossoms sit higher and catch more air. Gust bands
+        // are shared with the grass (same direction/speed/frequency) so the
+        // whole meadow moves as one wave front.
         mat.SetFloat("_WindStrength", 0.035f);
         mat.SetFloat("_WindSpeed", 1.7f);
+        mat.SetFloat("_GustStrength", 0.30f);
+        mat.SetFloat("_GustSpeed", 1.8f);
+        mat.SetFloat("_GustFreq", 0.06f);
+        mat.SetFloat("_GustLighten", 0.28f);
 
         var rng = new System.Random(20260920);
         var verts = new System.Collections.Generic.List<Vector3>();

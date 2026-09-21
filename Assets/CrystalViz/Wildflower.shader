@@ -14,6 +14,12 @@ Shader "CrystalViz/Wildflower"
         _BlossomMap ("Blossom Head Map", 2D) = "white" {}
         _WindStrength ("Wind Strength", Float) = 0.035
         _WindSpeed ("Wind Speed", Float) = 1.7
+        // Shared gust fronts with the grass field (identical defaults) so
+        // flowers and blades ripple in sync when a gust band passes.
+        _GustStrength ("Wind Gust Strength", Float) = 0.30
+        _GustSpeed ("Wind Gust Speed", Float) = 1.8
+        _GustFreq ("Wind Gust Frequency", Float) = 0.06
+        _GustLighten ("Wind Gust Lighten", Float) = 0.28
     }
     SubShader
     {
@@ -56,6 +62,7 @@ Shader "CrystalViz/Wildflower"
                 float3 positionWS  : TEXCOORD4;
                 float4 shadowCoord : TEXCOORD5;
                 half   fogFactor   : TEXCOORD6;
+                float  gust        : TEXCOORD7;
             };
 
             half4 _RootColor;
@@ -64,6 +71,10 @@ Shader "CrystalViz/Wildflower"
             SAMPLER(sampler_BlossomMap);
             float _WindStrength;
             float _WindSpeed;
+            float _GustStrength;
+            float _GustSpeed;
+            float _GustFreq;
+            float _GustLighten;
 
             Varyings vert(Attributes IN)
             {
@@ -76,9 +87,21 @@ Shader "CrystalViz/Wildflower"
                 // blossom (uv.y^2) so roots stay planted.
                 float phase = _Time.y * _WindSpeed + wp.x * 0.35 + wp.z * 0.27;
                 float sway = sin(phase) * 0.6 + sin(phase * 2.3 + 1.7) * 0.4;
-                float bend = IN.uv.y * IN.uv.y * _WindStrength * sway;
+                float tipW = IN.uv.y * IN.uv.y;
+                float bend = tipW * _WindStrength * sway;
                 wp.x += bend;
                 wp.z += bend * 0.4;
+
+                // Zelda-style traveling gust fronts, shared with the grass
+                // field: the same sharpened wave bands sweep the flowers,
+                // bending blossoms in the gust direction as they pass.
+                float2 gustDir = normalize(float2(0.8, 0.6));
+                float gustCoord = dot(wp.xz, gustDir) * _GustFreq - _Time.y * _GustSpeed;
+                float gust = pow(0.5 + 0.5 * sin(gustCoord), 3.0);
+                float gustB = pow(0.5 + 0.5 * sin(gustCoord * 0.41 + 2.1), 3.0);
+                float gustAmt = gust * 0.75 + gustB * 0.25;
+                wp.xz += gustDir * (tipW * _GustStrength * gustAmt);
+                OUT.gust = gustAmt;
 
                 OUT.positionWS = wp;
                 OUT.positionHCS = TransformWorldToHClip(wp);
@@ -105,6 +128,9 @@ Shader "CrystalViz/Wildflower"
                 if (isBlossom > 0.5) clip(blossomTex.a - 0.5);
                 half3 blossom = IN.color.rgb * blossomTex.rgb * (0.85 + 0.30 * IN.uv.y);
                 half3 albedo = lerp(stem, blossom, isBlossom);
+                // The gust band catches the light here too, in sync with the
+                // grass: a bright wave visibly sweeping the blossoms.
+                albedo *= 1.0 + IN.gust * _GustLighten;
 
                 Light mainLight = GetMainLight(IN.shadowCoord);
                 // Wrapped diffuse keeps thin quads soft instead of black
