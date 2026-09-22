@@ -626,13 +626,18 @@ public class CrystalVizBootstrap : MonoBehaviour
         // screen-space density stays constant all the way out to the fog.
         // Blades stay at 25% of v1.0.7 size. Deterministic seed so the
         // field looks identical on every launch.
+        // v1.0.28 perf: 150k -> 60k tufts. The old count was 3.0M verts /
+        // ~1.5M tris in one mesh — the frame-rate killer on mobile. At ~31
+        // tufts/unit^2 near the camera the carpet still reads fully dense;
+        // blades this small (0.05-0.15 tall) were far past the point of
+        // diminishing returns.
         var rng = new System.Random(20260919);
         var verts = new System.Collections.Generic.List<Vector3>();
         var normals = new System.Collections.Generic.List<Vector3>();
         var uvs = new System.Collections.Generic.List<Vector2>();
         var tris = new System.Collections.Generic.List<int>();
 
-        const int count = 150000;
+        const int count = 60000;
         for (int i = 0; i < count; i++)
         {
             float a = (float)rng.NextDouble() * Mathf.PI * 2f;
@@ -665,7 +670,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         AppendHillGrass(verts, normals, uvs, tris, rng);
 
         var mesh = new Mesh { name = "GrassField" };
-        // 150000 tufts x 20 verts = 3.0M verts: needs 32-bit indices.
+        // 60000 tufts x 20 verts = 1.2M verts: needs 32-bit indices.
         mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
         mesh.SetVertices(verts);
         mesh.SetNormals(normals);

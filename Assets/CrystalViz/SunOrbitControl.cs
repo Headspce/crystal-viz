@@ -225,7 +225,7 @@ public class SunOrbitControl : MonoBehaviour
             // Above the slider top (slider top is at -150px from top edge at 0.25 scale = -37.5px rendered;
             // place icon centered above it)
             srt.anchoredPosition = new Vector2(-58f, -110f);
-            srt.sizeDelta = new Vector2(72f, 72f);
+            srt.sizeDelta = new Vector2(126f, 126f); // v1.0.28: 75% bigger (was 72)
             srt.localScale = new Vector3(0.25f, 0.25f, 1f);
             var sunImg = sunGo.GetComponent<Image>();
             sunImg.sprite = Sprite.Create(sunTex,

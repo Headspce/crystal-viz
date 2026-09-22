@@ -107,10 +107,12 @@ public class ParametricTree : MonoBehaviour
 
         if (lit != null)
         {
-            // Bark: Poly Haven bark_brown_02 (CC0) with official normal map.
+            // Bark: Poly Haven pine_bark (CC0) with official normal map:
+            // deeply furrowed, chunky plates like the reference photos
+            // (v1.0.28: replaced the finer-grained bark_brown_02).
             // Falls back to procedural ridged bark if the textures are missing.
-            var polyBark = Resources.Load<Texture2D>("Textures/bark_brown_02_1k");
-            var polyBarkNormal = Resources.Load<Texture2D>("Textures/bark_brown_02_1k_nor_gl");
+            var polyBark = Resources.Load<Texture2D>("Textures/pine_bark_1k");
+            var polyBarkNormal = Resources.Load<Texture2D>("Textures/pine_bark_1k_nor_gl");
 
             var trunkMat = new Material(lit);
             if (polyBark != null)
