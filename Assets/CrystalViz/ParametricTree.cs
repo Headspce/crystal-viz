@@ -175,12 +175,15 @@ public class ParametricTree : MonoBehaviour
         if (leafShader != null)
         {
             var leafMat = new Material(leafShader);
-            // Textured leaf: pointed-oval silhouette with a center vein on a
-            // transparent background, cut out by alpha test in the shader.
-            // Near-white albedo so the per-leaf green vertex colors define
-            // the hue. Wind uniforms mirror the meadow grass so the canopy
+            // Textured leaf: realistic broad-leaf PNG (texture.ninja,
+            // foliage_47, CC0) with a center vein on a transparent
+            // background, cut out by alpha test in the shader. The PNG is
+            // normalized toward the old procedural leaf green so the
+            // per-leaf green vertex colors grade it exactly as before.
+            // Wind uniforms mirror the meadow grass so the canopy
             // shivers and catches the same traveling gust fronts.
-            leafMat.SetTexture("_BaseMap", MakeLeafTexture());
+            var leafTex = Resources.Load<Texture2D>("Textures/foliage_47_leaf");
+            leafMat.SetTexture("_BaseMap", leafTex != null ? leafTex : MakeLeafTexture());
             leafMat.SetFloat("_WindStrength", 0.025f);
             leafMat.SetFloat("_WindSpeed", 1.7f);
             leafMat.SetFloat("_GustStrength", 0.06f);

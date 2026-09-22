@@ -108,7 +108,7 @@ public class SunOrbitControl : MonoBehaviour
         var fillSprite = MakeBarSprite(24, 64, 11,
             new Color(0.827f, 0.851f, 0.145f, 0.28f), new Color(0.867f, 0.490f, 0.153f, 0.28f),
             8, new Color(0.827f, 0.851f, 0.145f, 0.35f));
-        var knobTex = MakeKnobTexture(96);
+        // (knob texture is created lazily in the handle section below)
 
         // Slider root: slim vertical strip hugging the RIGHT edge.
         // v1.0.8: the whole bar is 75% smaller — rendered at quarter scale
@@ -169,13 +169,29 @@ public class SunOrbitControl : MonoBehaviour
         handle.transform.SetParent(handleArea.transform, false);
         var hrt = handle.GetComponent<RectTransform>();
         hrt.pivot = new Vector2(0.5f, 0.5f);
-        hrt.sizeDelta = new Vector2(48f, 48f);
+        // v1.0.27: the slider thumb IS the sun PNG icon (player request) —
+        // slightly larger than the old glass knob so the sun reads at the
+        // 0.25x slider scale. Falls back to the glass knob if missing.
+        hrt.sizeDelta = new Vector2(64f, 64f);
         knobRT = hrt;
-        var knobSprite = Sprite.Create(knobTex,
-            new Rect(0, 0, knobTex.width, knobTex.height),
-            new Vector2(0.5f, 0.5f));
+        var sunThumbTex = Resources.Load<Texture2D>("sun-icon");
+        Sprite thumbSprite;
+        if (sunThumbTex != null)
+        {
+            thumbSprite = Sprite.Create(sunThumbTex,
+                new Rect(0, 0, sunThumbTex.width, sunThumbTex.height),
+                new Vector2(0.5f, 0.5f), 100f);
+        }
+        else
+        {
+            var knobTex = MakeKnobTexture(96);
+            thumbSprite = Sprite.Create(knobTex,
+                new Rect(0, 0, knobTex.width, knobTex.height),
+                new Vector2(0.5f, 0.5f));
+        }
         var knobImg = handle.GetComponent<Image>();
-        knobImg.sprite = knobSprite;
+        knobImg.sprite = thumbSprite;
+        knobImg.preserveAspect = true;
         knobImg.type = Image.Type.Simple;
 
         // Angle readout under the mini slider: centered beneath it (the bar's
