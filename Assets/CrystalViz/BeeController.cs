@@ -33,6 +33,7 @@ public class BeeController : MonoBehaviour
     float flightDur;
     float stateTimer;
     float flapPhase;
+    Camera mainCam; // phone-screen bounds come from the main camera's viewport
 
     System.Random rng = new System.Random(20260922);
     List<Vector3> nearHeads = new List<Vector3>();
@@ -45,18 +46,24 @@ public class BeeController : MonoBehaviour
     const float FlapFlight = 44f;     // wing blur rad/s in flight
     const float FlapFeed = 30f;       // hovering buzz while feeding
     const float BodyLen = 0.095f;     // chunky and visible, per Tyler
+    // Viewport margins: the bee never leaves this rect on the phone screen.
+    const float MarginX = 0.06f;
+    const float MarginYBottom = 0.07f;
+    const float MarginYTop = 0.06f;
 
     void Start()
     {
         if (bootstrap == null) bootstrap = FindObjectOfType<CrystalVizBootstrap>();
+        mainCam = Camera.main;
         BuildBee();
         CollectNearFlowers();
         PickNextFlower(initial: true);
     }
 
     /// <summary>
-    /// Only blossoms within VisitRadius of the tree (origin) — the ones
-    /// closest to the camera, so the bee stays in clear view.
+    /// Only blossoms that are BOTH within VisitRadius of the tree AND on the
+    /// phone screen (inside the camera viewport with a margin) — the bee
+    /// picks its flowers from this list, so targets are always visible.
     /// </summary>
     void CollectNearFlowers()
     {
@@ -66,8 +73,33 @@ public class BeeController : MonoBehaviour
         foreach (var h in heads)
         {
             Vector2 flat = new Vector2(h.x, h.z);
-            if (flat.magnitude <= VisitRadius) nearHeads.Add(h);
+            if (flat.magnitude > VisitRadius) continue;
+            if (mainCam != null)
+            {
+                Vector3 vp = mainCam.WorldToViewportPoint(h);
+                if (vp.z <= 0f) continue; // behind the camera
+                if (vp.x < MarginX || vp.x > 1f - MarginX) continue;
+                if (vp.y < MarginYBottom || vp.y > 1f - MarginYTop) continue;
+            }
+            nearHeads.Add(h);
         }
+    }
+
+    /// <summary>
+    /// Safety net: pin the bee inside the camera viewport every frame so even
+    /// mid-flight bezier arcs and the takeoff zip can never leave the phone
+    /// screen. Tyler's request (v1.0.31): the bee was only visible
+    /// occasionally because flight paths wandered out of frame.
+    /// </summary>
+    void ClampToScreen()
+    {
+        if (mainCam == null || bodyT == null) return;
+        Vector3 vp = mainCam.WorldToViewportPoint(bodyT.position);
+        if (vp.z <= 0f) return; // behind the camera; leave it alone
+        float cx = Mathf.Clamp(vp.x, MarginX, 1f - MarginX);
+        float cy = Mathf.Clamp(vp.y, MarginYBottom, 1f - MarginYTop);
+        if (!Mathf.Approximately(cx, vp.x) || !Mathf.Approximately(cy, vp.y))
+            bodyT.position = mainCam.ViewportToWorldPoint(new Vector3(cx, cy, vp.z));
     }
 
     void BuildBee()
@@ -240,6 +272,9 @@ public class BeeController : MonoBehaviour
                 if (stateTimer <= 0f) PickNextFlower();
                 break;
         }
+
+        // Tyler (v1.0.31): the bee must never leave the phone screen.
+        ClampToScreen();
     }
 
     /// <summary>
