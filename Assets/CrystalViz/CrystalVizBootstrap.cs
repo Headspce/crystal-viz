@@ -317,7 +317,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         mat.SetFloat("_WindSpeed", 1.7f);
         mat.SetFloat("_GustStrength", 0f);  // ...or get combed flat
         mat.SetFloat("_GustSpeed", 1.8f);
-        mat.SetFloat("_GustFreq", 0.15f);  // shared bands: hills catch the light wave
+        mat.SetFloat("_GustFreq", 0.18f);  // shared bands: hills catch the light wave
         mat.SetFloat("_GustLighten", 0.28f);
 
         var rng = new System.Random(20260921);
@@ -598,7 +598,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         // fronts so the field reads as breezy with breaks.
         mat.SetFloat("_GustStrength", 0.12f); // lean, don't flatten: 0.45 combed blades flat and exposed the dark ground in pulsing waves
         mat.SetFloat("_GustSpeed", 1.8f);
-        mat.SetFloat("_GustFreq", 0.15f);
+        mat.SetFloat("_GustFreq", 0.18f);
         mat.SetFloat("_GustLighten", 0.28f);
 
         // One combined mesh => one draw call for the entire field (v1.0.5
@@ -760,7 +760,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         mat.SetFloat("_WindSpeed", 1.7f);
         mat.SetFloat("_GustStrength", 0.12f); // same: sway, don't plaster
         mat.SetFloat("_GustSpeed", 1.8f);
-        mat.SetFloat("_GustFreq", 0.15f);
+        mat.SetFloat("_GustFreq", 0.18f);
         mat.SetFloat("_GustLighten", 0.28f);
 
         var rng = new System.Random(20260920);

@@ -150,11 +150,11 @@ public class ParametricTree : MonoBehaviour
             // the hue. Wind uniforms mirror the meadow grass so the canopy
             // shivers and catches the same traveling gust fronts.
             leafMat.SetTexture("_BaseMap", MakeLeafTexture());
-            leafMat.SetFloat("_WindStrength", 0.06f);
+            leafMat.SetFloat("_WindStrength", 0.025f);
             leafMat.SetFloat("_WindSpeed", 1.7f);
-            leafMat.SetFloat("_GustStrength", 0.15f);
+            leafMat.SetFloat("_GustStrength", 0.06f);
             leafMat.SetFloat("_GustSpeed", 1.8f);
-            leafMat.SetFloat("_GustFreq", 0.035f);
+            leafMat.SetFloat("_GustFreq", 0.18f);
             leafMat.SetFloat("_GustLighten", 0.28f);
             leafRenderer.material = leafMat;
             // The custom leaf shader has no shadow-caster pass; leaves are
