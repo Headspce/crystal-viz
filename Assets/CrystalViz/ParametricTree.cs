@@ -107,25 +107,56 @@ public class ParametricTree : MonoBehaviour
 
         if (lit != null)
         {
+            // Bark: Poly Haven bark_brown_02 (CC0) with official normal map.
+            // Falls back to procedural ridged bark if the textures are missing.
+            var polyBark = Resources.Load<Texture2D>("Textures/bark_brown_02_1k");
+            var polyBarkNormal = Resources.Load<Texture2D>("Textures/bark_brown_02_1k_nor_gl");
+
             var trunkMat = new Material(lit);
-            float[] barkHeight;
-            var barkTex = MakeBarkTexture(out barkHeight, BarkRidgeColumns);
-            trunkMat.SetTexture("_BaseMap", barkTex);
-            var barkBump = MakeBumpTexture(barkHeight, BarkTexSize);
-            trunkMat.SetTexture("_BumpMap", barkBump);
-            trunkMat.SetFloat("_BumpScale", 0.6f);
+            if (polyBark != null)
+            {
+                trunkMat.SetTexture("_BaseMap", polyBark);
+                if (polyBarkNormal != null)
+                {
+                    trunkMat.SetTexture("_BumpMap", polyBarkNormal);
+                    trunkMat.SetFloat("_BumpScale", 0.6f);
+                }
+            }
+            else
+            {
+                // Fallback: procedural tileable ridged bark
+                float[] barkHeight;
+                var barkTex = MakeBarkTexture(out barkHeight, BarkRidgeColumns);
+                trunkMat.SetTexture("_BaseMap", barkTex);
+                var barkBump = MakeBumpTexture(barkHeight, BarkTexSize);
+                trunkMat.SetTexture("_BumpMap", barkBump);
+                trunkMat.SetFloat("_BumpScale", 0.6f);
+            }
             trunkMat.SetFloat("_Smoothness", 0.8f); // roughness ~0.2: soft sheen, not chalk
             trunkMat.SetFloat("_Metallic", 0f);
             trunkMat.color = Color.white;
-            // Branches (submesh 1) wear the same dark-brown ridged bark with
-            // chunkier ridges so the texture reads on thin tubes.
+            // Branches (submesh 1) wear the same bark with chunkier ridges so
+            // the texture reads on thin tubes. Poly Haven bark works for both;
+            // procedural fallback uses the chunkier branch ridge count.
             var branchMat = new Material(lit);
-            float[] branchHeight;
-            var branchTex = MakeBarkTexture(out branchHeight, BranchRidgeColumns);
-            branchMat.SetTexture("_BaseMap", branchTex);
-            var branchBump = MakeBumpTexture(branchHeight, BarkTexSize);
-            branchMat.SetTexture("_BumpMap", branchBump);
-            branchMat.SetFloat("_BumpScale", 0.6f);
+            if (polyBark != null)
+            {
+                branchMat.SetTexture("_BaseMap", polyBark);
+                if (polyBarkNormal != null)
+                {
+                    branchMat.SetTexture("_BumpMap", polyBarkNormal);
+                    branchMat.SetFloat("_BumpScale", 0.6f);
+                }
+            }
+            else
+            {
+                float[] branchHeight;
+                var branchTex = MakeBarkTexture(out branchHeight, BranchRidgeColumns);
+                branchMat.SetTexture("_BaseMap", branchTex);
+                var branchBump = MakeBumpTexture(branchHeight, BarkTexSize);
+                branchMat.SetTexture("_BumpMap", branchBump);
+                branchMat.SetFloat("_BumpScale", 0.6f);
+            }
             branchMat.SetFloat("_Smoothness", 0.8f);
             branchMat.SetFloat("_Metallic", 0f);
             branchMat.color = Color.white;

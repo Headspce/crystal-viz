@@ -100,17 +100,21 @@ public class SunOrbitControl : MonoBehaviour
 
         // Transparent glass skin: procedural textures (dark glass track,
         // translucent fill, transparent glass knob) generated once — no image assets.
+        // Vintage Meadow palette: sky blue (#5CA8FF) track, golden sunlight
+        // (#D3D925) fill glow.
         var trackSprite = MakeBarSprite(24, 64, 11,
-            new Color(0.17f, 0.19f, 0.23f, 0.78f), new Color(0.07f, 0.09f, 0.13f, 0.78f),
+            new Color(0.361f, 0.659f, 1.00f, 0.78f), new Color(0.17f, 0.32f, 0.55f, 0.78f),
             0, Color.clear);
         var fillSprite = MakeBarSprite(24, 64, 11,
-            new Color(0.50f, 0.95f, 1.00f, 0.28f), new Color(0.05f, 0.72f, 0.95f, 0.28f),
-            8, new Color(0.25f, 0.85f, 1.00f, 0.35f));
+            new Color(0.827f, 0.851f, 0.145f, 0.28f), new Color(0.867f, 0.490f, 0.153f, 0.28f),
+            8, new Color(0.827f, 0.851f, 0.145f, 0.35f));
         var knobTex = MakeKnobTexture(96);
 
         // Slider root: slim vertical strip hugging the RIGHT edge.
         // v1.0.8: the whole bar is 75% smaller — rendered at quarter scale
         // about its right-center pivot so it stays glued to the edge.
+        // v1.0.26: 25% wider (48px -> 60px) for easier touch targeting,
+        // right edge stays glued at -28px.
         var root = new GameObject("SunSlider", typeof(RectTransform), typeof(Slider));
         root.transform.SetParent(canvasGo.transform, false);
         var rrt = root.GetComponent<RectTransform>();
@@ -119,7 +123,7 @@ public class SunOrbitControl : MonoBehaviour
         // Shifted ~2 screen px inward from the right edge (player request
         // 2026-09-21): a fingertip on the strip no longer collides with the
         // screen border before the knob reaches the end of its travel.
-        rrt.offsetMin = new Vector2(-76f, 150f);
+        rrt.offsetMin = new Vector2(-88f, 150f);
         rrt.offsetMax = new Vector2(-28f, -150f);
         rrt.pivot = new Vector2(1f, 0.5f);
         rrt.localScale = new Vector3(0.25f, 0.25f, 1f);
@@ -189,6 +193,30 @@ public class SunOrbitControl : MonoBehaviour
         txt.alignment = TextAnchor.MiddleCenter;
         txt.color = new Color(0.93f, 0.97f, 1f, 0.92f);
         angleLabel = txt;
+
+        // Sun icon above the slider: loaded from Resources/sun-icon.png,
+        // scaled to match the 0.25x slider scale. Sits at the top of the
+        // slider track to indicate this controls the sun position.
+        var sunTex = Resources.Load<Texture2D>("sun-icon");
+        if (sunTex != null)
+        {
+            var sunGo = new GameObject("SunIcon", typeof(RectTransform), typeof(Image));
+            sunGo.transform.SetParent(canvasGo.transform, false);
+            var srt = sunGo.GetComponent<RectTransform>();
+            srt.anchorMin = new Vector2(1f, 1f);
+            srt.anchorMax = new Vector2(1f, 1f);
+            srt.pivot = new Vector2(0.5f, 0.5f);
+            // Above the slider top (slider top is at -150px from top edge at 0.25 scale = -37.5px rendered;
+            // place icon centered above it)
+            srt.anchoredPosition = new Vector2(-58f, -110f);
+            srt.sizeDelta = new Vector2(72f, 72f);
+            srt.localScale = new Vector3(0.25f, 0.25f, 1f);
+            var sunImg = sunGo.GetComponent<Image>();
+            sunImg.sprite = Sprite.Create(sunTex,
+                new Rect(0, 0, sunTex.width, sunTex.height),
+                new Vector2(0.5f, 0.5f), 100f);
+            sunImg.preserveAspect = true;
+        }
     }
 
     /// <summary>

@@ -116,12 +116,27 @@ public class CrystalVizBootstrap : MonoBehaviour
         ground.name = "GrassGround";
         ground.transform.position = Vector3.zero;
         ground.transform.localScale = new Vector3(20f, 1f, 20f); // 200x200 world units, past the sky plane
-        var gmat = NewLitMaterial();
-        if (gmat != null)
+        // MeadowGround shader: dark-green base tint preserved exactly, with
+        // Poly Haven dirt detail and wind-aligned moving cloud shadows.
+        var meadowShader = Shader.Find("CrystalViz/MeadowGround");
+        if (meadowShader != null)
         {
+            var gmat = new Material(meadowShader);
             gmat.color = new Color(0.24f, 0.45f, 0.17f, 1f); // dark shadowed moss: gaps read as depth under the grass, not neon
-            gmat.SetFloat("_Smoothness", 0f);
+            var dirtTex = Resources.Load<Texture2D>("Textures/brown_mud_leaves_01_1k");
+            if (dirtTex != null) gmat.SetTexture("_DirtTex", dirtTex);
             ground.GetComponent<Renderer>().material = gmat;
+        }
+        else
+        {
+            // Fallback: plain lit material if the shader was stripped.
+            var gmat = NewLitMaterial();
+            if (gmat != null)
+            {
+                gmat.color = new Color(0.24f, 0.45f, 0.17f, 1f);
+                gmat.SetFloat("_Smoothness", 0f);
+                ground.GetComponent<Renderer>().material = gmat;
+            }
         }
 
         // Faint cool fill so shadow sides of the tree don't go pitch black.

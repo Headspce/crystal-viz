@@ -212,6 +212,20 @@ public static class CrystalVizBuild
             Debug.LogWarning("CrystalVizBuild: 'CrystalViz/Wildflower' not found; wildflowers will be skipped at runtime.");
         }
 
+        // The meadow-ground shader (dirt detail + wind-aligned cloud shadows)
+        // is created at runtime via Shader.Find by the bootstrap; pin its
+        // variants (shadow/additional-light/fog multi_compiles) so they
+        // survive stripping. Missing => ground falls back to the Lit material.
+        var meadowShader = Shader.Find("CrystalViz/MeadowGround");
+        if (meadowShader != null)
+        {
+            PinVariants(meadowShader);
+        }
+        else
+        {
+            Debug.LogWarning("CrystalVizBuild: 'CrystalViz/MeadowGround' not found; ground will use the fallback Lit material.");
+        }
+
         // The horizon-haze shader is also created at runtime via
         // Shader.Find; pin its (single) variant so it survives stripping.
         // A missing shader here is fine — the bootstrap skips the haze.

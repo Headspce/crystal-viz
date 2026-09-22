@@ -108,6 +108,12 @@ public class StageIndicatorUI : MonoBehaviour
             && stageSprites[stage] != null)
         {
             stageImage.sprite = stageSprites[stage];
+            // Stage-specific scaling: the sapling artwork is very tall and
+            // narrow; scale it down to 72% so it sits comfortably inside the
+            // circular indicator without touching the ring. Other stages
+            // fill the circle naturally.
+            float scale = (stage == 1) ? 0.72f : 1.0f;
+            stageImage.rectTransform.localScale = new Vector3(scale, scale, 1f);
         }
     }
 
@@ -187,7 +193,7 @@ public class StageIndicatorUI : MonoBehaviour
         avatarRt.sizeDelta = new Vector2(162f, 162f);
         popRect = avatarRt;
 
-        // Sky-blue ring border.
+        // Sky-blue ring border: Vintage Meadow palette (#5CA8FF).
         var border = NewRect("Border", avatar.transform);
         Stretch(border.GetComponent<RectTransform>());
         var borderImg = border.AddComponent<Image>();
@@ -195,7 +201,7 @@ public class StageIndicatorUI : MonoBehaviour
         // Sky-blue ring, ~62% opaque so the sky shows through a little
         // (player request), with the black outline ring sitting just outside
         // it for definition.
-        borderImg.color = new Color(0.318f, 0.572f, 0.890f, 0.62f);
+        borderImg.color = new Color(0.361f, 0.659f, 1.0f, 0.62f);
 
         // Circular mask holding the stage sprite.
         var maskGO = NewRect("CircleMask", avatar.transform);

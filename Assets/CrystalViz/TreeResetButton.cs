@@ -82,9 +82,10 @@ public class TreeResetButton : MonoBehaviour
         buttonRect.anchoredPosition = new Vector2(48f, 48f);
         buttonRect.sizeDelta = new Vector2(120f, 120f);
         // Color scheme: the glowing infinity mark at 75% opacity (25% lighter
-        // than before) floating on a soft dark-navy disc with a crisp black
-        // rim, so it reads cleanly against both the bright grass and the
-        // dark soil. 25% larger than the previous pass (player request).
+        // than before) floating on a soft Vintage Meadow sky-blue disc
+        // (#5CA8FF darkened) with a crisp black rim, so it reads cleanly
+        // against both the bright grass and the dark soil. 25% larger than
+        // the previous pass (player request).
         var discGO = new GameObject("ResetDisc", typeof(RectTransform));
         discGO.transform.SetParent(btnGO.transform, false);
         var discRt = discGO.GetComponent<RectTransform>();
@@ -94,7 +95,7 @@ public class TreeResetButton : MonoBehaviour
         discRt.anchoredPosition = Vector2.zero;
         discRt.sizeDelta = new Vector2(120f, 120f);
         var discImg = discGO.AddComponent<Image>();
-        discImg.sprite = MakeDiscSprite(160, new Color(0.06f, 0.11f, 0.24f, 0.55f),
+        discImg.sprite = MakeDiscSprite(160, new Color(0.18f, 0.33f, 0.50f, 0.55f),
             Color.black, 5); // colors baked into the sprite; thinner rim (player request 2026-09-21)
         discImg.color = Color.white;
 
