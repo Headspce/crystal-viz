@@ -18,7 +18,7 @@ public class CrystalVizBootstrap : MonoBehaviour
     [HideInInspector] public float sunDistance = 14f;
 
     // v1.0.29: flower blossom-head world positions, recorded during
-    // BuildWildflowers so the butterfly prototype has targets to visit.
+    // BuildWildflowers so the bee prototype has targets to visit.
     [HideInInspector] public System.Collections.Generic.List<Vector3> flowerHeads =
         new System.Collections.Generic.List<Vector3>();
 
@@ -548,14 +548,15 @@ public class CrystalVizBootstrap : MonoBehaviour
         BuildGrowingTree();
         BuildGrassField();
         BuildWildflowers();
-        // v1.0.29 butterfly prototype (player request): one butterfly flitting
-        // between random flowers. Added after BuildWildflowers so flowerHeads
-        // is populated. Its Start() runs in play mode; in the CI edit-mode
-        // screenshot path Start never fires, so the butterfly simply idles at
-        // origin there — harmless.
-        var flyGO = new GameObject("Butterfly");
-        var fly = flyGO.AddComponent<ButterflyController>();
-        fly.bootstrap = this;
+        // v1.0.30 bee prototype (player request): one bumblebee working the
+        // wildflowers nearest the tree. Replaces the v1.0.29 butterfly —
+        // Tyler clarified he wanted a bee, not a butterfly. Added after
+        // BuildWildflowers so flowerHeads is populated. Its Start() runs in
+        // play mode; in the CI edit-mode screenshot path Start never fires,
+        // so the bee GameObject stays empty there — harmless.
+        var beeGO = new GameObject("Bee");
+        var bee = beeGO.AddComponent<BeeController>();
+        bee.bootstrap = this;
     }
 
     /// <summary>
@@ -835,7 +836,7 @@ public class CrystalVizBootstrap : MonoBehaviour
             petal = new Color(petal.r * j, petal.g * j, petal.b * j, 1f);
             int cell = rng.Next(4); // blossom-head shape from the atlas
             AppendWildflower(verts, normals, uvs, uvs2, colors, tris, mtx, rng, petal, cell, out Vector3 headWorld);
-            flowerHeads.Add(headWorld); // v1.0.29: butterfly visit targets
+            flowerHeads.Add(headWorld); // v1.0.29: bee visit targets
             planted++;
         }
 
@@ -879,7 +880,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         System.Random rng,
         Color petal,
         int cell,
-        out Vector3 headWorld) // v1.0.29: world-space blossom center for the butterfly
+        out Vector3 headWorld) // v1.0.29: world-space blossom center for the bee
     {
         float h = 0.15f + (float)rng.NextDouble() * 0.20f;
         float tilt = ((float)rng.NextDouble() - 0.5f) * 0.25f;

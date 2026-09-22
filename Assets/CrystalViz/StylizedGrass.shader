@@ -54,6 +54,7 @@ Shader "CrystalViz/StylizedGrass"
                 // from fragment to vertex (2 sins per vertex not per pixel;
                 // patches are huge — 57+ unit wavelength — so interpolation
                 // is visually identical).
+            };
 
             half4 _RootColor;
             half4 _TipColor;
