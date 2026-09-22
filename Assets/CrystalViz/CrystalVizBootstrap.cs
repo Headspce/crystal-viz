@@ -331,17 +331,18 @@ public class CrystalVizBootstrap : MonoBehaviour
         // frame top at +13.8 deg elevation. Six broad GENTLE swells, x in
         // [-19.5, 19.5], z staggered [-50, -62]: nearer swells rise higher,
         // farther ones sink lower and paler into the fog (43-74%) for natural
-        // aerial perspective. Crests at 1-3 deg elevation, h/r ~0.27:
+        // aerial perspective. Crests at ~1.5-2.5 deg elevation, h/r ~0.27:
         // low rolling farmland swells, deliberately flattened (2026-09-21)
-        // so they read as landscape, not domes.
+        // so they read as landscape, not domes. Kept big enough that the
+        // swells still rise visibly above the horizon line.
         hillDefs.Clear();
         const int hills = 6;
         for (int i = 0; i < hills; i++)
         {
             float x = -17.5f + i * 7f + ((float)rng.NextDouble() - 0.5f) * 4f;
             float z = -50f - (float)rng.NextDouble() * 12f;
-            float h = 2.4f + (float)rng.NextDouble() * 1.0f;  // 2.4-3.4 tall
-            float rad = 10f + (float)rng.NextDouble() * 3f;   // 10-13 wide
+            float h = 3.2f + (float)rng.NextDouble() * 1.2f;  // 3.2-4.4 tall
+            float rad = 13f + (float)rng.NextDouble() * 3f;   // 13-16 wide
             var def = new HillDef
             {
                 center = new Vector3(x, 0f, z),
@@ -441,9 +442,11 @@ public class CrystalVizBootstrap : MonoBehaviour
     /// scattered across each mound's surface using the exact profile formula
     /// AppendHill uses, so blades sit on the slope instead of floating.
     /// Tufts are aligned to the surface normal with a random yaw and scaled
-    /// 8-12x — at 50-60 units away, full-size blades would be sub-pixel, so
+    /// 3-5x — at 50-60 units away, full-size blades would be sub-pixel, so
     /// the scale-up is what makes the hills read as grassy rather than
-    /// smooth. They share the meadow's material and wind uniforms, so the
+    /// smooth. Kept proportional to the mounds: oversized tufts (tried 8-12x)
+    /// swallowed the silhouettes and turned the ridge into a fuzzy bright
+    /// wall. They share the meadow's material and wind uniforms, so the
     /// gust fronts sweep the hills in sync. Appends into the grass field's
     /// mesh lists: still one combined mesh, one draw call.
     /// </summary>
@@ -457,9 +460,9 @@ public class CrystalVizBootstrap : MonoBehaviour
         int hillTufts = 0;
         foreach (var def in hillDefs)
         {
-            // ~7 tufts per unit^2 of mound footprint: a textured grassy
+            // ~4.5 tufts per unit^2 of mound footprint: a textured grassy
             // cover, not a solid carpet (the smooth hill mesh shows between).
-            int count = Mathf.RoundToInt(Mathf.PI * def.radius * def.radius * 7f);
+            int count = Mathf.RoundToInt(Mathf.PI * def.radius * def.radius * 4.5f);
             for (int i = 0; i < count; i++)
             {
                 float fr = 0.08f + (float)rng.NextDouble() * 0.84f; // avoid exact crest/base
@@ -478,7 +481,7 @@ public class CrystalVizBootstrap : MonoBehaviour
                 pos -= n * 0.15f; // sink the roots so tufts never float
                 Quaternion q = Quaternion.FromToRotation(Vector3.up, n)
                     * Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f);
-                float s = 8f + (float)rng.NextDouble() * 4f; // 8-12x: reads at 60 units
+                float s = 3f + (float)rng.NextDouble() * 2f; // 3-5x: grassy at 60 units, keeps silhouettes
                 AppendGrassTuft(verts, normals, uvs, tris,
                     Matrix4x4.TRS(pos, q, Vector3.one * s), rng);
                 hillTufts++;
