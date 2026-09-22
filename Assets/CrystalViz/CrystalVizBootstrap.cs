@@ -17,6 +17,11 @@ public class CrystalVizBootstrap : MonoBehaviour
     [HideInInspector] public float sunElevationDeg = 35f;
     [HideInInspector] public float sunDistance = 14f;
 
+    // v1.0.29: flower blossom-head world positions, recorded during
+    // BuildWildflowers so the butterfly prototype has targets to visit.
+    [HideInInspector] public System.Collections.Generic.List<Vector3> flowerHeads =
+        new System.Collections.Generic.List<Vector3>();
+
     void Awake() => BuildScene();
 
     /// <summary>
@@ -543,6 +548,14 @@ public class CrystalVizBootstrap : MonoBehaviour
         BuildGrowingTree();
         BuildGrassField();
         BuildWildflowers();
+        // v1.0.29 butterfly prototype (player request): one butterfly flitting
+        // between random flowers. Added after BuildWildflowers so flowerHeads
+        // is populated. Its Start() runs in play mode; in the CI edit-mode
+        // screenshot path Start never fires, so the butterfly simply idles at
+        // origin there — harmless.
+        var flyGO = new GameObject("Butterfly");
+        var fly = flyGO.AddComponent<ButterflyController>();
+        fly.bootstrap = this;
     }
 
     /// <summary>
@@ -626,18 +639,17 @@ public class CrystalVizBootstrap : MonoBehaviour
         // screen-space density stays constant all the way out to the fog.
         // Blades stay at 25% of v1.0.7 size. Deterministic seed so the
         // field looks identical on every launch.
-        // v1.0.28 perf: 150k -> 60k tufts. The old count was 3.0M verts /
-        // ~1.5M tris in one mesh — the frame-rate killer on mobile. At ~31
-        // tufts/unit^2 near the camera the carpet still reads fully dense;
-        // blades this small (0.05-0.15 tall) were far past the point of
-        // diminishing returns.
+        // v1.0.29: restored to 150k tufts per player request (the dense
+        // carpet look). Frame-rate work moved into the shaders instead:
+        // patchiness now computed per-vertex not per-fragment, pow() ->
+        // multiply, so the full density runs cheaper than 60k did before.
         var rng = new System.Random(20260919);
         var verts = new System.Collections.Generic.List<Vector3>();
         var normals = new System.Collections.Generic.List<Vector3>();
         var uvs = new System.Collections.Generic.List<Vector2>();
         var tris = new System.Collections.Generic.List<int>();
 
-        const int count = 60000;
+        const int count = 150000;
         for (int i = 0; i < count; i++)
         {
             float a = (float)rng.NextDouble() * Mathf.PI * 2f;
@@ -670,7 +682,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         AppendHillGrass(verts, normals, uvs, tris, rng);
 
         var mesh = new Mesh { name = "GrassField" };
-        // 60000 tufts x 20 verts = 1.2M verts: needs 32-bit indices.
+        // 150000 tufts x 20 verts = 3.0M verts: needs 32-bit indices.
         mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
         mesh.SetVertices(verts);
         mesh.SetNormals(normals);
@@ -822,7 +834,8 @@ public class CrystalVizBootstrap : MonoBehaviour
             float j = 0.88f + (float)rng.NextDouble() * 0.18f;
             petal = new Color(petal.r * j, petal.g * j, petal.b * j, 1f);
             int cell = rng.Next(4); // blossom-head shape from the atlas
-            AppendWildflower(verts, normals, uvs, uvs2, colors, tris, mtx, rng, petal, cell);
+            AppendWildflower(verts, normals, uvs, uvs2, colors, tris, mtx, rng, petal, cell, out Vector3 headWorld);
+            flowerHeads.Add(headWorld); // v1.0.29: butterfly visit targets
             planted++;
         }
 
@@ -865,7 +878,8 @@ public class CrystalVizBootstrap : MonoBehaviour
         Matrix4x4 mtx,
         System.Random rng,
         Color petal,
-        int cell)
+        int cell,
+        out Vector3 headWorld) // v1.0.29: world-space blossom center for the butterfly
     {
         float h = 0.15f + (float)rng.NextDouble() * 0.20f;
         float tilt = ((float)rng.NextDouble() - 0.5f) * 0.25f;
@@ -919,6 +933,7 @@ public class CrystalVizBootstrap : MonoBehaviour
             tris.Add(qb); tris.Add(qb + 2); tris.Add(qb + 1);
             tris.Add(qb + 1); tris.Add(qb + 2); tris.Add(qb + 3);
         }
+        headWorld = mtx.MultiplyPoint3x4(c);
     }
 
     /// <summary>

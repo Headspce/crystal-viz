@@ -50,7 +50,10 @@ Shader "CrystalViz/StylizedGrass"
                 float4 shadowCoord : TEXCOORD3;
                 half   fogFactor   : TEXCOORD4;
                 float  gust        : TEXCOORD5;
-            };
+                float  patch       : TEXCOORD6; // v1.0.29: patchiness moved
+                // from fragment to vertex (2 sins per vertex not per pixel;
+                // patches are huge — 57+ unit wavelength — so interpolation
+                // is visually identical).
 
             half4 _RootColor;
             half4 _TipColor;
@@ -82,11 +85,22 @@ Shader "CrystalViz/StylizedGrass"
                 // rhythm from looking mechanical.
                 float2 gustDir = normalize(float2(0.8, 0.6));
                 float gustCoord = dot(wp.xz, gustDir) * _GustFreq - _Time.y * _GustSpeed;
-                float gust = pow(0.5 + 0.5 * sin(gustCoord), 3.0);
-                float gustB = pow(0.5 + 0.5 * sin(gustCoord * 0.41 + 2.1), 3.0);
+                // v1.0.29: x*x*x instead of pow(x, 3.0) — same curve, cheaper ALU.
+                float gs = 0.5 + 0.5 * sin(gustCoord);
+                float gust = gs * gs * gs;
+                float gsB = 0.5 + 0.5 * sin(gustCoord * 0.41 + 2.1);
+                float gustB = gsB * gsB * gsB;
                 float gustAmt = gust * 0.75 + gustB * 0.25;
                 wp.xz += gustDir * (tipW * _GustStrength * gustAmt);
                 OUT.gust = gustAmt;
+
+                // v1.0.29: coherent patchiness computed here (per-vertex) not
+                // in the fragment shader (was 2 sins per pixel). Zelda-meadow
+                // style large soft patches; wavelength 57+ units so vertex
+                // interpolation is visually identical.
+                float patch = sin(wp.x * 0.11 + wp.z * 0.07)
+                            * sin(wp.x * 0.05 - wp.z * 0.13);
+                OUT.patch = 0.85 + 0.30 * (0.5 + 0.5 * patch);
 
                 OUT.positionWS = wp;
                 OUT.positionHCS = TransformWorldToHClip(wp);
@@ -105,12 +119,10 @@ Shader "CrystalViz/StylizedGrass"
                 // Stylized gradient: dark root blending to a light sunny tip.
                 half3 albedo = lerp(_RootColor.rgb, _TipColor.rgb, IN.uv.y);
 
-                // Coherent patchiness: large soft patches of lighter/darker
-                // grass drifting across the field, Zelda-meadow style. Pure
-                // function of world position, so it costs no vertex data.
-                float patch = sin(IN.positionWS.x * 0.11 + IN.positionWS.z * 0.07)
-                            * sin(IN.positionWS.x * 0.05 - IN.positionWS.z * 0.13);
-                albedo *= 0.85 + 0.30 * (0.5 + 0.5 * patch);
+                // Coherent patchiness: now interpolated from the vertex shader
+                // (v1.0.29 perf: was 2 sins per fragment). Large soft patches
+                // of lighter/darker grass drifting across the field.
+                albedo *= IN.patch;
                 // The gust band also catches the light: a bright wave visibly
                 // sweeping the meadow, Ghibli style, with the troughs
                 // darkening behind it so the wind reads as distinct lines.

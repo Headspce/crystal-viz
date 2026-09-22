@@ -95,8 +95,11 @@ Shader "CrystalViz/LeafWind"
                 // gust and lift as the bright band passes.
                 float2 gustDir = normalize(float2(0.8, 0.6));
                 float gustCoord = dot(wp.xz, gustDir) * _GustFreq - _Time.y * _GustSpeed;
-                float gust = pow(0.5 + 0.5 * sin(gustCoord), 3.0);
-                float gustB = pow(0.5 + 0.5 * sin(gustCoord * 0.41 + 2.1), 3.0);
+                // v1.0.29: x*x*x instead of pow(x, 3.0) — same curve, cheaper ALU.
+                float gs = 0.5 + 0.5 * sin(gustCoord);
+                float gust = gs * gs * gs;
+                float gsB = 0.5 + 0.5 * sin(gustCoord * 0.41 + 2.1);
+                float gustB = gsB * gsB * gsB;
                 float gustAmt = gust * 0.75 + gustB * 0.25;
                 wp.xz += gustDir * (w * _GustStrength * gustAmt);
                 wp.y += w * _GustStrength * gustAmt * 0.2; // leaves lift in gusts

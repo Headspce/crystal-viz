@@ -210,23 +210,25 @@ public class SunOrbitControl : MonoBehaviour
         txt.color = new Color(0.93f, 0.97f, 1f, 0.92f);
         angleLabel = txt;
 
-        // Sun icon above the slider: loaded from Resources/sun-icon.png,
-        // scaled to match the 0.25x slider scale. Sits at the top of the
-        // slider track to indicate this controls the sun position.
+        // Sun icon: child of the slider root so it rides with the slider and
+        // sits stuck to the top of the track (v1.0.29: was a free-floating
+        // canvas child at the top-right corner). Anchored to the slider's
+        // top-center; the slider root's 0.25 scale applies, so localScale
+        // stays 1 and the 126px size renders at the same 31.5px as before.
         var sunTex = Resources.Load<Texture2D>("sun-icon");
         if (sunTex != null)
         {
             var sunGo = new GameObject("SunIcon", typeof(RectTransform), typeof(Image));
-            sunGo.transform.SetParent(canvasGo.transform, false);
+            sunGo.transform.SetParent(root.transform, false);
             var srt = sunGo.GetComponent<RectTransform>();
-            srt.anchorMin = new Vector2(1f, 1f);
-            srt.anchorMax = new Vector2(1f, 1f);
+            srt.anchorMin = new Vector2(0.5f, 1f);
+            srt.anchorMax = new Vector2(0.5f, 1f);
             srt.pivot = new Vector2(0.5f, 0.5f);
-            // Above the slider top (slider top is at -150px from top edge at 0.25 scale = -37.5px rendered;
-            // place icon centered above it)
-            srt.anchoredPosition = new Vector2(-58f, -110f);
+            // Center 75px above the slider's top edge: icon half-height (63)
+            // + 12px gap, so it sits snug against the track.
+            srt.anchoredPosition = new Vector2(0f, 75f);
             srt.sizeDelta = new Vector2(126f, 126f); // v1.0.28: 75% bigger (was 72)
-            srt.localScale = new Vector3(0.25f, 0.25f, 1f);
+            srt.localScale = new Vector3(1f, 1f, 1f);
             var sunImg = sunGo.GetComponent<Image>();
             sunImg.sprite = Sprite.Create(sunTex,
                 new Rect(0, 0, sunTex.width, sunTex.height),
