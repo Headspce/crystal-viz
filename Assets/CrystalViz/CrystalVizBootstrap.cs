@@ -317,7 +317,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         mat.SetFloat("_WindSpeed", 1.7f);
         mat.SetFloat("_GustStrength", 0f);  // ...or get combed flat
         mat.SetFloat("_GustSpeed", 1.8f);
-        mat.SetFloat("_GustFreq", 0.035f);  // shared bands: hills catch the light wave
+        mat.SetFloat("_GustFreq", 0.15f);  // shared bands: hills catch the light wave
         mat.SetFloat("_GustLighten", 0.28f);
 
         var rng = new System.Random(20260921);
@@ -331,18 +331,18 @@ public class CrystalVizBootstrap : MonoBehaviour
         // frame top at +13.8 deg elevation. Six broad GENTLE swells, x in
         // [-19.5, 19.5], z staggered [-50, -62]: nearer swells rise higher,
         // farther ones sink lower and paler into the fog (43-74%) for natural
-        // aerial perspective. Crests at ~1.5-2.5 deg elevation, h/r ~0.27:
-        // low rolling farmland swells, deliberately flattened (2026-09-21)
-        // so they read as landscape, not domes. Kept big enough that the
-        // swells still rise visibly above the horizon line.
+        // aerial perspective. Crests just under the horizon line (~0 to -1 deg
+        // elevation), h/r ~0.27: low rolling farmland swells, deliberately
+        // flattened (2026-09-21) so they read as landscape, not domes, and
+        // halved again (2026-09-21) to sit quieter on the horizon
         hillDefs.Clear();
         const int hills = 6;
         for (int i = 0; i < hills; i++)
         {
             float x = -17.5f + i * 7f + ((float)rng.NextDouble() - 0.5f) * 4f;
             float z = -50f - (float)rng.NextDouble() * 12f;
-            float h = 3.2f + (float)rng.NextDouble() * 1.2f;  // 3.2-4.4 tall
-            float rad = 13f + (float)rng.NextDouble() * 3f;   // 13-16 wide
+            float h = 1.6f + (float)rng.NextDouble() * 0.6f;  // 1.6-2.2 tall (half of v1.0.24)
+            float rad = 6.5f + (float)rng.NextDouble() * 1.5f;   // 6.5-8 wide (half of v1.0.24)
             var def = new HillDef
             {
                 center = new Vector3(x, 0f, z),
@@ -481,7 +481,7 @@ public class CrystalVizBootstrap : MonoBehaviour
                 pos -= n * 0.15f; // sink the roots so tufts never float
                 Quaternion q = Quaternion.FromToRotation(Vector3.up, n)
                     * Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f);
-                float s = 3f + (float)rng.NextDouble() * 2f; // 3-5x: grassy at 60 units, keeps silhouettes
+                float s = 2f + (float)rng.NextDouble() * 1.5f; // 2-3.5x: grassy at 60 units, keeps silhouettes
                 AppendGrassTuft(verts, normals, uvs, tris,
                     Matrix4x4.TRS(pos, q, Vector3.one * s), rng);
                 hillTufts++;
@@ -598,7 +598,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         // fronts so the field reads as breezy with breaks.
         mat.SetFloat("_GustStrength", 0.12f); // lean, don't flatten: 0.45 combed blades flat and exposed the dark ground in pulsing waves
         mat.SetFloat("_GustSpeed", 1.8f);
-        mat.SetFloat("_GustFreq", 0.035f);
+        mat.SetFloat("_GustFreq", 0.15f);
         mat.SetFloat("_GustLighten", 0.28f);
 
         // One combined mesh => one draw call for the entire field (v1.0.5
@@ -760,7 +760,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         mat.SetFloat("_WindSpeed", 1.7f);
         mat.SetFloat("_GustStrength", 0.12f); // same: sway, don't plaster
         mat.SetFloat("_GustSpeed", 1.8f);
-        mat.SetFloat("_GustFreq", 0.035f);
+        mat.SetFloat("_GustFreq", 0.15f);
         mat.SetFloat("_GustLighten", 0.28f);
 
         var rng = new System.Random(20260920);

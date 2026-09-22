@@ -9,9 +9,9 @@ Shader "CrystalViz/LeafWind"
     Properties
     {
         _BaseMap ("Leaf (cutout)", 2D) = "white" {}
-        _WindStrength ("Wind Strength", Float) = 0.06
+        _WindStrength ("Wind Strength", Float) = 0.025
         _WindSpeed ("Wind Speed", Float) = 1.7
-        _GustStrength ("Wind Gust Strength", Float) = 0.15
+        _GustStrength ("Wind Gust Strength", Float) = 0.06
         _GustSpeed ("Wind Gust Speed", Float) = 1.8
         _GustFreq ("Wind Gust Frequency", Float) = 0.035
         _GustLighten ("Wind Gust Lighten", Float) = 0.28
@@ -84,12 +84,12 @@ Shader "CrystalViz/LeafWind"
                              + sin(_Time.y * 9.7 + phase * 1.7) * 0.4;
                 float swayPh = _Time.y * _WindSpeed + wp.x * 0.35 + wp.z * 0.27;
                 float sway = sin(swayPh) * 0.6 + sin(swayPh * 2.3 + 1.7) * 0.4;
-                float w = 0.35 + 0.65 * IN.uv.y;
+                float w = 0.55 + 0.45 * IN.uv.y;
                 float2 flutter = float2(shiver * 0.5 + sway, (shiver * 0.35 - sway) * 0.6)
                                * _WindStrength * w;
                 wp.x += flutter.x;
                 wp.z += flutter.y;
-                wp.y += shiver * 0.012 * w;
+                wp.y += shiver * 0.008 * w;
 
                 // Same traveling gust fronts as the grass: leaves catch the
                 // gust and lift as the bright band passes.
@@ -99,7 +99,7 @@ Shader "CrystalViz/LeafWind"
                 float gustB = pow(0.5 + 0.5 * sin(gustCoord * 0.41 + 2.1), 3.0);
                 float gustAmt = gust * 0.75 + gustB * 0.25;
                 wp.xz += gustDir * (w * _GustStrength * gustAmt);
-                wp.y += w * _GustStrength * gustAmt * 0.35; // leaves lift in gusts
+                wp.y += w * _GustStrength * gustAmt * 0.2; // leaves lift in gusts
                 OUT.gust = gustAmt;
 
                 OUT.positionWS = wp;

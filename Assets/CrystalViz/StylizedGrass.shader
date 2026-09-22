@@ -112,8 +112,9 @@ Shader "CrystalViz/StylizedGrass"
                             * sin(IN.positionWS.x * 0.05 - IN.positionWS.z * 0.13);
                 albedo *= 0.85 + 0.30 * (0.5 + 0.5 * patch);
                 // The gust band also catches the light: a bright wave visibly
-                // sweeping the meadow, Breath-of-the-Wild style.
-                albedo *= 1.0 + IN.gust * _GustLighten;
+                // sweeping the meadow, Ghibli style, with the troughs
+                // darkening behind it so the wind reads as distinct lines.
+                albedo *= 1.0 + (IN.gust - 0.5) * _GustLighten * 2.0;
 
                 Light mainLight = GetMainLight(IN.shadowCoord);
                 // Wrapped diffuse: blades are up-normaled, so a plain NdotL
