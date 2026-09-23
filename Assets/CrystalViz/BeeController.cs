@@ -4,10 +4,16 @@ using System.Collections.Generic;
 /// <summary>
 /// Bee squad (v1.0.32, player request): THREE bumblebees, each flying its own
 /// independent path between the on-screen wildflowers near the tree.
-/// Interaction: swipe across a bee and it POPS — a cartoonish, non-violent
-/// rainbow confetti burst with a soft poof ring (Tyler: "have fun with the
-/// design of the pop, I'll fix it later"). The bee respawns a couple of
-/// seconds later and goes back to work.
+/// Interaction: swipe across a bee — or just tap it — and it POPS: a
+/// cartoonish, non-violent rainbow confetti burst with a soft poof ring
+/// (Tyler: "have fun with the design of the pop, I'll fix it later").
+/// The bee respawns a couple of seconds later and goes back to work.
+/// v1.0.33 fix: the pop FX used URP/Unlit via Shader.Find, which Unity
+/// strips from the player build (nothing serialised references it), so the
+/// pop threw on the phone and bees never popped. The FX now uses URP/Lit
+/// (guaranteed in the build, same transparent recipe as the wings), the
+/// shader is resolved once in Start, and a missing shader skips the FX
+/// instead of throwing — the bee always pops.
 /// Every bee stays pinned inside the phone screen (v1.0.31 viewport clamp),
 /// and only visits flowers that are actually visible.
 /// Built fully in code: striped fuzzy-look bodies, dark heads, tiny
@@ -96,10 +102,22 @@ public class BeeController : MonoBehaviour
 
     static Texture2D ringTex; // shared soft-ring sprite for pop FX
 
+    // Resolved once in Start: the ONLY shader the pop FX may use. URP/Lit is
+    // guaranteed in the player build (pinned in the variant collection and
+    // referenced by scene materials). Never Shader.Find a shader at pop time:
+    // v1.0.32 used URP/Unlit, which Unity strips from the build because
+    // nothing serialised references it — Shader.Find returned null on the
+    // phone, new Material(null) threw, and the bee never popped. Silent on
+    // desktop, broken on device.
+    Shader popShader;
+
     void Start()
     {
         if (bootstrap == null) bootstrap = FindObjectOfType<CrystalVizBootstrap>();
         mainCam = Camera.main;
+        popShader = Shader.Find("Universal Render Pipeline/Lit");
+        if (popShader == null)
+            Debug.LogError("BeeController: URP/Lit not found; pop FX will be skipped.");
         CollectNearFlowers();
         for (int i = 0; i < BeeCount; i++)
         {
@@ -435,6 +453,10 @@ public class BeeController : MonoBehaviour
             // A swipe that starts on UI (the sun slider, reset button) is a
             // UI gesture, not a bee pop.
             swipeBlockedByUI = IsPointerOverUI(pos);
+            // Tap-to-pop: a press that lands right on a bee pops it at once.
+            // This also covers super-fast flicks that never emit Moved events.
+            if (!swipeBlockedByUI)
+                TryPopBeeAt(pos);
         }
         else if (down && swiping)
         {
@@ -467,21 +489,46 @@ public class BeeController : MonoBehaviour
     /// </summary>
     void CheckBeeHits()
     {
+        if (mainCam == null || swipePts.Count < 2) return;
+        for (int i = 1; i < swipePts.Count; i++)
+            TryPopBeeNearSegment(swipePts[i - 1], swipePts[i]);
+    }
+
+    /// <summary>Pop any live bee within fingertip radius of a screen point.</summary>
+    void TryPopBeeAt(Vector2 screenPos)
+    {
         if (mainCam == null) return;
-        float popRadius = Screen.height * 0.055f; // generous fingertip radius
+        float popRadius = PopRadiusPx();
         foreach (var bee in bees)
         {
-            if (!bee.alive || bee.state == State.Popped || bee.state == State.Waiting) continue;
-            Vector2 beeScreen = mainCam.WorldToScreenPoint(bee.bodyT.position);
-            for (int i = 1; i < swipePts.Count; i++)
-            {
-                if (SegmentPointDistance(swipePts[i - 1], swipePts[i], beeScreen) <= popRadius)
-                {
-                    PopBee(bee);
-                    break;
-                }
-            }
+            if (!BeePoppable(bee)) continue;
+            if (Vector2.Distance(mainCam.WorldToScreenPoint(bee.bodyT.position), screenPos) <= popRadius)
+                PopBee(bee);
         }
+    }
+
+    /// <summary>Pop any live bee within fingertip radius of a swipe segment.</summary>
+    void TryPopBeeNearSegment(Vector2 a, Vector2 b)
+    {
+        float popRadius = PopRadiusPx();
+        foreach (var bee in bees)
+        {
+            if (!BeePoppable(bee)) continue;
+            Vector2 beeScreen = mainCam.WorldToScreenPoint(bee.bodyT.position);
+            if (SegmentPointDistance(a, b, beeScreen) <= popRadius)
+                PopBee(bee);
+        }
+    }
+
+    static bool BeePoppable(BeeAgent bee)
+    {
+        return bee.alive && bee.state != State.Popped && bee.state != State.Waiting;
+    }
+
+    static float PopRadiusPx()
+    {
+        // Generous fingertip radius, scaled to the phone's screen height.
+        return Screen.height * 0.06f;
     }
 
     static float SegmentPointDistance(Vector2 a, Vector2 b, Vector2 p)
@@ -504,10 +551,15 @@ public class BeeController : MonoBehaviour
 
     // ------------------------------------------------------------------ pop FX
 
-    static Material MakeUnlitTransparent(Color c)
+    static Material MakePopMaterial(Color c, Shader shader)
     {
-        var mat = new Material(Shader.Find("Universal Render Pipeline/Unlit"));
+        // Lit with transparency: same recipe as the bee wings, which are
+        // proven to render on device. Returns null if the shader is missing
+        // so callers can skip the FX instead of throwing.
+        if (shader == null) return null;
+        var mat = new Material(shader);
         mat.SetFloat("_Surface", 1f); // transparent
+        mat.SetFloat("_Cull", 0f);
         mat.color = c;
         return mat;
     }
@@ -538,6 +590,9 @@ public class BeeController : MonoBehaviour
     /// </summary>
     void SpawnPopFX(Vector3 pos)
     {
+        // If the pop shader didn't survive the build, skip the FX entirely —
+        // the bee still pops (hides + respawns); only the confetti is lost.
+        if (popShader == null) return;
         var fx = new PopFX();
         var root = new GameObject("BeePop");
         root.transform.position = pos;
@@ -559,7 +614,7 @@ public class BeeController : MonoBehaviour
             Color col = i % 6 == 5
                 ? Color.white
                 : Color.HSVToRGB(i / (float)petalCount, 0.85f, 1f);
-            petal.mat = MakeUnlitTransparent(col);
+            petal.mat = MakePopMaterial(col, popShader);
             go.GetComponent<MeshRenderer>().material = petal.mat;
             petal.t = go.transform;
             // Billboarding happens per-frame in UpdatePops; face camera now.
@@ -582,7 +637,7 @@ public class BeeController : MonoBehaviour
         var ringGo = new GameObject("PopRing").transform;
         ringGo.SetParent(root.transform, false);
         ringGo.position = pos;
-        fx.ringMat = MakeUnlitTransparent(new Color(1f, 0.95f, 0.75f, 0.9f));
+        fx.ringMat = MakePopMaterial(new Color(1f, 0.95f, 0.75f, 0.9f), popShader);
         var ringMesh = ringGo.gameObject.AddComponent<MeshRenderer>();
         var ringFilter = ringGo.gameObject.AddComponent<MeshFilter>();
         ringFilter.mesh = MakeQuadMesh();
@@ -600,7 +655,7 @@ public class BeeController : MonoBehaviour
         poofGo.transform.SetParent(root.transform, false);
         poofGo.transform.position = pos;
         poofGo.transform.localScale = new Vector3(0.06f, 0.06f, 0.06f);
-        fx.poofMat = MakeUnlitTransparent(new Color(1f, 0.98f, 0.9f, 0.75f));
+        fx.poofMat = MakePopMaterial(new Color(1f, 0.98f, 0.9f, 0.75f), popShader);
         poofGo.GetComponent<MeshRenderer>().material = fx.poofMat;
         fx.poofT = poofGo.transform;
         fx.poofAge = 0f;
