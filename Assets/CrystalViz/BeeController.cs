@@ -82,6 +82,16 @@ public class BeeController : MonoBehaviour
         public float age;
     }
 
+    // An active spawn burst: a comic starburst that pops behind a bee the
+    // moment it (re)appears — Tyler's pop-art reference, v1.0.39.
+    class SpawnBurst
+    {
+        public GameObject root;
+        public Transform t;
+        public Material mat;
+        public float age;
+    }
+
     // Tuning (player-tweakable):
     const int BeeCount = 3;       // the squad: three bees, independent paths
     const float VisitRadius = 6.0f;  // only flowers within this of the tree (origin)
@@ -224,8 +234,13 @@ public class BeeController : MonoBehaviour
     static void EnsureBeeSprites()
     {
         if (beeTexUp != null) return;
-        beeTexUp = DrawBeeSprite(wingsUp: true);
-        beeTexDown = DrawBeeSprite(wingsUp: false);
+        // v1.0.39: Tyler's redesigned bee frames (white keyed out + cropped
+        // square + mirrored to face right at author time). Fall back to the
+        // procedural sprite if the assets are missing for any reason.
+        beeTexUp = Resources.Load<Texture2D>("bee-wings-up");
+        beeTexDown = Resources.Load<Texture2D>("bee-wings-down");
+        if (beeTexUp == null) beeTexUp = DrawBeeSprite(wingsUp: true);
+        if (beeTexDown == null) beeTexDown = DrawBeeSprite(wingsUp: false);
     }
 
     /// <summary>
@@ -362,6 +377,7 @@ public class BeeController : MonoBehaviour
             UpdateBee(bee, dt);
         UpdateSwipe();
         UpdatePops(dt);
+        UpdateSpawnBursts(dt);
     }
 
     void UpdateBee(BeeAgent bee, float dt)
@@ -378,6 +394,7 @@ public class BeeController : MonoBehaviour
                     bee.spawnT = 0f;
                     bee.lastPos = bee.bodyT.position;
                     PickNextFlower(bee, initial: true);
+                    SpawnSpawnBurst(bee.bodyT.position);
                 }
                 break;
             case State.ToFlower:
@@ -430,6 +447,7 @@ public class BeeController : MonoBehaviour
                     bee.spawnT = 0f; // spring back in cartoon-style
                     PickNextFlower(bee, initial: true);
                     bee.lastPos = bee.bodyT.position;
+                    SpawnSpawnBurst(bee.bodyT.position);
                 }
                 break;
         }
@@ -764,6 +782,141 @@ public class BeeController : MonoBehaviour
         quadMesh.triangles = new int[] { 0, 2, 1, 0, 3, 2 };
         quadMesh.RecalculateNormals();
         return quadMesh;
+    }
+
+    // ------------------------------------------------------- spawn burst FX
+
+    const float SpawnBurstLife = 0.6f;  // starburst pop lifetime
+    const float SpawnBurstSize = 0.34f; // ~2x the bee quad
+
+    readonly List<SpawnBurst> spawnBursts = new List<SpawnBurst>();
+    static Texture2D burstTex; // jagged comic star, drawn once
+
+    static void EnsureBurstTexture()
+    {
+        if (burstTex != null) return;
+        burstTex = DrawBurstStar();
+    }
+
+    /// <summary>
+    /// Draws a jagged comic-book starburst (dark outline, golden fill,
+    /// lighter core) onto a 256px canvas — the pop-art spawn effect.
+    /// </summary>
+    static Texture2D DrawBurstStar()
+    {
+        int s = 256;
+        var tex = new Texture2D(s, s, TextureFormat.RGBA32, false);
+        for (int y = 0; y < s; y++)
+            for (int x = 0; x < s; x++)
+                tex.SetPixel(x, y, new Color(0f, 0f, 0f, 0f));
+
+        Vector2 c = new Vector2(s / 2f, s / 2f);
+        FillStar(tex, c, 120f, 58f, 12, new Color(0.23f, 0.10f, 0.02f)); // outline
+        FillStar(tex, c, 108f, 52f, 12, new Color(1.00f, 0.80f, 0.16f)); // gold
+        FillStar(tex, c, 58f, 28f, 12, new Color(1.00f, 0.93f, 0.48f)); // core
+
+        tex.Apply();
+        tex.filterMode = FilterMode.Bilinear;
+        return tex;
+    }
+
+    static void FillStar(Texture2D tex, Vector2 center, float rOuter, float rInner, int spikes, Color col)
+    {
+        int n = spikes * 2;
+        var pts = new Vector2[n];
+        for (int i = 0; i < n; i++)
+        {
+            float r = (i % 2 == 0) ? rOuter : rInner;
+            float a = (i / (float)n) * Mathf.PI * 2f - Mathf.PI / 2f;
+            pts[i] = center + new Vector2(Mathf.Cos(a) * r, Mathf.Sin(a) * r);
+        }
+        FillPolygon(tex, pts, col);
+    }
+
+    static void FillPolygon(Texture2D tex, Vector2[] pts, Color col)
+    {
+        int w = tex.width, h = tex.height;
+        float minX = w, maxX = 0, minY = h, maxY = 0;
+        foreach (var p in pts)
+        {
+            if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+            if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+        }
+        int x0 = Mathf.Max(0, Mathf.FloorToInt(minX)), x1 = Mathf.Min(w - 1, Mathf.CeilToInt(maxX));
+        int y0 = Mathf.Max(0, Mathf.FloorToInt(minY)), y1 = Mathf.Min(h - 1, Mathf.CeilToInt(maxY));
+        int n = pts.Length;
+        for (int y = y0; y <= y1; y++)
+            for (int x = x0; x <= x1; x++)
+            {
+                // Even-odd point-in-polygon over the star's vertices.
+                bool inside = false;
+                for (int i = 0, j = n - 1; i < n; j = i++)
+                {
+                    Vector2 pi = pts[i], pj = pts[j];
+                    if (((pi.y > y) != (pj.y > y)) &&
+                        (x < (pj.x - pi.x) * (y - pi.y) / (pj.y - pi.y) + pi.x))
+                        inside = !inside;
+                }
+                if (inside) tex.SetPixel(x, y, col);
+            }
+    }
+
+    /// <summary>
+    /// Comic starburst pop behind a bee the moment it (re)appears.
+    /// </summary>
+    void SpawnSpawnBurst(Vector3 pos)
+    {
+        if (popShader == null || mainCam == null) return;
+        EnsureBurstTexture();
+
+        var fx = new SpawnBurst();
+        var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        DestroyImmediate(go.GetComponent<Collider>());
+        // Sit just behind the bee quad so the star frames it, never z-fights.
+        go.transform.position = pos - mainCam.transform.forward * 0.03f;
+        go.transform.rotation = mainCam.transform.rotation;
+        go.transform.localScale = Vector3.zero;
+        var mat = MakePopMaterial(Color.white, popShader);
+        if (mat == null) { Destroy(go); return; }
+        mat.mainTexture = burstTex;
+        go.GetComponent<MeshRenderer>().material = mat;
+        var mr = go.GetComponent<MeshRenderer>();
+        mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        mr.receiveShadows = false;
+
+        fx.root = go;
+        fx.t = go.transform;
+        fx.mat = mat;
+        fx.age = 0f;
+        spawnBursts.Add(fx);
+    }
+
+    void UpdateSpawnBursts(float dt)
+    {
+        for (int i = spawnBursts.Count - 1; i >= 0; i--)
+        {
+            var fx = spawnBursts[i];
+            fx.age += dt;
+            float t = Mathf.Clamp01(fx.age / SpawnBurstLife);
+
+            if (mainCam != null) fx.t.rotation = mainCam.transform.rotation;
+
+            // Pop in with overshoot, hold, then fade.
+            float pop = EaseOutBack(Mathf.Clamp01(fx.age / 0.18f));
+            float s = SpawnBurstSize * Mathf.Max(0.001f, pop);
+            fx.t.localScale = new Vector3(s, s, 1f);
+
+            var c = fx.mat.color;
+            c.a = 1f - Mathf.Clamp01((fx.age - 0.30f) / (SpawnBurstLife - 0.30f));
+            fx.mat.color = c;
+
+            if (t >= 1f)
+            {
+                Destroy(fx.mat);
+                Destroy(fx.root);
+                spawnBursts.RemoveAt(i);
+            }
+        }
     }
 
     void UpdatePops(float dt)
