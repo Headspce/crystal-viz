@@ -122,12 +122,27 @@ public class StageIndicatorUI : MonoBehaviour
             {
                 lastBeeCount = n;
                 beeText.text = n.ToString();
+                LayoutBeeIcon(n);
                 if (beeIconImg != null)
                     beeIconImg.color = n > 0
                         ? Color.white
                         : new Color(0.45f, 0.45f, 0.45f, 0.55f);
             }
         }
+    }
+
+    /// <summary>
+    /// v1.0.39: hug the bee icon to the number — a single digit pulls the bee
+    /// in tight, double digits push it back out to make room for the second
+    /// digit.
+    /// </summary>
+    void LayoutBeeIcon(int n)
+    {
+        if (beeIconImg == null) return;
+        var rt = beeIconImg.rectTransform;
+        var p = rt.anchoredPosition;
+        p.x = n < 10 ? 22f : 6f;
+        rt.anchoredPosition = p;
     }
 
     void OnStageChanged(int stage)
@@ -320,7 +335,9 @@ public class StageIndicatorUI : MonoBehaviour
         iconRt.anchorMin = new Vector2(0f, 0.5f);
         iconRt.anchorMax = new Vector2(0f, 0.5f);
         iconRt.pivot = new Vector2(0f, 0.5f);
-        iconRt.anchoredPosition = new Vector2(6f, 0f);
+        // Seed tight: the pill opens showing "3" (single digit), and
+        // Update() calls LayoutBeeIcon() on every count change after that.
+        iconRt.anchoredPosition = new Vector2(22f, 0f);
         iconRt.sizeDelta = new Vector2(50f, 50f);
         beeIconImg = iconGO.AddComponent<Image>();
         var beeTex = BeeController.BeeIconTexture;

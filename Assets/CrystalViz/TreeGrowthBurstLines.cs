@@ -121,6 +121,13 @@ public class TreeGrowthBurstLines : MonoBehaviour
         // own emphasis lines.
         float s = 0.35f + 0.65f * growth.Growth01;
 
+        // v1.0.39: a fast follow-up tap restarts the burst instead of
+        // stacking — kill any in-flight lines so only ever three animate
+        // at once.
+        for (int b = bursts.Count - 1; b >= 0; b--)
+            KillBurst(bursts[b]);
+        bursts.Clear();
+
         var burst = new Burst();
         var root = new GameObject("GrowthBurst");
         root.transform.position = anchor;
@@ -202,11 +209,18 @@ public class TreeGrowthBurstLines : MonoBehaviour
 
             if (allDone && burst.age > LineLife + 2 * Stagger)
             {
-                foreach (var line in burst.lines)
-                    if (line.mat != null) Destroy(line.mat);
-                Destroy(burst.root);
+                KillBurst(burst);
                 bursts.RemoveAt(b);
             }
         }
+    }
+
+    /// <summary>Destroy a burst's GameObject and its line materials.</summary>
+    static void KillBurst(Burst burst)
+    {
+        if (burst == null) return;
+        foreach (var line in burst.lines)
+            if (line.mat != null) Destroy(line.mat);
+        if (burst.root != null) Destroy(burst.root);
     }
 }
