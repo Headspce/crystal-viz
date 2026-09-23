@@ -31,7 +31,9 @@ public class StageIndicatorUI : MonoBehaviour
     BeeController beeController;
     int lastBeeCount = -1;
     RectTransform popRect;
+    RectTransform beePillRect;
     Coroutine popRoutine;
+    Coroutine rejectRoutine;
 
     bool initialized;
 
@@ -91,15 +93,28 @@ public class StageIndicatorUI : MonoBehaviour
             return;
         }
         controller.onStageChanged.AddListener(OnStageChanged);
+        controller.onTapRejected.AddListener(OnTapRejected);
         Refresh(controller.CurrentStage);
     }
 
     void Update()
     {
         if (controller != null && tapText != null)
-            tapText.text = $"{controller.currentTaps} / {controller.totalTaps}";
+        {
+            // v1.0.37: show banked bee-pop tap credits next to progress, e.g.
+            // "12 / 50 (+3)". No suffix when there is nothing banked.
+            int credits = controller.tapCredits;
+            tapText.text = credits > 0
+                ? $"{controller.currentTaps} / {controller.totalTaps} (+{credits})"
+                : $"{controller.currentTaps} / {controller.totalTaps}";
+        }
         // Live-bee counter: 3 -> 0 as bees pop, refilling on respawn.
         // Cached so the text (and icon dim) only updates on change.
+        // Lazy-resolve: BuildDiorama() builds the tree (and this UI) BEFORE
+        // the BeeController GameObject exists, so the Initialize()-time
+        // lookup always missed and the counter was stuck. Resolving here
+        // self-heals regardless of build order.
+        if (beeController == null) beeController = FindObjectOfType<BeeController>();
         if (beeController != null && beeText != null)
         {
             int n = beeController.FlyingBeeCount;
@@ -120,6 +135,31 @@ public class StageIndicatorUI : MonoBehaviour
         Refresh(stage);
         if (popRoutine != null) StopCoroutine(popRoutine);
         popRoutine = StartCoroutine(PopRoutine());
+    }
+
+    /// <summary>
+    /// A tree tap with no banked bee-pop credits: punch the bee pill so the
+    /// player sees where to go earn taps.
+    /// </summary>
+    void OnTapRejected()
+    {
+        if (rejectRoutine != null) StopCoroutine(rejectRoutine);
+        rejectRoutine = StartCoroutine(RejectPunch());
+    }
+
+    IEnumerator RejectPunch()
+    {
+        const float dur = 0.28f;
+        float t = 0f;
+        while (t < dur)
+        {
+            t += Time.deltaTime;
+            float k = Mathf.Clamp01(t / dur);
+            float s = 1f + 0.16f * Mathf.Sin(Mathf.PI * k);
+            if (beePillRect != null) beePillRect.localScale = new Vector3(s, s, 1f);
+            yield return null;
+        }
+        if (beePillRect != null) beePillRect.localScale = Vector3.one;
     }
 
     void Refresh(int stage)
@@ -255,7 +295,7 @@ public class StageIndicatorUI : MonoBehaviour
         rowRt.anchorMax = new Vector2(0.5f, 1f);
         rowRt.pivot = new Vector2(0.5f, 1f);
         rowRt.anchoredPosition = new Vector2(0f, -186f);
-        rowRt.sizeDelta = new Vector2(390f, 60f);
+        rowRt.sizeDelta = new Vector2(448f, 60f);
 
         Sprite pill = MakePillSprite(256, 72);
         Font hudFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
@@ -270,6 +310,7 @@ public class StageIndicatorUI : MonoBehaviour
         beePillRt.pivot = new Vector2(0f, 0.5f);
         beePillRt.anchoredPosition = new Vector2(0f, 0f);
         beePillRt.sizeDelta = new Vector2(168f, 58f);
+        beePillRect = beePillRt;
         var beePillImg = beePillGO.AddComponent<Image>();
         beePillImg.sprite = pill;
         beePillImg.color = new Color(0.05f, 0.10f, 0.22f, 0.55f);
@@ -317,7 +358,7 @@ public class StageIndicatorUI : MonoBehaviour
         pillRt.anchorMax = new Vector2(1f, 0.5f);
         pillRt.pivot = new Vector2(1f, 0.5f);
         pillRt.anchoredPosition = new Vector2(0f, 0f);
-        pillRt.sizeDelta = new Vector2(206f, 58f);
+        pillRt.sizeDelta = new Vector2(264f, 58f);
         var pillImg = pillGO.AddComponent<Image>();
         pillImg.sprite = pill;
         pillImg.color = new Color(0.05f, 0.10f, 0.22f, 0.55f);
@@ -328,10 +369,10 @@ public class StageIndicatorUI : MonoBehaviour
         textRt.anchorMax = new Vector2(1f, 0.5f);
         textRt.pivot = new Vector2(0.5f, 0.5f);
         textRt.anchoredPosition = Vector2.zero;
-        textRt.sizeDelta = new Vector2(206f, 58f);
+        textRt.sizeDelta = new Vector2(264f, 58f);
         tapText = textGO.AddComponent<Text>();
         tapText.font = hudFont;
-        tapText.fontSize = 40;
+        tapText.fontSize = 36;
         tapText.alignment = TextAnchor.MiddleCenter;
         tapText.color = Color.white;
         var outline = textGO.AddComponent<Outline>();

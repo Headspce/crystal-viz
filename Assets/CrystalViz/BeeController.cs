@@ -91,11 +91,15 @@ public class BeeController : MonoBehaviour
     const float FlapFlight = 44f;     // wing frame swap rad/s in flight
     const float FlapFeed = 30f;       // hovering buzz while feeding
     const float SpriteSize = 0.17f;   // paper-bee quad size in world units
-    const float RespawnDelay = 2.4f;  // seconds before a popped bee returns
+    const float RespawnDelay = 6.0f;  // seconds before a popped bee returns
     // Viewport margins: no bee ever leaves this rect on the phone screen.
     const float MarginX = 0.06f;
     const float MarginYBottom = 0.07f;
     const float MarginYTop = 0.06f;
+
+    // v1.0.37 game loop: each pop banks one tree-tap credit on the
+    // TreeGrowthController. Resolved once in Start.
+    TreeGrowthController treeController;
 
     // Resolved once in Start: the ONLY shader the pop FX may use. URP/Lit is
     // guaranteed in the player build (pinned in the variant collection and
@@ -113,6 +117,7 @@ public class BeeController : MonoBehaviour
     void Start()
     {
         if (bootstrap == null) bootstrap = FindObjectOfType<CrystalVizBootstrap>();
+        treeController = FindObjectOfType<TreeGrowthController>();
         mainCam = Camera.main;
         popShader = Shader.Find("Universal Render Pipeline/Lit");
         if (popShader == null)
@@ -662,6 +667,9 @@ public class BeeController : MonoBehaviour
         bee.alive = false;
         bee.state = State.Popped;
         bee.stateTimer = RespawnDelay * (0.85f + (float)bee.rng.NextDouble() * 0.4f);
+        // v1.0.37 game loop: one pop banks one tree-tap credit.
+        if (treeController == null) treeController = FindObjectOfType<TreeGrowthController>();
+        if (treeController != null) treeController.AddTapCredit(1);
     }
 
     // ------------------------------------------------------------------ pop FX

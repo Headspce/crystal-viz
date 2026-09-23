@@ -5,6 +5,10 @@ using UnityEngine.Events;
 /// Tap-to-grow logic for the parametric tree. Each screen tap advances the
 /// tree one step toward maturity (default 50 taps, sprout -> mature).
 ///
+/// v1.0.37 game loop: taps are bee-gated. Popping a bee banks one tap
+/// credit; each counted tree tap spends one credit. Taps with no credits
+/// are rejected (the HUD pulses the bee pill as a hint).
+///
 /// A press only counts as a tap when it is quick, barely moves, and lands on
 /// empty space: taps on a bee pop the bee instead (no growth), and presses on
 /// UI or swipes never grow the tree.
@@ -27,6 +31,15 @@ public class TreeGrowthController : MonoBehaviour
 {
     public int totalTaps = 50;
     public int currentTaps;
+    /// <summary>
+    /// Banked tree taps earned by popping bees (v1.0.37 game loop): each bee
+    /// pop grants one credit, each counted tree tap spends one. Tree taps
+    /// with no credits are rejected — the tree only grows when the player
+    /// keeps popping bees.
+    /// </summary>
+    public int tapCredits;
+    /// <summary>Fired when a tree tap is rejected for lack of tap credits.</summary>
+    public UnityEvent onTapRejected = new UnityEvent();
     public ParametricTree tree;
     public UnityEvent<int> onStageChanged = new UnityEvent<int>();
     /// <summary>
@@ -37,6 +50,8 @@ public class TreeGrowthController : MonoBehaviour
 
     const string PrefsKey = "CrystalViz_TreeTaps";
     const string SaplingStartKey = "CrystalViz_TreeTaps_SaplingStart";
+    /// <summary>PlayerPrefs key for banked bee-pop tap credits.</summary>
+    const string CreditsKey = "CrystalViz_TapCredits";
     const float AnimDuration = 0.5f;
     /// <summary>Growth value where the sapling stage begins (11 taps / 50).</summary>
     const float SaplingGrowth = 11f / 50f;
@@ -99,6 +114,7 @@ public class TreeGrowthController : MonoBehaviour
         initialized = true;
         tree = GetComponent<ParametricTree>();
         currentTaps = Mathf.Clamp(PlayerPrefs.GetInt(PrefsKey, 0), 0, totalTaps);
+        tapCredits = Mathf.Max(0, PlayerPrefs.GetInt(CreditsKey, 0));
         saplingStart = PlayerPrefs.GetInt(SaplingStartKey, 0) == 1;
         displayedG = GrowthTarget;
         // Build the mesh here, not just in Start(): CI screenshot captures run
@@ -244,8 +260,10 @@ public class TreeGrowthController : MonoBehaviour
     public void ResetToSprout()
     {
         currentTaps = 0;
+        tapCredits = 0;
         saplingStart = false;
         PlayerPrefs.SetInt(PrefsKey, 0);
+        PlayerPrefs.SetInt(CreditsKey, 0);
         PlayerPrefs.SetInt(SaplingStartKey, 0);
         PlayerPrefs.Save();
 
@@ -280,6 +298,16 @@ public class TreeGrowthController : MonoBehaviour
     public void RegisterTap()
     {
         if (currentTaps >= totalTaps) return;
+        // v1.0.37 game loop: a tree tap only counts when the player has a
+        // banked bee-pop credit. Without credits the tap is rejected (the
+        // HUD pulses the bee pill so the player knows to pop bees).
+        if (tapCredits <= 0)
+        {
+            onTapRejected.Invoke();
+            return;
+        }
+        tapCredits--;
+        PlayerPrefs.SetInt(CreditsKey, tapCredits);
         currentTaps++;
         PlayerPrefs.SetInt(PrefsKey, currentTaps);
         PlayerPrefs.Save();
@@ -294,6 +322,18 @@ public class TreeGrowthController : MonoBehaviour
             lastStage = stage;
             onStageChanged.Invoke(stage);
         }
+    }
+
+    /// <summary>
+    /// Banks tree-tap credits earned by popping bees. Called by
+    /// BeeController.PopBee — one pop, one credit.
+    /// </summary>
+    public void AddTapCredit(int n)
+    {
+        if (n <= 0) return;
+        tapCredits += n;
+        PlayerPrefs.SetInt(CreditsKey, tapCredits);
+        PlayerPrefs.Save();
     }
 
     static float Smooth(float t) => t * t * (3f - 2f * t);
