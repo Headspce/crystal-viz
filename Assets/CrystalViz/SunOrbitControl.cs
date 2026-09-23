@@ -125,8 +125,10 @@ public class SunOrbitControl : MonoBehaviour
         // screen border before the knob reaches the end of its travel.
         rrt.offsetMin = new Vector2(-88f, 150f);
         rrt.offsetMax = new Vector2(-28f, -150f);
+        // v1.0.32: THREE TIMES larger (player request) — scale 0.25 -> 0.75
+        // so the lighting control is easy to grab on the phone.
         rrt.pivot = new Vector2(1f, 0.5f);
-        rrt.localScale = new Vector3(0.25f, 0.25f, 1f);
+        rrt.localScale = new Vector3(0.75f, 0.75f, 1f);
 
         slider = root.GetComponent<Slider>();
         slider.minValue = 0f;
@@ -200,9 +202,11 @@ public class SunOrbitControl : MonoBehaviour
         labelGo.transform.SetParent(canvasGo.transform, false);
         var lrt = labelGo.GetComponent<RectTransform>();
         lrt.anchorMin = new Vector2(1f, 0.355f); lrt.anchorMax = new Vector2(1f, 0.355f);
-        lrt.anchoredPosition = new Vector2(-26f, -8f);
+        // v1.0.32: bar is 3x larger now; its rendered center sits ~50px left
+        // of the edge, so the label moves with it and scales to match.
+        lrt.anchoredPosition = new Vector2(-50f, -8f);
         lrt.sizeDelta = new Vector2(140f, 44f);
-        lrt.localScale = new Vector3(0.25f, 0.25f, 1f);
+        lrt.localScale = new Vector3(0.75f, 0.75f, 1f);
         var txt = labelGo.GetComponent<Text>();
         txt.font = GetDefaultFont(); // may be null; Text renders nothing without one
         txt.fontSize = 26;
@@ -213,8 +217,9 @@ public class SunOrbitControl : MonoBehaviour
         // Sun icon: child of the slider root so it rides with the slider and
         // sits stuck to the top of the track (v1.0.29: was a free-floating
         // canvas child at the top-right corner). Anchored to the slider's
-        // top-center; the slider root's 0.25 scale applies, so localScale
-        // stays 1 and the 126px size renders at the same 31.5px as before.
+        // top-center; the slider root's 0.75 scale applies (v1.0.32: 3x
+        // larger), so localScale stays 1 and the 126px size renders at
+        // ~94px.
         var sunTex = Resources.Load<Texture2D>("sun-icon");
         if (sunTex != null)
         {
