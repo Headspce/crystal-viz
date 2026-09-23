@@ -26,6 +26,10 @@ public class StageIndicatorUI : MonoBehaviour
     readonly Sprite[] stageSprites = new Sprite[4];
     Image stageImage;
     Text tapText;
+    Text beeText;
+    Image beeIconImg;
+    BeeController beeController;
+    int lastBeeCount = -1;
     RectTransform popRect;
     Coroutine popRoutine;
 
@@ -58,6 +62,7 @@ public class StageIndicatorUI : MonoBehaviour
         if (initialized) return;
         initialized = true;
         controller = GetComponent<TreeGrowthController>();
+        beeController = FindObjectOfType<BeeController>();
         for (int i = 0; i < StagePaths.Length; i++)
         {
             var tex = Resources.Load<Texture2D>(StagePaths[i]);
@@ -93,6 +98,21 @@ public class StageIndicatorUI : MonoBehaviour
     {
         if (controller != null && tapText != null)
             tapText.text = $"{controller.currentTaps} / {controller.totalTaps}";
+        // Live-bee counter: 3 -> 0 as bees pop, refilling on respawn.
+        // Cached so the text (and icon dim) only updates on change.
+        if (beeController != null && beeText != null)
+        {
+            int n = beeController.FlyingBeeCount;
+            if (n != lastBeeCount)
+            {
+                lastBeeCount = n;
+                beeText.text = n.ToString();
+                if (beeIconImg != null)
+                    beeIconImg.color = n > 0
+                        ? Color.white
+                        : new Color(0.45f, 0.45f, 0.45f, 0.55f);
+            }
+        }
     }
 
     void OnStageChanged(int stage)
@@ -167,7 +187,7 @@ public class StageIndicatorUI : MonoBehaviour
         if (Screen.height > 0f && safe.yMax < Screen.height)
             topInsetRef = (Screen.height - safe.yMax) / Screen.height * 1920f;
         rootRt.anchoredPosition = new Vector2(0f, -36f - topInsetRef);
-        rootRt.sizeDelta = new Vector2(240f, 280f);
+        rootRt.sizeDelta = new Vector2(400f, 280f);
 
         Sprite circle = MakeCircleSprite(256);
 
@@ -223,31 +243,94 @@ public class StageIndicatorUI : MonoBehaviour
         stageImage = stageGO.AddComponent<Image>();
         stageImage.preserveAspect = true;
 
-        // Tap counter under the avatar: white text on a dark translucent
+        // HUD row under the avatar: live-bee counter pill on the left, tap
+        // counter pill on the right. The bee pill shows the game's bee sprite
+        // plus how many bees are currently flying unpopped (3 -> 0 as they
+        // pop, refilling on respawn). The tap pill keeps the "12 / 50"
+        // fractional readout — it shows progress toward the goal at a glance,
+        // where a bare number would make the player remember the target.
+        var rowGO = NewRect("HudRow", root.transform);
+        var rowRt = rowGO.GetComponent<RectTransform>();
+        rowRt.anchorMin = new Vector2(0.5f, 1f);
+        rowRt.anchorMax = new Vector2(0.5f, 1f);
+        rowRt.pivot = new Vector2(0.5f, 1f);
+        rowRt.anchoredPosition = new Vector2(0f, -186f);
+        rowRt.sizeDelta = new Vector2(390f, 60f);
+
+        Sprite pill = MakePillSprite(256, 72);
+        Font hudFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        if (hudFont == null)
+            Debug.LogWarning("StageIndicatorUI: built-in LegacyRuntime font not found; HUD counters may not render.");
+
+        // Bee counter pill (left).
+        var beePillGO = NewRect("BeePill", rowGO.transform);
+        var beePillRt = beePillGO.GetComponent<RectTransform>();
+        beePillRt.anchorMin = new Vector2(0f, 0.5f);
+        beePillRt.anchorMax = new Vector2(0f, 0.5f);
+        beePillRt.pivot = new Vector2(0f, 0.5f);
+        beePillRt.anchoredPosition = new Vector2(0f, 0f);
+        beePillRt.sizeDelta = new Vector2(168f, 58f);
+        var beePillImg = beePillGO.AddComponent<Image>();
+        beePillImg.sprite = pill;
+        beePillImg.color = new Color(0.05f, 0.10f, 0.22f, 0.55f);
+
+        var iconGO = NewRect("BeeIcon", beePillGO.transform);
+        var iconRt = iconGO.GetComponent<RectTransform>();
+        iconRt.anchorMin = new Vector2(0f, 0.5f);
+        iconRt.anchorMax = new Vector2(0f, 0.5f);
+        iconRt.pivot = new Vector2(0f, 0.5f);
+        iconRt.anchoredPosition = new Vector2(6f, 0f);
+        iconRt.sizeDelta = new Vector2(50f, 50f);
+        beeIconImg = iconGO.AddComponent<Image>();
+        var beeTex = BeeController.BeeIconTexture;
+        if (beeTex != null)
+        {
+            beeIconImg.sprite = Sprite.Create(beeTex,
+                new Rect(0f, 0f, beeTex.width, beeTex.height),
+                new Vector2(0.5f, 0.5f), 100f);
+            beeIconImg.preserveAspect = true;
+        }
+
+        var beeTextGO = NewRect("BeeCounter", beePillGO.transform);
+        var beeTextRt = beeTextGO.GetComponent<RectTransform>();
+        beeTextRt.anchorMin = new Vector2(0f, 0.5f);
+        beeTextRt.anchorMax = new Vector2(1f, 0.5f);
+        beeTextRt.pivot = new Vector2(0.5f, 0.5f);
+        beeTextRt.anchoredPosition = new Vector2(28f, 0f);
+        beeTextRt.sizeDelta = new Vector2(112f, 58f);
+        beeText = beeTextGO.AddComponent<Text>();
+        beeText.font = hudFont;
+        beeText.fontSize = 40;
+        beeText.alignment = TextAnchor.MiddleCenter;
+        beeText.color = Color.white;
+        var beeOutline = beeTextGO.AddComponent<Outline>();
+        beeOutline.effectColor = new Color(0.04f, 0.08f, 0.18f, 0.95f);
+        beeOutline.effectDistance = new Vector2(2.5f, -2.5f);
+        beeText.text = "3";
+
+        // Tap counter pill (right): white text on a dark translucent
         // pill so the numbers stay readable against the bright sky, plus a
         // navy outline for extra bite.
-        var pillGO = NewRect("CounterPill", root.transform);
+        var pillGO = NewRect("CounterPill", rowGO.transform);
         var pillRt = pillGO.GetComponent<RectTransform>();
-        pillRt.anchorMin = new Vector2(0.5f, 1f);
-        pillRt.anchorMax = new Vector2(0.5f, 1f);
-        pillRt.pivot = new Vector2(0.5f, 1f);
-        pillRt.anchoredPosition = new Vector2(0f, -186f);
-        pillRt.sizeDelta = new Vector2(210f, 58f);
+        pillRt.anchorMin = new Vector2(1f, 0.5f);
+        pillRt.anchorMax = new Vector2(1f, 0.5f);
+        pillRt.pivot = new Vector2(1f, 0.5f);
+        pillRt.anchoredPosition = new Vector2(0f, 0f);
+        pillRt.sizeDelta = new Vector2(206f, 58f);
         var pillImg = pillGO.AddComponent<Image>();
-        pillImg.sprite = MakePillSprite(256, 72);
+        pillImg.sprite = pill;
         pillImg.color = new Color(0.05f, 0.10f, 0.22f, 0.55f);
 
-        var textGO = NewRect("TapCounter", root.transform);
+        var textGO = NewRect("TapCounter", pillGO.transform);
         var textRt = textGO.GetComponent<RectTransform>();
-        textRt.anchorMin = new Vector2(0.5f, 1f);
-        textRt.anchorMax = new Vector2(0.5f, 1f);
-        textRt.pivot = new Vector2(0.5f, 1f);
-        textRt.anchoredPosition = new Vector2(0f, -186f);
-        textRt.sizeDelta = new Vector2(240f, 60f);
+        textRt.anchorMin = new Vector2(0f, 0.5f);
+        textRt.anchorMax = new Vector2(1f, 0.5f);
+        textRt.pivot = new Vector2(0.5f, 0.5f);
+        textRt.anchoredPosition = Vector2.zero;
+        textRt.sizeDelta = new Vector2(206f, 58f);
         tapText = textGO.AddComponent<Text>();
-        tapText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        if (tapText.font == null)
-            Debug.LogWarning("StageIndicatorUI: built-in LegacyRuntime font not found; tap counter may not render.");
+        tapText.font = hudFont;
         tapText.fontSize = 40;
         tapText.alignment = TextAnchor.MiddleCenter;
         tapText.color = Color.white;

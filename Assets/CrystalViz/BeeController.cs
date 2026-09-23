@@ -616,6 +616,30 @@ public class BeeController : MonoBehaviour
         return bee.alive && bee.state != State.Popped && bee.state != State.Waiting;
     }
 
+    /// <summary>
+    /// How many bees are currently flying around unpopped — drives the HUD
+    /// bee counter. Goes 3 -> 0 as bees are popped and refills on respawn.
+    /// </summary>
+    public int FlyingBeeCount
+    {
+        get
+        {
+            int n = 0;
+            foreach (var bee in bees)
+                if (BeePoppable(bee)) n++;
+            return n;
+        }
+    }
+
+    /// <summary>
+    /// The procedural bee sprite (wings-up frame) so the HUD can show a bee
+    /// icon next to the live-bee count.
+    /// </summary>
+    public static Texture2D BeeIconTexture
+    {
+        get { EnsureBeeSprites(); return beeTexUp; }
+    }
+
     static float PopRadiusPx()
     {
         // Generous fingertip radius, scaled to the phone's screen height.
