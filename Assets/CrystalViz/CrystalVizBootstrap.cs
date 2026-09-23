@@ -42,6 +42,9 @@ public class CrystalVizBootstrap : MonoBehaviour
         BuildScene();
         yield return null; // one frame of the finished scene behind the loader
         loader.Dismiss();
+        // The world then loads in as waves sweeping toward the viewer:
+        // first a glowing grid, then the real meadow growing in.
+        WorldReveal.Begin();
     }
 
     /// <summary>

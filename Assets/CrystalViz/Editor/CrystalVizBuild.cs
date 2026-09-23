@@ -273,6 +273,20 @@ public static class CrystalVizBuild
             Debug.LogWarning("CrystalVizBuild: 'CrystalViz/SpritePaper' not found; bee sprites will use the URP/Lit fallback.");
         }
 
+        // The world-reveal grid shader is created at runtime via Shader.Find
+        // by the WorldReveal sequencer; pin its variants (fog multi_compile)
+        // so they survive stripping. A missing shader here is fine — the
+        // reveal falls back to skipping the grid phase.
+        var gridShader = Shader.Find("CrystalViz/GridReveal");
+        if (gridShader != null)
+        {
+            PinVariants(gridShader);
+        }
+        else
+        {
+            Debug.LogWarning("CrystalVizBuild: 'CrystalViz/GridReveal' not found; world reveal will skip the grid phase.");
+        }
+
         const string dir = "Assets/CrystalViz/Resources";
         Directory.CreateDirectory(dir);
         string path = dir + "/CrystalVizVariants.shadervariants";

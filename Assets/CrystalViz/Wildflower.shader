@@ -20,6 +20,8 @@ Shader "CrystalViz/Wildflower"
         _GustSpeed ("Wind Gust Speed", Float) = 1.8
         _GustFreq ("Wind Gust Frequency", Float) = 0.06
         _GustLighten ("Wind Gust Lighten", Float) = 0.28
+        _GrowFront ("Reveal Wavefront Z", Float) = 10000
+        _GrowWidth ("Reveal Wavefront Width", Float) = 3
     }
     SubShader
     {
@@ -75,6 +77,8 @@ Shader "CrystalViz/Wildflower"
             float _GustSpeed;
             float _GustFreq;
             float _GustLighten;
+            float _GrowFront;
+            float _GrowWidth;
 
             Varyings vert(Attributes IN)
             {
@@ -82,13 +86,20 @@ Shader "CrystalViz/Wildflower"
 
                 float3 wp = TransformObjectToWorld(IN.positionOS.xyz);
 
+                // World-reveal wave (v1.0.40): same as the grass — flowers
+                // stay collapsed until the wavefront sweeps past their Z.
+                float growT = 1.0 - smoothstep(_GrowFront - _GrowWidth,
+                                              _GrowFront + _GrowWidth, wp.z);
+                float grow = growT * growT * (3.0 - 2.0 * growT);
+                wp.y *= grow;
+
                 // Same wind field as the grass so flowers and blades ripple
                 // together: two layered sines, bend growing toward the
                 // blossom (uv.y^2) so roots stay planted.
                 float phase = _Time.y * _WindSpeed + wp.x * 0.35 + wp.z * 0.27;
                 float sway = sin(phase) * 0.6 + sin(phase * 2.3 + 1.7) * 0.4;
                 float tipW = IN.uv.y * IN.uv.y;
-                float bend = tipW * _WindStrength * sway;
+                float bend = tipW * _WindStrength * sway * grow;
                 wp.x += bend;
                 wp.z += bend * 0.4;
 
@@ -103,7 +114,7 @@ Shader "CrystalViz/Wildflower"
                 float gsB = 0.5 + 0.5 * sin(gustCoord * 0.41 + 2.1);
                 float gustB = gsB * gsB * gsB;
                 float gustAmt = gust * 0.75 + gustB * 0.25;
-                wp.xz += gustDir * (tipW * _GustStrength * gustAmt);
+                wp.xz += gustDir * (tipW * _GustStrength * gustAmt * grow);
                 OUT.gust = gustAmt;
 
                 OUT.positionWS = wp;

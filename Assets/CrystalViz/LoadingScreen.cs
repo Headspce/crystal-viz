@@ -4,9 +4,10 @@ using UnityEngine.UI;
 
 /// <summary>
 /// Branded loading screen: the first thing painted after the Unity splash,
-/// so the procedurally-built diorama doesn't pop in jarringly. Shows the
-/// CrystalViz wordmark, the game's slogan, and an animated dot row while the
-/// bootstrap builds the scene behind it, then fades away.
+/// so the procedurally-built diorama doesn't pop in jarringly. Just a dark
+/// screen with the game's quote and an animated dot row while the bootstrap
+/// builds the scene behind it, then fades away. (The app wordmark stays off
+/// for now — the name may change.)
 /// Play-mode only — the CI edit-mode screenshot path never creates it.
 /// </summary>
 public class LoadingScreen : MonoBehaviour
@@ -57,38 +58,14 @@ public class LoadingScreen : MonoBehaviour
         var titleRt = titleGO.AddComponent<RectTransform>();
         titleRt.anchorMin = titleRt.anchorMax = new Vector2(0.5f, 0.5f);
         titleRt.pivot = new Vector2(0.5f, 0.5f);
-        titleRt.anchoredPosition = new Vector2(0f, 140f);
-        titleRt.sizeDelta = new Vector2(1000f, 140f);
+        titleRt.anchoredPosition = new Vector2(0f, 20f);
+        titleRt.sizeDelta = new Vector2(1000f, 80f);
         var title = titleGO.AddComponent<Text>();
         title.font = font;
-        title.fontSize = 92;
+        title.fontSize = 46;
         title.alignment = TextAnchor.MiddleCenter;
-        title.color = Gold;
-        title.text = "C R Y S T A L V I Z";
-
-        var divGO = new GameObject("Divider");
-        divGO.transform.SetParent(canvasGO.transform, false);
-        var divRt = divGO.AddComponent<RectTransform>();
-        divRt.anchorMin = divRt.anchorMax = new Vector2(0.5f, 0.5f);
-        divRt.pivot = new Vector2(0.5f, 0.5f);
-        divRt.anchoredPosition = new Vector2(0f, 40f);
-        divRt.sizeDelta = new Vector2(320f, 3f);
-        var div = divGO.AddComponent<Image>();
-        div.color = new Color(Gold.r, Gold.g, Gold.b, 0.6f);
-
-        var sloganGO = new GameObject("Slogan");
-        sloganGO.transform.SetParent(canvasGO.transform, false);
-        var sloganRt = sloganGO.AddComponent<RectTransform>();
-        sloganRt.anchorMin = sloganRt.anchorMax = new Vector2(0.5f, 0.5f);
-        sloganRt.pivot = new Vector2(0.5f, 0.5f);
-        sloganRt.anchoredPosition = new Vector2(0f, -50f);
-        sloganRt.sizeDelta = new Vector2(1000f, 80f);
-        var slogan = sloganGO.AddComponent<Text>();
-        slogan.font = font;
-        slogan.fontSize = 46;
-        slogan.alignment = TextAnchor.MiddleCenter;
-        slogan.color = SoftWhite;
-        slogan.text = "sow bees, reap shade.";
+        title.color = SoftWhite;
+        title.text = "sow bees, reap shade.";
 
         for (int i = 0; i < 3; i++)
         {
@@ -97,7 +74,7 @@ public class LoadingScreen : MonoBehaviour
             var dotRt = dotGO.AddComponent<RectTransform>();
             dotRt.anchorMin = dotRt.anchorMax = new Vector2(0.5f, 0.5f);
             dotRt.pivot = new Vector2(0.5f, 0.5f);
-            dotRt.anchoredPosition = new Vector2((i - 1) * 80f, -190f);
+            dotRt.anchoredPosition = new Vector2((i - 1) * 80f, -110f);
             dotRt.sizeDelta = new Vector2(60f, 60f);
             var dot = dotGO.AddComponent<Text>();
             dot.font = font;
