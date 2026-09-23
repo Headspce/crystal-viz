@@ -22,7 +22,27 @@ public class CrystalVizBootstrap : MonoBehaviour
     [HideInInspector] public System.Collections.Generic.List<Vector3> flowerHeads =
         new System.Collections.Generic.List<Vector3>();
 
-    void Awake() => BuildScene();
+    void Awake()
+    {
+        // Play mode: paint the branded loading screen first, let it render,
+        // then build the diorama behind it and fade the loader away — no
+        // jarring pop-in after the Unity splash. The CI edit-mode screenshot
+        // path (Awake never runs there) keeps calling BuildScene() directly.
+        if (Application.isPlaying)
+            StartCoroutine(BuildSceneWithLoading());
+        else
+            BuildScene();
+    }
+
+    System.Collections.IEnumerator BuildSceneWithLoading()
+    {
+        var loader = LoadingScreen.Show();
+        yield return null;
+        yield return null; // let the loading screen paint before the heavy build
+        BuildScene();
+        yield return null; // one frame of the finished scene behind the loader
+        loader.Dismiss();
+    }
 
     /// <summary>
     /// Builds the whole diorama. Called from Awake at runtime; the CI
