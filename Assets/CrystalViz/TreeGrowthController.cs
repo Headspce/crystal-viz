@@ -40,6 +40,12 @@ public class TreeGrowthController : MonoBehaviour
     public int tapCredits;
     /// <summary>Fired when a tree tap is rejected for lack of tap credits.</summary>
     public UnityEvent onTapRejected = new UnityEvent();
+
+    /// <summary>
+    /// Fired when a tree tap is accepted: a credit was spent and the tree
+    /// is growing. The growth-feedback burst lines listen to this.
+    /// </summary>
+    public UnityEvent onTapAccepted = new UnityEvent();
     public ParametricTree tree;
     public UnityEvent<int> onStageChanged = new UnityEvent<int>();
     /// <summary>
@@ -322,6 +328,7 @@ public class TreeGrowthController : MonoBehaviour
             lastStage = stage;
             onStageChanged.Invoke(stage);
         }
+        onTapAccepted.Invoke();
     }
 
     /// <summary>

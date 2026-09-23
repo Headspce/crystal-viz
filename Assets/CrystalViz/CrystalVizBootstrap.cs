@@ -582,6 +582,9 @@ public class CrystalVizBootstrap : MonoBehaviour
         treeGO.AddComponent<ParametricTree>().Initialize();
         var ctrl = treeGO.AddComponent<TreeGrowthController>();
         ctrl.Initialize(); // assigns tree, restores taps, calls ApplyGrowth()
+        // v1.0.38: golden emphasis-line burst above the crown on every
+        // accepted tap (anime surprise-line feedback).
+        treeGO.AddComponent<TreeGrowthBurstLines>().Initialize();
         treeGO.AddComponent<StageIndicatorUI>().Initialize();
         // Test-loop reset mark (glowing infinity, bottom-left): pressing it
         // snaps the tree back to the true zero-tap sprout for repeated

@@ -351,6 +351,18 @@ public class ParametricTree : MonoBehaviour
         return ((h ^ (h >> 16)) & 0xffffff) / (float)0xffffff;
     }
 
+    /// <summary>World-space top of the tree crown (trunk tips + foliage).</summary>
+    public Vector3 CrownTop
+    {
+        get
+        {
+            float topY = 0f;
+            if (trunkMesh != null) topY = Mathf.Max(topY, trunkMesh.bounds.max.y);
+            if (leafMesh != null) topY = Mathf.Max(topY, leafMesh.bounds.max.y);
+            return transform.TransformPoint(new Vector3(0f, topY, 0f));
+        }
+    }
+
     /// <summary>
     /// Rebuilds the tree at growth g in [0,1]. Cheap no-op when g barely
     /// changed since the last build (the growth controller animates smoothly
