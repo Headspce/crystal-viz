@@ -247,6 +247,32 @@ public static class CrystalVizBuild
             Debug.LogWarning("CrystalVizBuild: 'CrystalViz/HorizonHaze' not found; horizon haze will be skipped at runtime.");
         }
 
+        // The paper-sprite bee shader is created at runtime via Shader.Find;
+        // pin its (single, keyword-free) variant so it survives stripping.
+        // v1.0.35: the v1.0.34 sprite material used URP/Lit with
+        // SetFloat("_AlphaClip") which never enables _ALPHATEST_ON on a
+        // runtime-created material — the quad rendered opaque and the
+        // transparent texels showed as a black box around each bee on the
+        // phone. CrystalViz/SpritePaper is unlit alpha-blend with no keywords.
+        // A missing shader here is fine — the bee falls back to URP/Lit.
+        var spriteShader = Shader.Find("CrystalViz/SpritePaper");
+        if (spriteShader != null)
+        {
+            foreach (var pt in passTypes)
+            {
+                try
+                {
+                    var v = new ShaderVariantCollection.ShaderVariant(spriteShader, pt, new string[0]);
+                    if (svc.Add(v)) added++;
+                }
+                catch (ArgumentException) { skipped++; }
+            }
+        }
+        else
+        {
+            Debug.LogWarning("CrystalVizBuild: 'CrystalViz/SpritePaper' not found; bee sprites will use the URP/Lit fallback.");
+        }
+
         const string dir = "Assets/CrystalViz/Resources";
         Directory.CreateDirectory(dir);
         string path = dir + "/CrystalVizVariants.shadervariants";

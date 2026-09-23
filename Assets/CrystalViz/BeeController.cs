@@ -106,6 +106,10 @@ public class BeeController : MonoBehaviour
     // desktop, broken on device.
     Shader popShader;
 
+    // v1.0.35: dedicated sprite shader for the Paper Mario bee quads.
+    // Resolved once in Start; falls back to URP/Lit if stripped.
+    Shader spriteShader;
+
     void Start()
     {
         if (bootstrap == null) bootstrap = FindObjectOfType<CrystalVizBootstrap>();
@@ -113,6 +117,19 @@ public class BeeController : MonoBehaviour
         popShader = Shader.Find("Universal Render Pipeline/Lit");
         if (popShader == null)
             Debug.LogError("BeeController: URP/Lit not found; pop FX will be skipped.");
+        // v1.0.35: the bee sprite quad needs REAL alpha blending. v1.0.34
+        // used URP/Lit with SetFloat("_AlphaClip", 1f), but that never enables
+        // the _ALPHATEST_ON keyword on a runtime-created material, so the
+        // quad rendered opaque and the transparent texels showed as a black
+        // box around each bee on the phone. CrystalViz/SpritePaper is a
+        // keyword-free unlit alpha-blend shader (pinned in the variant
+        // collection, so Shader.Find resolves on device).
+        spriteShader = Shader.Find("CrystalViz/SpritePaper");
+        if (spriteShader == null)
+        {
+            Debug.LogError("BeeController: CrystalViz/SpritePaper not found; bee sprites fall back to URP/Lit.");
+            spriteShader = popShader;
+        }
         CollectNearFlowers();
         for (int i = 0; i < BeeCount; i++)
         {
@@ -173,13 +190,25 @@ public class BeeController : MonoBehaviour
         var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
         DestroyImmediate(quad.GetComponent<Collider>());
         quad.transform.SetParent(bee.bodyT, false);
-        bee.spriteMat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
-        bee.spriteMat.SetTexture("_BaseMap", beeTexUp);
-        bee.spriteMat.SetFloat("_AlphaClip", 1f);  // crisp sprite edges
-        bee.spriteMat.SetFloat("_Cutoff", 0.4f);
-        bee.spriteMat.SetFloat("_Cull", 0f);
-        bee.spriteMat.SetFloat("_Smoothness", 0f); // flat cartoon, no shine
-        bee.spriteMat.SetFloat("_Metallic", 0f);
+        bee.spriteMat = new Material(spriteShader);
+        if (spriteShader != null && spriteShader.name == "CrystalViz/SpritePaper")
+        {
+            // Keyword-free alpha blend: no _AlphaClip/_Cutoff needed, and
+            // Material.mainTexture maps straight to _MainTex, so the wing
+            // flap frame swap in Update works on device too.
+            bee.spriteMat.SetTexture("_MainTex", beeTexUp);
+        }
+        else
+        {
+            // Fallback path (should never happen — the paper shader is pinned
+            // in the variant collection): legacy URP/Lit setup.
+            bee.spriteMat.SetTexture("_BaseMap", beeTexUp);
+            bee.spriteMat.SetFloat("_AlphaClip", 1f);
+            bee.spriteMat.SetFloat("_Cutoff", 0.4f);
+            bee.spriteMat.SetFloat("_Cull", 0f);
+            bee.spriteMat.SetFloat("_Smoothness", 0f); // flat cartoon, no shine
+            bee.spriteMat.SetFloat("_Metallic", 0f);
+        }
         quad.GetComponent<MeshRenderer>().material = bee.spriteMat;
         bee.lastPos = bee.bodyT.position;
     }
@@ -548,6 +577,25 @@ public class BeeController : MonoBehaviour
             if (Vector2.Distance(mainCam.WorldToScreenPoint(bee.bodyT.position), screenPos) <= popRadius)
                 PopBee(bee);
         }
+    }
+
+    /// <summary>
+    /// Hit-test for TreeGrowthController (v1.0.35 tap/swipe disambiguation):
+    /// true when the screen point lands on a live, poppable bee. Uses the
+    /// same fingertip radius as the pop itself, so "tap pops the bee" and
+    /// "tap doesn't grow the tree" always agree with each other.
+    /// </summary>
+    public bool IsBeeAtScreenPoint(Vector2 screenPos)
+    {
+        if (mainCam == null || bees == null) return false;
+        float popRadius = PopRadiusPx();
+        foreach (var bee in bees)
+        {
+            if (!BeePoppable(bee)) continue;
+            if (Vector2.Distance(mainCam.WorldToScreenPoint(bee.bodyT.position), screenPos) <= popRadius)
+                return true;
+        }
+        return false;
     }
 
     /// <summary>Pop any live bee within fingertip radius of a swipe segment.</summary>

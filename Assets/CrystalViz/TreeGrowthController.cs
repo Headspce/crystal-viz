@@ -5,6 +5,10 @@ using UnityEngine.Events;
 /// Tap-to-grow logic for the parametric tree. Each screen tap advances the
 /// tree one step toward maturity (default 50 taps, sprout -> mature).
 ///
+/// A press only counts as a tap when it is quick, barely moves, and lands on
+/// empty space: taps on a bee pop the bee instead (no growth), and presses on
+/// UI or swipes never grow the tree.
+///
 /// Progress persists across sessions via PlayerPrefs ("CrystalViz_TreeTaps").
 /// The displayed growth animates smoothly (~0.5s) toward the tapped target so
 /// the tree grows continuously instead of popping between steps.
@@ -113,18 +117,7 @@ public class TreeGrowthController : MonoBehaviour
 
     void Update()
     {
-        // Touch takes priority; mouse click covers editor testing. (On mobile
-        // the first touch also raises mouse-button events; the bool collapses
-        // both into a single tap per frame.)
-        bool tapped = Input.GetMouseButtonDown(0);
-        Vector2 tapPos = Input.mousePosition;
-        if (!tapped && Input.touchCount > 0 && Input.GetTouch(0).phase == TouchPhase.Began)
-        {
-            tapped = true;
-            tapPos = Input.GetTouch(0).position;
-        }
-        // A press on the reset button must not also grow the tree.
-        if (tapped && !IsOnResetButton(tapPos)) RegisterTap();
+        UpdateTapGesture();
 
         if (animT < 1f)
         {
@@ -132,6 +125,104 @@ public class TreeGrowthController : MonoBehaviour
             displayedG = Mathf.Lerp(animFrom, animTo, Smooth(animT));
             if (tree != null) tree.SetGrowth(displayedG);
         }
+    }
+
+    // --- tap-vs-swipe disambiguation (v1.0.35) ---
+    // A press only grows the tree when it is a genuine TAP: quick, barely
+    // moves, and didn't land on a bee (that tap pops the bee instead), the
+    // reset button, or any other UI (sun slider). Swipes — bee popping,
+    // slider drags — never grow the tree. Growth fires on release, not on
+    // touchdown, so a tap that turns out to be a swipe can't grow first.
+    bool pressActive;
+    Vector2 pressPos;
+    float pressTime;
+    bool pressOnBee;
+    bool pressOnUI;
+    const float TapMaxDuration = 0.5f; // slower than this is a hold, not a tap
+    static float TapSlopPx() => Screen.height * 0.02f; // finger-wobble allowance
+
+    BeeController beeController;
+    bool beeLookupDone;
+
+    void UpdateTapGesture()
+    {
+        // Touch takes priority; mouse click covers editor testing. (On mobile
+        // the first touch also raises mouse-button events; the touch branch
+        // wins so a single press is never tracked twice.)
+        bool pressed, released;
+        Vector2 pos;
+        if (Input.touchCount > 0)
+        {
+            var t = Input.GetTouch(0);
+            pos = t.position;
+            pressed = t.phase == TouchPhase.Began;
+            if (t.phase == TouchPhase.Canceled) { pressActive = false; return; }
+            released = t.phase == TouchPhase.Ended;
+        }
+        else
+        {
+            pos = Input.mousePosition;
+            pressed = Input.GetMouseButtonDown(0);
+            released = Input.GetMouseButtonUp(0);
+        }
+
+        if (pressed && !pressActive)
+        {
+            pressActive = true;
+            pressPos = pos;
+            pressTime = Time.unscaledTime;
+            // Snapshot at touchdown: the bee pops here (BeeController), so the
+            // same tap must not also grow the tree.
+            pressOnBee = IsBeeAtScreenPoint(pos);
+            pressOnUI = IsOnResetButton(pos) || IsPointerOverUI(pos);
+            return;
+        }
+
+        if (!pressActive) return;
+
+        // Stale press (missed release): give up after a grace period.
+        if (Time.unscaledTime - pressTime > TapMaxDuration + 1f)
+        {
+            pressActive = false;
+            return;
+        }
+
+        if (released)
+        {
+            pressActive = false;
+            bool quick = (Time.unscaledTime - pressTime) <= TapMaxDuration;
+            bool steady = Vector2.Distance(pos, pressPos) <= TapSlopPx();
+            if (quick && steady && !pressOnBee && !pressOnUI)
+                RegisterTap();
+        }
+    }
+
+    /// <summary>
+    /// True when the screen point lands on a live bee (queried from the
+    /// BeeController with the same radius the pop itself uses).
+    /// </summary>
+    bool IsBeeAtScreenPoint(Vector2 screenPos)
+    {
+        if (!beeLookupDone)
+        {
+            beeLookupDone = true;
+            beeController = FindObjectOfType<BeeController>();
+        }
+        return beeController != null && beeController.IsBeeAtScreenPoint(screenPos);
+    }
+
+    /// <summary>
+    /// True when the screen point lands on any UI element (sun slider, reset
+    /// button, stage indicator). UI gestures never grow the tree.
+    /// </summary>
+    static bool IsPointerOverUI(Vector2 screenPos)
+    {
+        var es = UnityEngine.EventSystems.EventSystem.current;
+        if (es == null) return false;
+        var ped = new UnityEngine.EventSystems.PointerEventData(es) { position = screenPos };
+        var results = new System.Collections.Generic.List<UnityEngine.EventSystems.RaycastResult>();
+        es.RaycastAll(ped, results);
+        return results.Count > 0;
     }
 
     /// <summary>True when the given screen position is inside the reset button.</summary>
