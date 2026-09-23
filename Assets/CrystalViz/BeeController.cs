@@ -42,8 +42,10 @@ public class BeeController : MonoBehaviour
     {
         public GameObject root;
         public Transform bodyT;
-        public Transform wingL;
-        public Transform wingR;
+        public Material spriteMat; // per-bee: holds the current flap frame
+        public float flipX = 1f;    // paper-turn: +1 faces right, -1 faces left
+        public float flipTarget = 1f;
+        public Vector3 lastPos;
         public State state;
         public Vector3 fromPos;
         public Vector3 targetFlower;
@@ -71,17 +73,12 @@ public class BeeController : MonoBehaviour
         public float size;
     }
 
-    // An active pop burst: confetti petals + expanding ring + soft poof.
+    // An active pop burst: pure confetti (v1.0.34 — the ring and poof were
+    // removed per Tyler: they fought the confetti visually).
     class PopFX
     {
         public GameObject root;
         public List<Petal> petals = new List<Petal>();
-        public Transform ringT;
-        public Material ringMat;
-        public float ringAge;
-        public Transform poofT;
-        public Material poofMat;
-        public float poofAge;
         public float age;
     }
 
@@ -91,16 +88,14 @@ public class BeeController : MonoBehaviour
     const float BaseCruiseHeight = 0.35f; // bees fly low and direct, not lofty arcs
     const float BaseFlightSpeed = 2.2f;   // world units per second
     const float FeedTime = 2.8f;      // seconds hovering over a blossom
-    const float FlapFlight = 44f;     // wing blur rad/s in flight
+    const float FlapFlight = 44f;     // wing frame swap rad/s in flight
     const float FlapFeed = 30f;       // hovering buzz while feeding
-    const float BodyLen = 0.095f;     // chunky and visible, per Tyler
+    const float SpriteSize = 0.17f;   // paper-bee quad size in world units
     const float RespawnDelay = 2.4f;  // seconds before a popped bee returns
     // Viewport margins: no bee ever leaves this rect on the phone screen.
     const float MarginX = 0.06f;
     const float MarginYBottom = 0.07f;
     const float MarginYTop = 0.06f;
-
-    static Texture2D ringTex; // shared soft-ring sprite for pop FX
 
     // Resolved once in Start: the ONLY shader the pop FX may use. URP/Lit is
     // guaranteed in the player build (pinned in the variant collection and
@@ -161,98 +156,134 @@ public class BeeController : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Paper Mario bee: a flat cartoon sprite on a camera-facing quad — 2D
+    /// and 3D at once. The body never rotates in 3D; turning is a horizontal
+    /// paper flip (scale.x sweeping through zero), and the wings are two
+    /// sprite frames swapped at flap speed.
+    /// </summary>
     void BuildBeeAgent(BeeAgent bee, int index)
     {
+        EnsureBeeSprites();
         var root = new GameObject("Bee" + (index + 1));
         root.transform.SetParent(transform, false);
         bee.root = root;
         bee.bodyT = root.transform;
 
-        // Body: striped sphere, poles rotated onto the long (Z) axis so the
-        // texture bands ring the body like a real bumblebee's stripes.
-        var bodyGo = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        DestroyImmediate(bodyGo.GetComponent<Collider>());
-        bodyGo.transform.SetParent(bee.bodyT, false);
-        bodyGo.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
-        bodyGo.transform.localScale = new Vector3(BodyLen * 0.55f, BodyLen, BodyLen * 0.55f);
-        var bodyMat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
-        bodyMat.SetTexture("_BaseMap", MakeStripeTexture());
-        bodyMat.SetFloat("_Smoothness", 0.15f); // fuzzy, not shiny
-        bodyGo.GetComponent<MeshRenderer>().material = bodyMat;
-
-        // Head: small dark sphere at the front.
-        var headGo = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        DestroyImmediate(headGo.GetComponent<Collider>());
-        headGo.transform.SetParent(bee.bodyT, false);
-        headGo.transform.localPosition = new Vector3(0f, 0.004f, BodyLen * 0.52f);
-        headGo.transform.localScale = new Vector3(0.028f, 0.026f, 0.026f);
-        var darkMat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
-        darkMat.color = new Color(0.09f, 0.07f, 0.05f);
-        darkMat.SetFloat("_Smoothness", 0.3f);
-        headGo.GetComponent<MeshRenderer>().material = darkMat;
-
-        // Stinger: tiny dark cone at the back.
-        var stingGo = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        DestroyImmediate(stingGo.GetComponent<Collider>());
-        stingGo.transform.SetParent(bee.bodyT, false);
-        stingGo.transform.localPosition = new Vector3(0f, -0.002f, -BodyLen * 0.55f);
-        stingGo.transform.localScale = new Vector3(0.010f, 0.010f, 0.022f);
-        stingGo.GetComponent<MeshRenderer>().material = darkMat;
-
-        // Wings: translucent quads hinged at the top of the thorax; the fast
-        // flap reads as a blur, like a real bee.
-        var wingMat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
-        wingMat.color = new Color(0.92f, 0.96f, 1f, 0.38f);
-        wingMat.SetFloat("_Surface", 1f); // transparent
-        wingMat.SetFloat("_Cull", 0f);    // visible from below too
-        wingMat.SetFloat("_Smoothness", 0.6f);
-        bee.wingL = MakeWing("WingL", -1f, wingMat, bee.bodyT);
-        bee.wingR = MakeWing("WingR", 1f, wingMat, bee.bodyT);
-    }
-
-    Transform MakeWing(string name, float side, Material wingMat, Transform parent)
-    {
-        var pivot = new GameObject(name).transform;
-        pivot.SetParent(parent, false);
-        pivot.localPosition = new Vector3(side * 0.012f, 0.020f, 0.008f);
-
         var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
         DestroyImmediate(quad.GetComponent<Collider>());
-        quad.transform.SetParent(pivot, false);
-        quad.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f); // flat, facing up
-        float span = 0.055f;
-        quad.transform.localPosition = new Vector3(side * span * 0.45f, 0f, -0.008f);
-        quad.transform.localScale = new Vector3(side * span, span * 0.8f, 1f);
-        quad.GetComponent<MeshRenderer>().material = wingMat;
-        return pivot;
+        quad.transform.SetParent(bee.bodyT, false);
+        bee.spriteMat = new Material(Shader.Find("Universal Render Pipeline/Lit"));
+        bee.spriteMat.SetTexture("_BaseMap", beeTexUp);
+        bee.spriteMat.SetFloat("_AlphaClip", 1f);  // crisp sprite edges
+        bee.spriteMat.SetFloat("_Cutoff", 0.4f);
+        bee.spriteMat.SetFloat("_Cull", 0f);
+        bee.spriteMat.SetFloat("_Smoothness", 0f); // flat cartoon, no shine
+        bee.spriteMat.SetFloat("_Metallic", 0f);
+        quad.GetComponent<MeshRenderer>().material = bee.spriteMat;
+        bee.lastPos = bee.bodyT.position;
+    }
+
+    static Texture2D beeTexUp;   // wings raised
+    static Texture2D beeTexDown; // wings lowered
+
+    static void EnsureBeeSprites()
+    {
+        if (beeTexUp != null) return;
+        beeTexUp = DrawBeeSprite(wingsUp: true);
+        beeTexDown = DrawBeeSprite(wingsUp: false);
     }
 
     /// <summary>
-    /// Bumblebee stripes: golden-yellow with black bands ringing the body.
-    /// Bands vary along the texture's vertical axis, which maps pole to pole
-    /// on the sphere — and the poles were rotated onto the body axis.
+    /// Draws a flat-shaded cartoon bee (side view, facing right) onto a
+    /// 256px canvas: dark outline, golden body with a cel shade band, black
+    /// stripes, head with a cute eye, stinger, and pale wings.
     /// </summary>
-    static Texture2D MakeStripeTexture()
+    static Texture2D DrawBeeSprite(bool wingsUp)
     {
-        int w = 64, h = 64;
-        var tex = new Texture2D(w, h, TextureFormat.RGBA32, false);
-        tex.wrapMode = TextureWrapMode.Clamp;
-        var gold = new Color(0.98f, 0.72f, 0.12f);
-        var black = new Color(0.08f, 0.06f, 0.04f);
-        for (int y = 0; y < h; y++)
-            for (int x = 0; x < w; x++)
-            {
-                float v = y / (float)h;
-                // Three soft black bands across the golden body.
-                float band = Mathf.Abs(Mathf.Sin(v * Mathf.PI * 3.5f));
-                Color c = band < 0.42f ? black : gold;
-                // Slight noise so it reads fuzzy, not plastic.
-                float n = Mathf.Sin(x * 12.9f + y * 7.7f) * 0.5f + 0.5f;
-                c = Color.Lerp(c, c * 0.85f, n * 0.25f);
-                tex.SetPixel(x, y, c);
-            }
+        int s = 256;
+        var tex = new Texture2D(s, s, TextureFormat.RGBA32, false);
+        for (int y = 0; y < s; y++)
+            for (int x = 0; x < s; x++)
+                tex.SetPixel(x, y, new Color(0f, 0f, 0f, 0f));
+        var outline = new Color(0.25f, 0.16f, 0.05f);
+        var gold = new Color(0.99f, 0.73f, 0.13f);
+        var shade = new Color(0.80f, 0.54f, 0.07f);
+        var black = new Color(0.10f, 0.08f, 0.05f);
+        var wing = new Color(0.88f, 0.94f, 1.0f);
+
+        // Stinger tucks behind the body.
+        FillTriangle(tex, new Vector2(48, 128), new Vector2(16, 116), new Vector2(16, 140), black);
+
+        // Wings (behind the body).
+        int wy = wingsUp ? 196 : 148;
+        FillEllipse(tex, 142, wy - 6, 40, 24, outline);
+        FillEllipse(tex, 142, wy - 6, 36, 20, wing);
+        FillEllipse(tex, 100, wy + 4, 46, 28, outline);
+        FillEllipse(tex, 100, wy + 4, 42, 24, wing);
+
+        // Body: outline, cel shade crescent, then the golden body.
+        FillEllipse(tex, 126, 128, 90, 65, outline);
+        FillEllipse(tex, 126, 118, 86, 61, shade);
+        FillEllipse(tex, 126, 134, 84, 59, gold);
+
+        // Three black stripes, clipped to the body ellipse.
+        int bcx = 126, bcy = 134, brx = 84, bry = 59;
+        int[,] bands = { { 80, 94 }, { 120, 134 }, { 160, 174 } };
+        for (int b = 0; b < 3; b++)
+            for (int y = bcy - bry; y <= bcy + bry; y++)
+                for (int x = bands[b, 0]; x <= bands[b, 1]; x++)
+                {
+                    float dx = (x - bcx) / (float)brx, dy = (y - bcy) / (float)bry;
+                    if (dx * dx + dy * dy <= 1f) tex.SetPixel(x, y, black);
+                }
+
+        // Head with a cute eye.
+        FillCircle(tex, 200, 124, 30, outline);
+        FillCircle(tex, 200, 124, 26, black);
+        FillCircle(tex, 208, 132, 10, Color.white);
+        FillCircle(tex, 211, 133, 5, black);
+
         tex.Apply();
+        tex.filterMode = FilterMode.Bilinear;
         return tex;
+    }
+
+    static void FillEllipse(Texture2D tex, int cx, int cy, int rx, int ry, Color c)
+    {
+        for (int y = cy - ry; y <= cy + ry; y++)
+        {
+            if (y < 0 || y >= tex.height) continue;
+            for (int x = cx - rx; x <= cx + rx; x++)
+            {
+                if (x < 0 || x >= tex.width) continue;
+                float dx = (x - cx) / (float)rx, dy = (y - cy) / (float)ry;
+                if (dx * dx + dy * dy <= 1f) tex.SetPixel(x, y, c);
+            }
+        }
+    }
+
+    static void FillCircle(Texture2D tex, int cx, int cy, int r, Color c)
+    {
+        FillEllipse(tex, cx, cy, r, r, c);
+    }
+
+    static void FillTriangle(Texture2D tex, Vector2 a, Vector2 b, Vector2 c, Color col)
+    {
+        int minX = Mathf.Max(0, (int)Mathf.Min(a.x, Mathf.Min(b.x, c.x)));
+        int maxX = Mathf.Min(tex.width - 1, (int)Mathf.Max(a.x, Mathf.Max(b.x, c.x)));
+        int minY = Mathf.Max(0, (int)Mathf.Min(a.y, Mathf.Min(b.y, c.y)));
+        int maxY = Mathf.Min(tex.height - 1, (int)Mathf.Max(a.y, Mathf.Max(b.y, c.y)));
+        float denom = (b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y);
+        if (Mathf.Abs(denom) < 1e-6f) return;
+        for (int y = minY; y <= maxY; y++)
+            for (int x = minX; x <= maxX; x++)
+            {
+                float w1 = ((b.y - c.y) * (x - c.x) + (c.x - b.x) * (y - c.y)) / denom;
+                float w2 = ((c.y - a.y) * (x - c.x) + (a.x - c.x) * (y - c.y)) / denom;
+                float w3 = 1f - w1 - w2;
+                if (w1 >= 0f && w2 >= 0f && w3 >= 0f) tex.SetPixel(x, y, col);
+            }
     }
 
     void PickNextFlower(BeeAgent bee, bool initial = false)
@@ -311,6 +342,7 @@ public class BeeController : MonoBehaviour
                     bee.root.SetActive(true);
                     bee.alive = true;
                     bee.spawnT = 0f;
+                    bee.lastPos = bee.bodyT.position;
                     PickNextFlower(bee, initial: true);
                 }
                 break;
@@ -322,13 +354,8 @@ public class BeeController : MonoBehaviour
                 Vector3 a = Vector3.Lerp(bee.fromPos, bee.ctrlPos, t);
                 Vector3 b = Vector3.Lerp(bee.ctrlPos, bee.targetFlower, t);
                 Vector3 pos = Vector3.Lerp(a, b, t);
-                // Face travel direction with a slight eager wobble.
-                Vector3 vel = (b - a).normalized;
-                if (vel.sqrMagnitude > 0.001f)
-                {
-                    Quaternion look = Quaternion.LookRotation(vel, Vector3.up);
-                    bee.bodyT.rotation = Quaternion.Slerp(bee.bodyT.rotation, look, 1f - Mathf.Exp(-7f * dt));
-                }
+                // Paper bee: no 3D turning here — the billboard flip at the
+                // end of UpdateBee handles facing. Just fly the position.
                 bee.bodyT.position = pos + Vector3.up * Mathf.Sin(Time.time * 11f + bee.flapPhase) * 0.010f;
                 Flap(bee, dt, FlapFlight);
                 if (t >= 1f) { bee.state = State.Hover; bee.stateTimer = 0.5f; }
@@ -350,9 +377,6 @@ public class BeeController : MonoBehaviour
                 float dip = 0.045f + Mathf.Sin(Time.time * 3.3f + bee.flapPhase) * 0.012f;
                 bee.bodyT.position = bee.targetFlower + Vector3.up * dip
                     + new Vector3(Mathf.Sin(Time.time * 2.4f) * 0.008f, 0f, Mathf.Cos(Time.time * 1.9f) * 0.008f);
-                bee.bodyT.rotation = Quaternion.Slerp(bee.bodyT.rotation,
-                    Quaternion.Euler(24f, bee.bodyT.rotation.eulerAngles.y, 0f),
-                    1f - Mathf.Exp(-5f * dt));
                 if (bee.stateTimer <= 0f) { bee.state = State.Takeoff; bee.stateTimer = 0.35f; }
                 break;
             case State.Takeoff:
@@ -371,6 +395,7 @@ public class BeeController : MonoBehaviour
                     bee.alive = true;
                     bee.spawnT = 0f; // spring back in cartoon-style
                     PickNextFlower(bee, initial: true);
+                    bee.lastPos = bee.bodyT.position;
                 }
                 break;
         }
@@ -378,27 +403,45 @@ public class BeeController : MonoBehaviour
         if (bee.alive)
         {
             // Spawn spring-in: cartoonish overshoot scale on (re)entrance.
+            float spawnS = 1f;
             if (bee.spawnT < 1f)
             {
                 bee.spawnT = Mathf.Min(1f, bee.spawnT + dt / 0.35f);
-                float s = EaseOutBack(bee.spawnT);
-                bee.bodyT.localScale = new Vector3(s, s, s);
+                spawnS = EaseOutBack(bee.spawnT);
             }
+
+            // Paper Mario billboard: the paper bee always faces the camera.
+            // Turning is an illusion — a horizontal paper flip (scale.x
+            // sweeping through edge-on) driven by camera-space motion, plus
+            // a slight paper tilt with vertical movement.
+            if (mainCam != null)
+            {
+                bee.bodyT.rotation = mainCam.transform.rotation;
+                Vector3 velW = (bee.bodyT.position - bee.lastPos) / Mathf.Max(dt, 0.0001f);
+                bee.lastPos = bee.bodyT.position;
+                Vector3 velC = mainCam.transform.InverseTransformDirection(velW);
+                if (Mathf.Abs(velC.x) > 0.2f) bee.flipTarget = velC.x > 0f ? 1f : -1f;
+                bee.flipX = Mathf.MoveTowards(bee.flipX, bee.flipTarget, dt * 9f);
+                float bank = Mathf.Clamp(-velC.y * 5f, -12f, 12f);
+                bee.bodyT.Rotate(0f, 0f, bank);
+            }
+            bee.bodyT.localScale = new Vector3(SpriteSize * bee.flipX * spawnS, SpriteSize * spawnS, 1f);
+
             // Tyler (v1.0.31): no bee ever leaves the phone screen.
             ClampToScreen(bee.bodyT);
         }
     }
 
     /// <summary>
-    /// Beats both wings by rotating the hinge pivots about Z. Fast enough to
-    /// read as a blur rather than individual flaps.
+    /// Paper-bee wing buzz: swap between the wings-up and wings-down sprite
+    /// frames at flap speed — classic 2D sprite animation.
     /// </summary>
     void Flap(BeeAgent bee, float dt, float speed)
     {
         bee.flapPhase += dt * speed;
-        float wingAngle = 12f + Mathf.Sin(bee.flapPhase) * 55f;
-        bee.wingL.localRotation = Quaternion.Euler(0f, 0f, wingAngle);
-        bee.wingR.localRotation = Quaternion.Euler(0f, 0f, -wingAngle);
+        var frame = Mathf.Sin(bee.flapPhase) > 0f ? beeTexUp : beeTexDown;
+        if (bee.spriteMat != null && bee.spriteMat.mainTexture != frame)
+            bee.spriteMat.mainTexture = frame;
     }
 
     /// <summary>
@@ -564,25 +607,6 @@ public class BeeController : MonoBehaviour
         return mat;
     }
 
-    static Texture2D GetRingTex()
-    {
-        if (ringTex != null) return ringTex;
-        int s = 128;
-        ringTex = new Texture2D(s, s, TextureFormat.RGBA32, false);
-        float c = s / 2f;
-        for (int y = 0; y < s; y++)
-            for (int x = 0; x < s; x++)
-            {
-                float d = Mathf.Sqrt((x + 0.5f - c) * (x + 0.5f - c) + (y + 0.5f - c) * (y + 0.5f - c));
-                // Soft ring: peak at r=0.36*s, fading both sides.
-                float ring = 1f - Mathf.Clamp01(Mathf.Abs(d - s * 0.36f) / (s * 0.10f));
-                ring *= ring;
-                ringTex.SetPixel(x, y, new Color(1f, 1f, 1f, ring * 0.9f));
-            }
-        ringTex.Apply();
-        return ringTex;
-    }
-
     /// <summary>
     /// Cartoonish, non-violent pop: a rainbow confetti burst, an expanding
     /// soft ring, and a quick cotton-candy poof. Tyler's placeholder design
@@ -599,8 +623,8 @@ public class BeeController : MonoBehaviour
         fx.root = root;
         var localRng = new System.Random((int)(Time.time * 1000f) + pos.GetHashCode());
 
-        // Rainbow confetti petals.
-        int petalCount = 18;
+        // Rainbow confetti petals — v1.0.34: 36 petals at 3x size, the whole show.
+        int petalCount = 36;
         for (int i = 0; i < petalCount; i++)
         {
             var petal = new Petal();
@@ -608,7 +632,7 @@ public class BeeController : MonoBehaviour
             DestroyImmediate(go.GetComponent<Collider>());
             go.transform.SetParent(root.transform, false);
             go.transform.position = pos;
-            float size = 0.030f + (float)localRng.NextDouble() * 0.025f;
+            float size = 0.090f + (float)localRng.NextDouble() * 0.075f;
             petal.size = size;
             go.transform.localScale = new Vector3(size, size * 0.7f, 1f);
             Color col = i % 6 == 5
@@ -633,32 +657,8 @@ public class BeeController : MonoBehaviour
             fx.petals.Add(petal);
         }
 
-        // Expanding soft ring flash.
-        var ringGo = new GameObject("PopRing").transform;
-        ringGo.SetParent(root.transform, false);
-        ringGo.position = pos;
-        fx.ringMat = MakePopMaterial(new Color(1f, 0.95f, 0.75f, 0.9f), popShader);
-        var ringMesh = ringGo.gameObject.AddComponent<MeshRenderer>();
-        var ringFilter = ringGo.gameObject.AddComponent<MeshFilter>();
-        ringFilter.mesh = MakeQuadMesh();
-        ringMesh.material = fx.ringMat;
-        // Bake the ring texture into the material via a sprite-like quad UV.
-        fx.ringMat.mainTexture = GetRingTex();
-        ringGo.localScale = new Vector3(0.12f, 0.12f, 1f);
-        if (mainCam != null) ringGo.rotation = mainCam.transform.rotation;
-        fx.ringT = ringGo;
-        fx.ringAge = 0f;
-
-        // Soft cotton-candy poof at the center.
-        var poofGo = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        DestroyImmediate(poofGo.GetComponent<Collider>());
-        poofGo.transform.SetParent(root.transform, false);
-        poofGo.transform.position = pos;
-        poofGo.transform.localScale = new Vector3(0.06f, 0.06f, 0.06f);
-        fx.poofMat = MakePopMaterial(new Color(1f, 0.98f, 0.9f, 0.75f), popShader);
-        poofGo.GetComponent<MeshRenderer>().material = fx.poofMat;
-        fx.poofT = poofGo.transform;
-        fx.poofAge = 0f;
+        // v1.0.34: the expanding ring flash and center poof are gone —
+        // Tyler felt they fought the confetti. Pop is confetti-only now.
 
         fx.age = 0f;
         pops.Add(fx);
@@ -711,30 +711,9 @@ public class BeeController : MonoBehaviour
                 p.mat.color = c;
             }
 
-            // Ring: expand and fade over ~0.5s, always facing the camera.
-            fx.ringAge += dt;
-            float rk = Mathf.Clamp01(fx.ringAge / 0.5f);
-            float rs = 0.12f + fx.ringAge * 1.15f;
-            fx.ringT.localScale = new Vector3(rs, rs, 1f);
-            if (mainCam != null) fx.ringT.rotation = mainCam.transform.rotation;
-            Color rc = fx.ringMat.color;
-            rc.a = 0.9f * (1f - rk);
-            fx.ringMat.color = rc;
-
-            // Poof: quick cotton-candy bloom, gone in 0.3s.
-            fx.poofAge += dt;
-            float pk = Mathf.Clamp01(fx.poofAge / 0.3f);
-            float ps = 0.06f + fx.poofAge * 0.6f;
-            fx.poofT.localScale = new Vector3(ps, ps, ps);
-            Color pc = fx.poofMat.color;
-            pc.a = 0.75f * (1f - pk);
-            fx.poofMat.color = pc;
-
             if (fx.age > 1.15f)
             {
                 foreach (var p in fx.petals) Destroy(p.mat);
-                Destroy(fx.ringMat);
-                Destroy(fx.poofMat);
                 Destroy(fx.root);
                 pops.RemoveAt(i);
             }
