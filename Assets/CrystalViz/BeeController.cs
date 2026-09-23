@@ -42,7 +42,10 @@ public class BeeController : MonoBehaviour
     {
         public GameObject root;
         public Transform bodyT;
-        public Material spriteMat; // per-bee: holds the current flap frame
+        public Material spriteMat;
+        public GameObject shadow;    // soft blob shadow tracking the bee
+        public Transform shadowT;
+        public Material shadowMat; // per-bee: holds the current flap frame
         public float flipX = 1f;    // paper-turn: +1 faces right, -1 faces left
         public float flipTarget = 1f;
         public Vector3 lastPos;
@@ -226,6 +229,58 @@ public class BeeController : MonoBehaviour
         }
         quad.GetComponent<MeshRenderer>().material = bee.spriteMat;
         bee.lastPos = bee.bodyT.position;
+
+        BuildBlobShadow(bee);
+    }
+
+    static Texture2D blobTex; // soft radial shadow blob, drawn once
+
+    static void EnsureBlobTexture()
+    {
+        if (blobTex != null) return;
+        int s = 128;
+        blobTex = new Texture2D(s, s, TextureFormat.RGBA32, false);
+        for (int y = 0; y < s; y++)
+            for (int x = 0; x < s; x++)
+            {
+                float dx = (x - s / 2f) / (s / 2f);
+                float dy = (y - s / 2f) / (s / 2f);
+                float d = Mathf.Sqrt(dx * dx + dy * dy);
+                float a = Mathf.Clamp01(1f - d);
+                a = a * a * (3f - 2f * a); // smootherstep: soft edge
+                blobTex.SetPixel(x, y, new Color(1f, 1f, 1f, a));
+            }
+        blobTex.Apply();
+        blobTex.filterMode = FilterMode.Bilinear;
+    }
+
+    /// <summary>
+    /// v1.0.39: a soft semi-transparent blob shadow under each bee, like the
+    /// tree's — the paper shader has no shadow-caster pass, so this cartoon
+    /// blob is the honest way to ground them.
+    /// </summary>
+    void BuildBlobShadow(BeeAgent bee)
+    {
+        EnsureBlobTexture();
+        var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        DestroyImmediate(go.GetComponent<Collider>());
+        // Sibling of the bee root (which billboards every frame) — the
+        // shadow stays flat on the ground and is positioned in world space.
+        go.transform.SetParent(transform, false);
+        go.transform.rotation = Quaternion.Euler(-90f, 0f, 0f);
+        go.transform.position = new Vector3(0f, 0.015f, 0f);
+        var mat = new Material(spriteShader);
+        mat.mainTexture = blobTex;
+        mat.color = new Color(0f, 0f, 0f, 0f);
+        go.GetComponent<MeshRenderer>().material = mat;
+        var mr = go.GetComponent<MeshRenderer>();
+        mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        mr.receiveShadows = false;
+        go.SetActive(false);
+
+        bee.shadow = go;
+        bee.shadowT = go.transform;
+        bee.shadowMat = mat;
     }
 
     static Texture2D beeTexUp;   // wings raised
@@ -481,6 +536,26 @@ public class BeeController : MonoBehaviour
 
             // Tyler (v1.0.31): no bee ever leaves the phone screen.
             ClampToScreen(bee.bodyT);
+
+            // Blob shadow: tracks the bee on the ground, growing fainter and
+            // wider as the bee climbs — semi-transparent like the tree's.
+            if (bee.shadowT != null)
+            {
+                bee.shadow.SetActive(true);
+                Vector3 bp = bee.bodyT.position;
+                bee.shadowT.position = new Vector3(bp.x, 0.015f, bp.z);
+                float h = Mathf.Max(0f, bp.y - 0.015f);
+                float fade = Mathf.Clamp01(1f - h / 0.9f);
+                float shS = (0.16f + h * 0.18f) * Mathf.Max(0.001f, spawnS);
+                bee.shadowT.localScale = new Vector3(shS, shS, 1f);
+                var sc = bee.shadowMat.color;
+                sc.a = 0.36f * fade * Mathf.Clamp01(spawnS);
+                bee.shadowMat.color = sc;
+            }
+        }
+        else if (bee.shadow != null)
+        {
+            bee.shadow.SetActive(false);
         }
     }
 
