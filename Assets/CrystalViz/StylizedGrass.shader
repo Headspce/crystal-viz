@@ -65,6 +65,7 @@ Shader "CrystalViz/StylizedGrass"
             float _GustStrength;
             float _GustSpeed;
             float _GustFreq;
+            float _GustLighten;
             float _GrowFront;
             float _GrowWidth;
 
