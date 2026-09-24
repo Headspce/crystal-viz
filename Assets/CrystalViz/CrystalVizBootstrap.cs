@@ -174,6 +174,7 @@ public class CrystalVizBootstrap : MonoBehaviour
 
         // Faint cool fill so shadow sides of the tree don't go pitch black.
         var fill = new GameObject("FillLight").AddComponent<Light>();
+        fillLight = fill; // v1.0.46: day/night dims this slightly at night
         fill.type = LightType.Directional;
         fill.color = new Color(0.70f, 0.80f, 1.0f, 1f);
         fill.intensity = 0.35f;
@@ -184,6 +185,8 @@ public class CrystalVizBootstrap : MonoBehaviour
     // ------------------------------------------------------- sky dome
 
     Material skyDomeMat;
+    Light fillLight;            // v1.0.46: kept so day/night can dim the fill
+    Material horizonHazeMat;    // v1.0.46: kept so day/night can tint the haze
 
     /// <summary>
     /// Sky backdrop: a giant inverted sphere (radius 200, inside the 250 far
@@ -316,6 +319,7 @@ public class CrystalVizBootstrap : MonoBehaviour
         var mat = new Material(shader);
         mat.SetColor("_HazeColor", new Color(0.611f, 0.672f, 0.824f, 1f));
         mat.SetFloat("_BottomAlpha", 0.9f);
+        horizonHazeMat = mat; // v1.0.46: day/night tints the haze with the fog
         var rend = quad.GetComponent<Renderer>();
         rend.material = mat;
         rend.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
@@ -567,6 +571,64 @@ public class CrystalVizBootstrap : MonoBehaviour
         sun.transform.position = FocusPoint + dir * sunDistance;
         sun.transform.LookAt(FocusPoint);
         SyncSkySun(); // painted sun disc follows the real light
+    }
+
+    /// <summary>
+    /// v1.0.46: day/night lighting (player request). night = 0 is full
+    /// daylight (the scene as before), night = 1 is full moonlight. Every
+    /// value is lerped so the crossfade around 7 PM is smooth, never a pop:
+    /// the directional sun cools to a blue moonlight and dims, ambient/fog/
+    /// clear color sink to deep night blues, the painted sky dome darkens
+    /// through its _Tint, and the horizon haze follows the fog. SunOrbitControl
+    /// drives this from the slider's time-of-day.
+    /// </summary>
+    public void ApplyTimeOfDayLighting(float night)
+    {
+        night = Mathf.Clamp01(night);
+        if (sun != null)
+        {
+            sun.color = Color.Lerp(new Color(1f, 0.95f, 0.88f, 1f),
+                                   new Color(0.55f, 0.68f, 1.0f, 1f), night);
+            sun.intensity = Mathf.Lerp(2.0f, 0.75f, night);
+        }
+        RenderSettings.ambientLight = Color.Lerp(new Color(0.42f, 0.43f, 0.46f, 1f),
+                                                new Color(0.15f, 0.18f, 0.27f, 1f), night);
+        Color fogDay = new Color(0.611f, 0.672f, 0.824f, 1f);
+        Color fogNight = new Color(0.09f, 0.12f, 0.22f, 1f);
+        RenderSettings.fogColor = Color.Lerp(fogDay, fogNight, night);
+        var cam = Camera.main;
+        if (cam != null) cam.backgroundColor = RenderSettings.fogColor;
+        if (fillLight != null) fillLight.intensity = Mathf.Lerp(0.35f, 0.2f, night);
+        if (horizonHazeMat != null && horizonHazeMat.HasProperty("_HazeColor"))
+            horizonHazeMat.SetColor("_HazeColor", RenderSettings.fogColor);
+        if (skyDomeMat != null)
+        {
+            // Textured path: the v1.0.46 _Tint darkens/cools the painting.
+            if (skyDomeMat.HasProperty("_Tint"))
+                skyDomeMat.SetColor("_Tint",
+                    Color.Lerp(Color.white, new Color(0.28f, 0.34f, 0.58f, 1f), night));
+            // Procedural fallback path: sink its painted colors too.
+            if (skyDomeMat.HasProperty("_HorizonColor"))
+                skyDomeMat.SetColor("_HorizonColor", Color.Lerp(fogDay, fogNight, night));
+            if (skyDomeMat.HasProperty("_MidColor"))
+                skyDomeMat.SetColor("_MidColor", Color.Lerp(
+                    new Color(0.45f, 0.65f, 0.93f, 1f), new Color(0.10f, 0.14f, 0.30f, 1f), night));
+            if (skyDomeMat.HasProperty("_ZenithColor"))
+                skyDomeMat.SetColor("_ZenithColor", Color.Lerp(
+                    new Color(0.15f, 0.36f, 0.78f, 1f), new Color(0.03f, 0.05f, 0.12f, 1f), night));
+            if (skyDomeMat.HasProperty("_SunColor"))
+                skyDomeMat.SetColor("_SunColor", Color.Lerp(
+                    new Color(1f, 0.93f, 0.78f, 1f), new Color(0.70f, 0.80f, 1.0f, 1f), night));
+            if (skyDomeMat.HasProperty("_CloudLight"))
+                skyDomeMat.SetColor("_CloudLight", Color.Lerp(
+                    Color.white, new Color(0.35f, 0.42f, 0.62f, 1f), night));
+            if (skyDomeMat.HasProperty("_CloudMid"))
+                skyDomeMat.SetColor("_CloudMid", Color.Lerp(
+                    new Color(0.93f, 0.94f, 0.99f, 1f), new Color(0.30f, 0.36f, 0.55f, 1f), night));
+            if (skyDomeMat.HasProperty("_CloudShadow"))
+                skyDomeMat.SetColor("_CloudShadow", Color.Lerp(
+                    new Color(0.70f, 0.73f, 0.87f, 1f), new Color(0.22f, 0.27f, 0.44f, 1f), night));
+        }
     }
 
     // ------------------------------------------------------------------ diorama

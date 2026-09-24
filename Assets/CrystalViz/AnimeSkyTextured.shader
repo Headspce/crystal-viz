@@ -8,6 +8,9 @@ Shader "CrystalViz/AnimeSkyTextured"
     Properties
     {
         _MainTex ("Sky (equirectangular)", 2D) = "white" {}
+        // v1.0.46: night tint for the day/night cycle — white by day, dark
+        // blue at night (driven by CrystalVizBootstrap.ApplyTimeOfDayLighting).
+        _Tint ("Night tint", Color) = (1, 1, 1, 1)
     }
     SubShader
     {
@@ -36,6 +39,9 @@ Shader "CrystalViz/AnimeSkyTextured"
 
             TEXTURE2D(_MainTex);
             SAMPLER(sampler_MainTex);
+            CBUFFER_START(UnityPerMaterial)
+                half4 _Tint;
+            CBUFFER_END
 
             Varyings vert(Attributes IN)
             {
@@ -50,7 +56,7 @@ Shader "CrystalViz/AnimeSkyTextured"
                 float3 d = normalize(IN.dirOS);
                 float u = atan2(d.z, d.x) / 6.2831853 + 0.5;
                 float v = asin(clamp(d.y, -1.0, 1.0)) / 3.14159265 + 0.5;
-                return SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, float2(u, v));
+                return SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, float2(u, v)) * _Tint;
             }
             ENDHLSL
         }

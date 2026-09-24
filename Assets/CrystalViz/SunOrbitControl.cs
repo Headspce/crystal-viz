@@ -27,11 +27,17 @@ public class SunOrbitControl : MonoBehaviour
             PositionKnob();
             UpdateLabel();
             UpdateTimeLabel(v);
+            ApplyTimeOfDay(v); // v1.0.46: dragging crossfades day <-> night live
         });
-        slider.value = targetAzimuth / 360f; // fires listener, sets initial sun pos
+        // v1.0.46: the slider initializes to the device's real local time
+        // (player request) — opening the app on a real evening lands in
+        // moonlight with zero interaction. Fires the listener above, so the
+        // sun position, clock label, and lighting all follow.
+        slider.value = DeviceTimeSliderValue();
         PositionKnob();
         UpdateLabel();
         UpdateTimeLabel(slider.value);
+        ApplyTimeOfDay(slider.value);
     }
 
     /// <summary>
@@ -44,10 +50,52 @@ public class SunOrbitControl : MonoBehaviour
         if (slider != null) return; // already built
         if (bootstrap == null) bootstrap = FindObjectOfType<CrystalVizBootstrap>();
         BuildUI();
-        slider.value = targetAzimuth / 360f;
+        // v1.0.46: captures must be deterministic — CI runs at any hour, so
+        // the screenshot pins the slider to noon (top, "12:00 PM", full
+        // daylight) instead of the device clock. The sun keeps its pleasant
+        // 54° 3/4 modeling azimuth for continuity with earlier captures.
+        slider.value = 1f;
         PositionKnob();
         UpdateLabel();
         UpdateTimeLabel(slider.value);
+        ApplyTimeOfDay(slider.value);
+        targetAzimuth = 54f;
+        currentAzimuth = 54f;
+        if (bootstrap != null) bootstrap.PlaceSun(54f);
+    }
+
+    /// <summary>
+    /// v1.0.46: maps the device's real local time onto the slider (player
+    /// request). The slider spans noon (top, v=1) to midnight (bottom, v=0);
+    /// morning hours clamp to noon — daylight, which is the honest answer
+    /// for 9 AM on a 12-hour afternoon/evening scale.
+    /// </summary>
+    static float DeviceTimeSliderValue()
+    {
+        var now = System.DateTime.Now;
+        float hour = now.Hour + now.Minute / 60f + now.Second / 3600f;
+        if (hour < 12f) return 1f;
+        return Mathf.Clamp01((24f - hour) / 12f);
+    }
+
+    /// <summary>
+    /// v1.0.46: day/night factor from the slider's time-of-day. v=1 is
+    /// 12:00 PM (noon), v=0 is 12:00 AM (midnight). Daylight runs noon–7 PM,
+    /// moonlight 7 PM–midnight, with a smooth 1-hour crossfade centered on
+    /// 7 PM (SmoothStep => no pop at the boundary).
+    /// </summary>
+    public static float NightFactor(float v)
+    {
+        float hour24 = 12f + (1f - v) * 12f; // 12 (noon) .. 24 (midnight)
+        return Mathf.SmoothStep(18.5f, 19.5f, hour24);
+    }
+
+    /// <summary>
+    /// v1.0.46: pushes the slider's time-of-day into the scene lighting.
+    /// </summary>
+    void ApplyTimeOfDay(float v)
+    {
+        if (bootstrap != null) bootstrap.ApplyTimeOfDayLighting(NightFactor(v));
     }
 
     /// <summary>

@@ -3,12 +3,16 @@ using UnityEngine.UI;
 
 /// <summary>
 /// Bottom-left corner menu (v1.0.45, player request): a small BLACK arrow on
-/// a BLUE disc (the top stage-avatar blue, #5CA8FF). The arrow points
-/// diagonally toward the screen center (north-east). Tapping it slides three
-/// buttons out from behind it toward the center — the infinity reset button
-/// (keeps its reset function: ResetToSprout) plus two placeholder buttons
-/// (star, dots — no function yet) — and tapping it again collapses everything
-/// back. The slide is staggered with an overshoot ease.
+/// a BLUE disc (the top stage-avatar blue, #5CA8FF). v1.0.46: the arrow's
+/// direction IS the menu state — collapsed (idle) it points diagonally
+/// south-west, away from the screen center; the moment it's tapped it flips
+/// 180° (quick rotation animation) to point north-east at the fanning icons,
+/// and flips back when collapsed. Tapping the arrow slides three buttons out
+/// from behind it toward the center — the infinity reset button (keeps its
+/// reset function: ResetToSprout) plus two placeholder buttons (star, dots —
+/// no function yet) — and tapping it again collapses everything back. The
+/// slide is staggered with an overshoot ease; the three buttons fan out on
+/// even 25° steps along a common radius so the gaps between them are uniform.
 ///
 /// Raw Input is used (not uGUI Button + EventSystem) to match the tree's tap
 /// detection, which also reads Input directly. TreeGrowthController swallows
@@ -43,10 +47,12 @@ public class TreeResetButton : MonoBehaviour
     const float Stagger = 0.07f;
 
     RectTransform arrowRect;
+    RectTransform glyphRt; // v1.0.46: the arrow glyph rotates to show menu state
     MenuButton[] subButtons;
     bool expanded;
     bool initialized;
     float arrowPunch;
+    float arrowAngle = 180f; // v1.0.46: collapsed = SW (180°); expanded = NE (0°)
 
     void Awake()
     {
@@ -168,6 +174,16 @@ public class TreeResetButton : MonoBehaviour
             float s = 1f + 0.18f * arrowPunch;
             if (arrowRect != null) arrowRect.localScale = new Vector3(s, s, 1f);
         }
+
+        // v1.0.46: arrow flip — direction is menu state. Collapsed the glyph
+        // rests at 180° (pointing south-west, away from center); on expand it
+        // swings to 0° (north-east, toward the fanned-out icons) and back on
+        // collapse. Fast exponential settle => a quick, snappy flip.
+        float targetAngle = expanded ? 0f : 180f;
+        arrowAngle = Mathf.LerpAngle(arrowAngle, targetAngle,
+            1f - Mathf.Exp(-10f * dt));
+        if (glyphRt != null)
+            glyphRt.localRotation = Quaternion.Euler(0f, 0f, arrowAngle);
     }
 
     void ToggleMenu()
@@ -208,8 +224,9 @@ public class TreeResetButton : MonoBehaviour
         scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
         scaler.matchWidthOrHeight = 0.5f;
 
-        // Arrow button: bottom-left, black arrow on the blue disc, pointing
-        // north-east (toward the screen center).
+        // Arrow button: bottom-left, black arrow on the blue disc. The glyph
+        // is drawn pointing north-east; v1.0.46 keeps it rotated 180° (SW)
+        // while collapsed and flips it to NE on expand — direction = state.
         var arrowGO = new GameObject("MenuArrow", typeof(RectTransform));
         arrowGO.transform.SetParent(canvasGO.transform, false);
         arrowRect = arrowGO.GetComponent<RectTransform>();
@@ -231,12 +248,14 @@ public class TreeResetButton : MonoBehaviour
 
         var arrowGlyphGO = new GameObject("ArrowGlyph", typeof(RectTransform), typeof(Image));
         arrowGlyphGO.transform.SetParent(arrowGO.transform, false);
-        var glyphRt = arrowGlyphGO.GetComponent<RectTransform>();
+        glyphRt = arrowGlyphGO.GetComponent<RectTransform>();
         glyphRt.anchorMin = new Vector2(0.5f, 0.5f);
         glyphRt.anchorMax = new Vector2(0.5f, 0.5f);
         glyphRt.pivot = new Vector2(0.5f, 0.5f);
         glyphRt.anchoredPosition = Vector2.zero;
         glyphRt.sizeDelta = new Vector2(72f, 72f);
+        // v1.0.46: start flipped (collapsed = SW) so the first frame is right.
+        glyphRt.localRotation = Quaternion.Euler(0f, 0f, 180f);
         var glyphImg = arrowGlyphGO.GetComponent<Image>();
         var arrowTex = DrawArrowTexture();
         glyphImg.sprite = Sprite.Create(arrowTex,
@@ -246,10 +265,12 @@ public class TreeResetButton : MonoBehaviour
         // Sub-buttons, parked at the arrow center at scale 0 (invisible).
         Vector2 arrowCenter = arrowRect.anchoredPosition;
         subButtons = new MenuButton[3];
-        // Fan toward the screen center: infinity leads at 45 deg, the two
-        // placeholders flank it.
-        float[] angles = { 45f, 22f, 68f };
-        float[] dists = { 200f, 195f, 195f };
+        // v1.0.46: fan toward the screen center on EVEN spacing — equal 25°
+        // steps (20/45/70) on a common 280px radius. Adjacent buttons sit
+        // ~122px apart center-to-center, so the 100px discs keep a uniform
+        // ~22px gap instead of touching. Infinity still leads at 45°.
+        float[] angles = { 20f, 45f, 70f };
+        float[] dists = { 280f, 280f, 280f };
         for (int i = 0; i < 3; i++)
         {
             var b = new MenuButton();
