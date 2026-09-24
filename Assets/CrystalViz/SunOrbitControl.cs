@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 
 /// <summary>
 /// Sun-orbit slider: a vertical slider pinned to the right edge of the screen.
@@ -12,31 +13,47 @@ public class SunOrbitControl : MonoBehaviour
     [HideInInspector] public CrystalVizBootstrap bootstrap;
 
     Slider slider;
-    Text timeText;   // v1.0.47: big numerals inside the time pill ("12:00")
-    Text periodText; // v1.0.47: quiet AM/PM suffix beside the numerals
+    Text timeText;   // v1.0.48: big numerals inside the handle pill ("12:00")
+    Text periodText; // v1.0.48: quiet AM/PM suffix beside the numerals
     RectTransform knobRT;
     RectTransform ringRT; // v1.0.47: gold sundial ring riding behind the sun thumb
+    RectTransform handlePillRT; // v1.0.48: the clock pill riding beside the knob
     float currentAzimuth = 54f;
     float targetAzimuth = 54f;
+    float lastSyncedV = -1f; // v1.0.48: last value pushed through SetTimeOfDay
 
     void Start()
     {
         BuildForScreenshot();
-        slider.onValueChanged.AddListener(v =>
-        {
-            targetAzimuth = v * 360f;
-            PositionKnob();
-            UpdateTimeLabel(v);
-            ApplyTimeOfDay(v); // v1.0.46: dragging crossfades day <-> night live
-        });
+        // v1.0.48: every path that changes the time-of-day funnels through
+        // SetTimeOfDay — the Slider's own drag events, the wide touch zone,
+        // and the per-frame reconciliation in Update(). One funnel: the sun
+        // azimuth, the knob + handle pill, the clock text, and the day/night
+        // lighting can never drift apart again.
+        slider.onValueChanged.AddListener(v => SetTimeOfDay(v));
         // v1.0.46: the slider initializes to the device's real local time
         // (player request) — opening the app on a real evening lands in
-        // moonlight with zero interaction. Fires the listener above, so the
-        // sun position, clock label, and lighting all follow.
-        slider.value = DeviceTimeSliderValue();
+        // moonlight with zero interaction.
+        SetTimeOfDay(DeviceTimeSliderValue());
+    }
+
+    /// <summary>
+    /// v1.0.48: the single funnel for time-of-day changes. Drives the sun
+    /// azimuth target, the knob position, the handle-pill clock text, and
+    /// the day/night lighting together from one value.
+    /// </summary>
+    public void SetTimeOfDay(float v)
+    {
+        v = Mathf.Clamp01(v);
+        lastSyncedV = v;
+        targetAzimuth = v * 360f;
+        // Push the value into the Slider without re-firing its callback
+        // (we are the callback path); the fill visual still follows.
+        if (slider != null && !Mathf.Approximately(slider.value, v))
+            slider.SetValueWithoutNotify(v);
         PositionKnob();
-        UpdateTimeLabel(slider.value);
-        ApplyTimeOfDay(slider.value);
+        UpdateTimeLabel(v);
+        ApplyTimeOfDay(v);
     }
 
     /// <summary>
@@ -53,10 +70,8 @@ public class SunOrbitControl : MonoBehaviour
         // the screenshot pins the slider to noon (top, "12:00 PM", full
         // daylight) instead of the device clock. The sun keeps its pleasant
         // 54° 3/4 modeling azimuth for continuity with earlier captures.
-        slider.value = 1f;
-        PositionKnob();
-        UpdateTimeLabel(slider.value);
-        ApplyTimeOfDay(slider.value);
+        // v1.0.48: funnel through SetTimeOfDay like every other path.
+        SetTimeOfDay(1f);
         targetAzimuth = 54f;
         currentAzimuth = 54f;
         if (bootstrap != null) bootstrap.PlaceSun(54f);
@@ -115,11 +130,35 @@ public class SunOrbitControl : MonoBehaviour
             ringRT.anchorMax = new Vector2(0.5f, v);
             ringRT.anchoredPosition = Vector2.zero;
         }
+        PositionHandlePill(v);
+    }
+
+    /// <summary>
+    /// v1.0.48: parks the clock pill beside the sun thumb so it travels
+    /// with every drag (player request). The pill is a full-scale canvas
+    /// child (top-right anchored); its position is derived from the
+    /// slider's screen geometry — 150px margins top/bottom, strip center
+    /// 58px from the right edge — so it lands just left of the knob,
+    /// clear of the fingertip.
+    /// </summary>
+    void PositionHandlePill(float v)
+    {
+        if (handlePillRT == null) return;
+        float h = Screen.height; // canvas is ConstantPixelSize scale 1: units == px
+        float stripH = h - 300f;
+        float knobY = 150f + (1f - v) * stripH; // px from the top edge
+        handlePillRT.anchoredPosition = new Vector2(-96f, -knobY);
     }
 
     void Update()
     {
         if (bootstrap == null || bootstrap.sun == null) return;
+        // v1.0.48: reconciliation backstop — if the slider's value changed
+        // through ANY path, the sun, clock, and lighting follow within one
+        // frame. This is what guarantees the drag->lighting sync no matter
+        // which Unity event path delivered the touch.
+        if (slider != null && Mathf.Abs(slider.normalizedValue - lastSyncedV) > 0.0004f)
+            SetTimeOfDay(slider.normalizedValue);
         // Smooth-damped follow so the sun glides instead of snapping.
         currentAzimuth = Mathf.LerpAngle(currentAzimuth, targetAzimuth,
             1f - Mathf.Exp(-8f * Time.deltaTime));
@@ -306,53 +345,74 @@ public class SunOrbitControl : MonoBehaviour
             sunImg.preserveAspect = true;
         }
 
-        // v1.0.47: the time pill — a meadow-glass badge with a gold hairline,
-        // floating just above the sun icon so the time sits "directly above
-        // the slider" (player request). Big warm-white numerals with a quiet
-        // sage AM/PM (research principle 11: large numerals, quiet labels).
-        // A canvas child at full scale (NOT under the slider's 0.25x root)
-        // so the time stays legible. Positioned over the slider's screen
-        // column: the slider root spans x -88..-28 from the right edge, and
-        // the sun icon's top lands ~34 canvas px above the root's top edge.
-        var pillGO = new GameObject("TimePill", typeof(RectTransform), typeof(Image));
+        // v1.0.48: the handle pill — the clock now RIDES the sun thumb
+        // (player request: "attach it to the button so it drags with us")
+        // instead of floating at the top of the screen. A full-scale canvas
+        // child (top-right anchored) so the numerals stay large and legible;
+        // PositionKnob() parks it beside the knob every frame, ~30px left of
+        // the thumb, clear of the fingertip. raycastTarget is off on the pill
+        // and its texts so touches fall through to the slider's touch zone.
+        var pillGO = new GameObject("HandleTimePill", typeof(RectTransform), typeof(Image));
         pillGO.transform.SetParent(canvasGo.transform, false);
-        var prt = pillGO.GetComponent<RectTransform>();
-        prt.anchorMin = new Vector2(1f, 1f);
-        prt.anchorMax = new Vector2(1f, 1f);
-        prt.pivot = new Vector2(0.5f, 0.5f);
-        prt.anchoredPosition = new Vector2(-105f, -78f);
-        prt.sizeDelta = new Vector2(360f, 96f);
+        handlePillRT = pillGO.GetComponent<RectTransform>();
+        handlePillRT.anchorMin = new Vector2(1f, 1f);
+        handlePillRT.anchorMax = new Vector2(1f, 1f);
+        handlePillRT.pivot = new Vector2(1f, 0.5f);
+        handlePillRT.sizeDelta = new Vector2(300f, 84f);
         var pillImg = pillGO.GetComponent<Image>();
         pillImg.sprite = MeadowGlassUI.MakeGlassPill(256, 96);
         pillImg.type = Image.Type.Sliced;
+        pillImg.raycastTarget = false;
 
         var timeGO = new GameObject("TimeText", typeof(RectTransform), typeof(Text));
         timeGO.transform.SetParent(pillGO.transform, false);
         var ttrt = timeGO.GetComponent<RectTransform>();
         ttrt.anchorMin = new Vector2(0f, 0.5f);
-        ttrt.anchorMax = new Vector2(1f, 0.5f);
-        ttrt.pivot = new Vector2(0.5f, 0.5f);
-        ttrt.anchoredPosition = new Vector2(-30f, 2f);
-        ttrt.sizeDelta = new Vector2(250f, 96f);
+        ttrt.anchorMax = new Vector2(0f, 0.5f);
+        ttrt.pivot = new Vector2(1f, 0.5f);
+        ttrt.anchoredPosition = new Vector2(-70f, 2f);
+        ttrt.sizeDelta = new Vector2(196f, 84f);
         timeText = timeGO.GetComponent<Text>();
         timeText.font = GetDefaultFont();
-        timeText.fontSize = 46;
+        timeText.fontSize = 44;
         timeText.alignment = TextAnchor.MiddleRight;
         timeText.color = MeadowGlassUI.WarmWhite;
+        timeText.raycastTarget = false;
 
         var periodGO = new GameObject("PeriodText", typeof(RectTransform), typeof(Text));
         periodGO.transform.SetParent(pillGO.transform, false);
         var perRt = periodGO.GetComponent<RectTransform>();
         perRt.anchorMin = new Vector2(0f, 0.5f);
-        perRt.anchorMax = new Vector2(1f, 0.5f);
-        perRt.pivot = new Vector2(0.5f, 0.5f);
-        perRt.anchoredPosition = new Vector2(118f, 8f);
-        perRt.sizeDelta = new Vector2(90f, 96f);
+        perRt.anchorMax = new Vector2(0f, 0.5f);
+        perRt.pivot = new Vector2(0f, 0.5f);
+        perRt.anchoredPosition = new Vector2(-62f, 4f);
+        perRt.sizeDelta = new Vector2(64f, 84f);
         periodText = periodGO.GetComponent<Text>();
         periodText.font = GetDefaultFont();
-        periodText.fontSize = 26;
+        periodText.fontSize = 24;
         periodText.alignment = TextAnchor.MiddleLeft;
         periodText.color = MeadowGlassUI.Sage;
+        periodText.raycastTarget = false;
+
+        // v1.0.48: the generous touch zone — the visible strip renders only
+        // ~15px wide on screen (Tyler prefers the slim look), far too narrow
+        // for a fingertip to hit reliably. This invisible 160px-wide catcher
+        // sits over the slider column (and the sun icon) and maps vertical
+        // drags to time-of-day, so the slider is easy to grab without
+        // changing how it looks. Added last so it raycasts above the strip;
+        // it drives everything directly through SetTimeOfDay.
+        var zoneGO = new GameObject("SliderTouchZone", typeof(RectTransform), typeof(Image));
+        zoneGO.transform.SetParent(canvasGo.transform, false);
+        var zrt = zoneGO.GetComponent<RectTransform>();
+        zrt.anchorMin = new Vector2(1f, 0f);
+        zrt.anchorMax = new Vector2(1f, 1f);
+        zrt.pivot = new Vector2(0.5f, 0.5f);
+        zrt.offsetMin = new Vector2(-168f, 100f);
+        zrt.offsetMax = new Vector2(-8f, -100f);
+        var zoneImg = zoneGO.GetComponent<Image>();
+        zoneImg.color = new Color(0f, 0f, 0f, 0f); // invisible but raycastable
+        var zone = zoneGO.AddComponent<SliderTouchZone>();
+        zone.orbit = this;
     }
 
     /// <summary>
@@ -448,5 +508,40 @@ public class SunOrbitControl : MonoBehaviour
             }
         }
         return null;
+    }
+}
+
+/// <summary>
+/// v1.0.48: invisible, generous touch catcher over the sun-slider column.
+/// The visible strip renders only ~15px wide on screen (Tyler prefers the
+/// slim look) — too narrow for a fingertip to hit reliably. This 160px-wide
+/// zone maps vertical drags to time-of-day and funnels them through
+/// SunOrbitControl.SetTimeOfDay, so the slider is easy to grab without
+/// changing how it looks.
+/// </summary>
+public class SliderTouchZone : MonoBehaviour, IPointerDownHandler, IDragHandler
+{
+    [HideInInspector] public SunOrbitControl orbit;
+    RectTransform rt;
+
+    void Awake()
+    {
+        rt = GetComponent<RectTransform>();
+    }
+
+    public void OnPointerDown(PointerEventData eventData) { DragTo(eventData); }
+    public void OnDrag(PointerEventData eventData) { DragTo(eventData); }
+
+    void DragTo(PointerEventData eventData)
+    {
+        if (orbit == null || rt == null) return;
+        Vector2 local;
+        if (RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                rt, eventData.position, eventData.pressEventCamera, out local))
+        {
+            // BottomToTop: touch at the zone's bottom edge -> 0, top -> 1.
+            float v = Mathf.Clamp01((local.y - rt.rect.yMin) / rt.rect.height);
+            orbit.SetTimeOfDay(v);
+        }
     }
 }

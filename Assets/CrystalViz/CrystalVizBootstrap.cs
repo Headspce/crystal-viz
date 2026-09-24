@@ -80,6 +80,9 @@ public class CrystalVizBootstrap : MonoBehaviour
         // v1.0.47: the toast overlay (play-mode only; Ensure() no-ops in the
         // CI edit-mode screenshot path, so captures stay deterministic).
         MeadowToast.Ensure();
+        // v1.0.48: the fingertip swipe trail (play-mode only; Ensure()
+        // no-ops in the CI edit-mode screenshot path, like the toasts).
+        FingerTrail.Ensure();
     }
 
     /// <summary>
