@@ -31,8 +31,17 @@ public class LoadingScreen : MonoBehaviour
     const float QuoteFadeOut = 0.3f;
 
     Text quoteText;
+    RectTransform shimmerRt; // v1.0.47: gold progress shimmer, driven by FadeInQuote()
+    Image shimmerImg;
     RectTransform wipePanel;
     bool wiping;
+
+    /// <summary>
+    /// v1.0.47: fired when the wipe sweep finishes and the overlay is about
+    /// to be destroyed — the bootstrap uses it to start the first-run hint
+    /// toasts only once the scene is actually visible.
+    /// </summary>
+    public System.Action onWipeComplete;
 
     /// <summary>Build and show the quote overlay. Returns the instance.</summary>
     public static LoadingScreen Show()
@@ -106,6 +115,47 @@ public class LoadingScreen : MonoBehaviour
         quoteText.alignment = TextAnchor.MiddleCenter;
         quoteText.color = new Color(SoftWhite.r, SoftWhite.g, SoftWhite.b, 0f); // fades in
         quoteText.text = "sow bees, reap shade.";
+
+        // v1.0.47: the progress shimmer — a soft horizontal gold glow that
+        // sweeps once across the quote while it fades in, so the beat before
+        // the blocking build reads as progress, not a stall. Parked
+        // invisible; FadeInQuote() drives position + alpha.
+        var shimmerGO = new GameObject("QuoteShimmer", typeof(RectTransform), typeof(Image));
+        shimmerGO.transform.SetParent(canvasGO.transform, false);
+        shimmerRt = shimmerGO.GetComponent<RectTransform>();
+        shimmerRt.anchorMin = shimmerRt.anchorMax = new Vector2(0.5f, 0.5f);
+        shimmerRt.pivot = new Vector2(0.5f, 0.5f);
+        shimmerRt.anchoredPosition = new Vector2(-650f, 20f);
+        shimmerRt.sizeDelta = new Vector2(1100f, 110f);
+        shimmerImg = shimmerGO.GetComponent<Image>();
+        shimmerImg.sprite = Sprite.Create(MakeShimmerTexture(),
+            new Rect(0f, 0f, 128f, 16f), new Vector2(0.5f, 0.5f), 100f);
+        shimmerImg.color = new Color(Gold.r, Gold.g, Gold.b, 0f);
+    }
+
+    /// <summary>
+    /// v1.0.47: horizontal soft gold gradient (transparent at both ends,
+    /// glowing in the middle) for the quote progress shimmer.
+    /// </summary>
+    static Texture2D MakeShimmerTexture()
+    {
+        const int W = 128, H = 16;
+        var tex = new Texture2D(W, H, TextureFormat.RGBA32, false);
+        tex.filterMode = FilterMode.Bilinear;
+        for (int y = 0; y < H; y++)
+        {
+            for (int x = 0; x < W; x++)
+            {
+                float u = (x + 0.5f) / W;              // 0..1 across
+                float v = (y + 0.5f) / H;              // 0..1 vertical
+                float band = Mathf.Sin(Mathf.PI * u);  // 0 at ends, 1 center
+                float vert = Mathf.Sin(Mathf.PI * v);  // soft top/bottom
+                float a = band * band * vert * 0.5f;
+                tex.SetPixel(x, y, new Color(1f, 0.85f, 0.45f, a));
+            }
+        }
+        tex.Apply();
+        return tex;
     }
 
     /// <summary>
@@ -122,10 +172,20 @@ public class LoadingScreen : MonoBehaviour
             float a = Mathf.Clamp01(t / QuoteFadeIn);
             if (quoteText != null)
                 quoteText.color = new Color(SoftWhite.r, SoftWhite.g, SoftWhite.b, a);
+            // v1.0.47: the shimmer sweeps left -> right once across the
+            // quote, swelling and dissolving with a sine envelope.
+            if (shimmerRt != null && shimmerImg != null)
+            {
+                shimmerRt.anchoredPosition = new Vector2(Mathf.Lerp(-650f, 650f, a), 20f);
+                float env = Mathf.Sin(Mathf.PI * a);
+                shimmerImg.color = new Color(Gold.r, Gold.g, Gold.b, 0.5f * env);
+            }
             yield return null;
         }
         if (quoteText != null)
             quoteText.color = SoftWhite;
+        if (shimmerImg != null)
+            shimmerImg.color = new Color(Gold.r, Gold.g, Gold.b, 0f);
     }
 
     /// <summary>
@@ -168,6 +228,9 @@ public class LoadingScreen : MonoBehaviour
                 wipePanel.anchoredPosition = dir * (WipeTravel * k);
             yield return null;
         }
+        // v1.0.47: the scene is visible now — let the bootstrap start the
+        // first-run hints (toast system listens via onWipeComplete).
+        if (onWipeComplete != null) onWipeComplete.Invoke();
         Destroy(gameObject);
     }
 }

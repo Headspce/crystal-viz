@@ -42,6 +42,9 @@ public class CrystalVizBootstrap : MonoBehaviour
         yield return loader.FadeInQuote();
         BuildScene();
         yield return null; // one frame of the finished scene behind the quote
+        // v1.0.47: when the wipe clears, the first-run hint toasts may begin
+        // (each shows once ever; returning players are never nagged).
+        loader.onWipeComplete += MeadowToast.BeginHints;
         loader.WipeAway(); // diagonal 2D wipe reveals the loaded scene
         // v1.0.45: the WorldReveal staged sequence (loading grid sweep,
         // back-to-front world arrival, tree pop, block dissolve) is DISABLED
@@ -74,6 +77,9 @@ public class CrystalVizBootstrap : MonoBehaviour
         var sunCtrl = gameObject.AddComponent<SunOrbitControl>();
         sunCtrl.bootstrap = this;
         sunCtrl.BuildForScreenshot();
+        // v1.0.47: the toast overlay (play-mode only; Ensure() no-ops in the
+        // CI edit-mode screenshot path, so captures stay deterministic).
+        MeadowToast.Ensure();
     }
 
     /// <summary>

@@ -12,9 +12,10 @@ public class SunOrbitControl : MonoBehaviour
     [HideInInspector] public CrystalVizBootstrap bootstrap;
 
     Slider slider;
-    Text angleLabel;
-    Text timeLabel; // v1.0.45: clock readout above the slider (12:00 PM at top -> 12:00 AM at bottom)
+    Text timeText;   // v1.0.47: big numerals inside the time pill ("12:00")
+    Text periodText; // v1.0.47: quiet AM/PM suffix beside the numerals
     RectTransform knobRT;
+    RectTransform ringRT; // v1.0.47: gold sundial ring riding behind the sun thumb
     float currentAzimuth = 54f;
     float targetAzimuth = 54f;
 
@@ -25,7 +26,6 @@ public class SunOrbitControl : MonoBehaviour
         {
             targetAzimuth = v * 360f;
             PositionKnob();
-            UpdateLabel();
             UpdateTimeLabel(v);
             ApplyTimeOfDay(v); // v1.0.46: dragging crossfades day <-> night live
         });
@@ -35,7 +35,6 @@ public class SunOrbitControl : MonoBehaviour
         // sun position, clock label, and lighting all follow.
         slider.value = DeviceTimeSliderValue();
         PositionKnob();
-        UpdateLabel();
         UpdateTimeLabel(slider.value);
         ApplyTimeOfDay(slider.value);
     }
@@ -56,7 +55,6 @@ public class SunOrbitControl : MonoBehaviour
         // 54° 3/4 modeling azimuth for continuity with earlier captures.
         slider.value = 1f;
         PositionKnob();
-        UpdateLabel();
         UpdateTimeLabel(slider.value);
         ApplyTimeOfDay(slider.value);
         targetAzimuth = 54f;
@@ -99,9 +97,10 @@ public class SunOrbitControl : MonoBehaviour
     }
 
     /// <summary>
-    /// Centers the glowing knob on the fill line. The Slider's own
-    /// handleRect driving stretches the knob across the track, so we leave
-    /// slider.handleRect null and place the knob with fractional anchors.
+    /// Centers the glowing knob (and its gold sundial ring) on the fill
+    /// line. The Slider's own handleRect driving stretches the knob across
+    /// the track, so we leave slider.handleRect null and place the knob with
+    /// fractional anchors.
     /// </summary>
     void PositionKnob()
     {
@@ -110,6 +109,12 @@ public class SunOrbitControl : MonoBehaviour
         knobRT.anchorMin = new Vector2(0.5f, v);
         knobRT.anchorMax = new Vector2(0.5f, v);
         knobRT.anchoredPosition = Vector2.zero;
+        if (ringRT != null)
+        {
+            ringRT.anchorMin = new Vector2(0.5f, v);
+            ringRT.anchorMax = new Vector2(0.5f, v);
+            ringRT.anchoredPosition = Vector2.zero;
+        }
     }
 
     void Update()
@@ -122,26 +127,22 @@ public class SunOrbitControl : MonoBehaviour
         PositionKnob();
     }
 
-    void UpdateLabel()
-    {
-        if (angleLabel != null)
-            angleLabel.text = $"{Mathf.RoundToInt(targetAzimuth % 360f)}°";
-    }
-
     /// <summary>
-    /// v1.0.45: clock readout above the slider (player request). The slider
-    /// value t in [0,1] maps linearly to h = 12*t, shown 12-hour style and
-    /// rounded to the hour: top reads "12:00 PM", bottom reads "12:00 AM",
-    /// "11:00 AM", "10:00 AM", ... on the way down. Updates live while
-    /// dragging (called from the value-changed listener).
+    /// v1.0.47: the time pill — big warm-white numerals ("12:00") with a
+    /// quiet sage AM/PM beside them, on the meadow-glass badge. The slider
+    /// value t in [0,1] maps linearly to h = 12*t, rounded to the hour: top
+    /// reads 12:00 PM, bottom reads 12:00 AM. Updates live while dragging
+    /// (called from the value-changed listener). The old floating text and
+    /// the tiny angle readout are gone — the clock now carries the slider's
+    /// whole meaning.
     /// </summary>
     void UpdateTimeLabel(float v)
     {
-        if (timeLabel == null) return;
         int hr = Mathf.Clamp(Mathf.RoundToInt(v * 12f), 0, 12);
-        timeLabel.text = hr == 12 ? "12:00 PM"
-            : hr == 0 ? "12:00 AM"
-            : $"{hr}:00 AM";
+        if (timeText != null)
+            timeText.text = hr == 12 ? "12:00" : hr == 0 ? "12:00" : $"{hr}:00";
+        if (periodText != null)
+            periodText.text = hr == 12 ? "PM" : "AM";
     }
 
     // ------------------------------------------------------------------ UI build
@@ -235,6 +236,18 @@ public class SunOrbitControl : MonoBehaviour
         var hart = handleArea.GetComponent<RectTransform>();
         hart.anchorMin = Vector2.zero; hart.anchorMax = Vector2.one;
         hart.offsetMin = Vector2.zero; hart.offsetMax = Vector2.zero;
+        // v1.0.47: the sundial ring — a gold hairline halo riding behind the
+        // sun thumb (added first so it draws underneath). PositionKnob()
+        // moves it in lockstep with the knob.
+        var ringGO = new GameObject("SundialRing", typeof(RectTransform), typeof(Image));
+        ringGO.transform.SetParent(handleArea.transform, false);
+        ringRT = ringGO.GetComponent<RectTransform>();
+        ringRT.pivot = new Vector2(0.5f, 0.5f);
+        ringRT.sizeDelta = new Vector2(96f, 96f);
+        var ringImg = ringGO.GetComponent<Image>();
+        ringImg.sprite = MeadowGlassUI.MakeGoldRing(96, 6);
+        ringImg.color = new Color(1f, 0.78f, 0.22f, 0.85f);
+        ringImg.preserveAspect = true;
         var handle = new GameObject("Handle", typeof(RectTransform), typeof(Image));
         handle.transform.SetParent(handleArea.transform, false);
         var hrt = handle.GetComponent<RectTransform>();
@@ -264,22 +277,8 @@ public class SunOrbitControl : MonoBehaviour
         knobImg.preserveAspect = true;
         knobImg.type = Image.Type.Simple;
 
-        // Angle readout under the mini slider: centered beneath it (the bar's
-        // rendered center sits 26px left of the edge), scaled to match.
-        var labelGo = new GameObject("AngleLabel", typeof(RectTransform), typeof(Text));
-        labelGo.transform.SetParent(canvasGo.transform, false);
-        var lrt = labelGo.GetComponent<RectTransform>();
-        lrt.anchorMin = new Vector2(1f, 0.355f); lrt.anchorMax = new Vector2(1f, 0.355f);
-        // v1.0.33: back to original size/position with the slider (0.25).
-        lrt.anchoredPosition = new Vector2(-26f, -8f);
-        lrt.sizeDelta = new Vector2(140f, 44f);
-        lrt.localScale = new Vector3(0.25f, 0.25f, 1f);
-        var txt = labelGo.GetComponent<Text>();
-        txt.font = GetDefaultFont(); // may be null; Text renders nothing without one
-        txt.fontSize = 26;
-        txt.alignment = TextAnchor.MiddleCenter;
-        txt.color = new Color(0.93f, 0.97f, 1f, 0.92f);
-        angleLabel = txt;
+        // (v1.0.47: the old angle readout under the slider is gone — the
+        // clock pill above now carries the slider's whole meaning.)
 
         // Sun icon: child of the slider root so it rides with the slider and
         // sits stuck to the top of the track (v1.0.29: was a free-floating
@@ -307,32 +306,53 @@ public class SunOrbitControl : MonoBehaviour
             sunImg.preserveAspect = true;
         }
 
-        // v1.0.45: clock readout floating just above the sun icon, so the
-        // time sits "directly above the slider" (player request). A canvas
-        // child at full scale (NOT under the slider's 0.25x root) so the
-        // time stays legible: white text with the HUD's navy outline, same
-        // treatment as the tap counter. Positioned over the slider's screen
-        // column: the slider root spans x -88..-28 from the right edge
-        // (center -58), and the sun icon's top lands ~34 canvas px above the
-        // root's top edge (1770), so the label centers at y ~1840. Centered
-        // at x=-80 (inside the track column) so the text never clips the edge.
-        var timeGO = new GameObject("TimeLabel", typeof(RectTransform), typeof(Text));
-        timeGO.transform.SetParent(canvasGo.transform, false);
-        var trt = timeGO.GetComponent<RectTransform>();
-        trt.anchorMin = new Vector2(1f, 1f);
-        trt.anchorMax = new Vector2(1f, 1f);
-        trt.pivot = new Vector2(0.5f, 0.5f);
-        trt.anchoredPosition = new Vector2(-80f, -80f);
-        trt.sizeDelta = new Vector2(200f, 48f);
-        var ttxt = timeGO.GetComponent<Text>();
-        ttxt.font = GetDefaultFont();
-        ttxt.fontSize = 30;
-        ttxt.alignment = TextAnchor.MiddleCenter;
-        ttxt.color = new Color(0.93f, 0.97f, 1f, 0.95f);
-        var tout = timeGO.AddComponent<Outline>();
-        tout.effectColor = new Color(0.04f, 0.08f, 0.18f, 0.95f);
-        tout.effectDistance = new Vector2(2.5f, -2.5f);
-        timeLabel = ttxt;
+        // v1.0.47: the time pill — a meadow-glass badge with a gold hairline,
+        // floating just above the sun icon so the time sits "directly above
+        // the slider" (player request). Big warm-white numerals with a quiet
+        // sage AM/PM (research principle 11: large numerals, quiet labels).
+        // A canvas child at full scale (NOT under the slider's 0.25x root)
+        // so the time stays legible. Positioned over the slider's screen
+        // column: the slider root spans x -88..-28 from the right edge, and
+        // the sun icon's top lands ~34 canvas px above the root's top edge.
+        var pillGO = new GameObject("TimePill", typeof(RectTransform), typeof(Image));
+        pillGO.transform.SetParent(canvasGo.transform, false);
+        var prt = pillGO.GetComponent<RectTransform>();
+        prt.anchorMin = new Vector2(1f, 1f);
+        prt.anchorMax = new Vector2(1f, 1f);
+        prt.pivot = new Vector2(0.5f, 0.5f);
+        prt.anchoredPosition = new Vector2(-105f, -78f);
+        prt.sizeDelta = new Vector2(360f, 96f);
+        var pillImg = pillGO.GetComponent<Image>();
+        pillImg.sprite = MeadowGlassUI.MakeGlassPill(256, 96);
+        pillImg.type = Image.Type.Sliced;
+
+        var timeGO = new GameObject("TimeText", typeof(RectTransform), typeof(Text));
+        timeGO.transform.SetParent(pillGO.transform, false);
+        var ttrt = timeGO.GetComponent<RectTransform>();
+        ttrt.anchorMin = new Vector2(0f, 0.5f);
+        ttrt.anchorMax = new Vector2(1f, 0.5f);
+        ttrt.pivot = new Vector2(0.5f, 0.5f);
+        ttrt.anchoredPosition = new Vector2(-30f, 2f);
+        ttrt.sizeDelta = new Vector2(250f, 96f);
+        timeText = timeGO.GetComponent<Text>();
+        timeText.font = GetDefaultFont();
+        timeText.fontSize = 46;
+        timeText.alignment = TextAnchor.MiddleRight;
+        timeText.color = MeadowGlassUI.WarmWhite;
+
+        var periodGO = new GameObject("PeriodText", typeof(RectTransform), typeof(Text));
+        periodGO.transform.SetParent(pillGO.transform, false);
+        var perRt = periodGO.GetComponent<RectTransform>();
+        perRt.anchorMin = new Vector2(0f, 0.5f);
+        perRt.anchorMax = new Vector2(1f, 0.5f);
+        perRt.pivot = new Vector2(0.5f, 0.5f);
+        perRt.anchoredPosition = new Vector2(118f, 8f);
+        perRt.sizeDelta = new Vector2(90f, 96f);
+        periodText = periodGO.GetComponent<Text>();
+        periodText.font = GetDefaultFont();
+        periodText.fontSize = 26;
+        periodText.alignment = TextAnchor.MiddleLeft;
+        periodText.color = MeadowGlassUI.Sage;
     }
 
     /// <summary>

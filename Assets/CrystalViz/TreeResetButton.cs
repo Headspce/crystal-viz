@@ -2,17 +2,21 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// Bottom-left corner menu (v1.0.45, player request): a small BLACK arrow on
-/// a BLUE disc (the top stage-avatar blue, #5CA8FF). v1.0.46: the arrow's
-/// direction IS the menu state — collapsed (idle) it points diagonally
-/// south-west, away from the screen center; the moment it's tapped it flips
-/// 180° (quick rotation animation) to point north-east at the fanning icons,
-/// and flips back when collapsed. Tapping the arrow slides three buttons out
-/// from behind it toward the center — the infinity reset button (keeps its
-/// reset function: ResetToSprout) plus two placeholder buttons (star, dots —
-/// no function yet) — and tapping it again collapses everything back. The
-/// slide is staggered with an overshoot ease; the three buttons fan out on
-/// even 25° steps along a common radius so the gaps between them are uniform.
+/// Bottom-left corner menu (v1.0.45, player request): a warm-white arrow on a
+/// meadow-glass "dewdrop" disc (v1.0.47: deep forest-green translucent glass
+/// with a baked gold hairline ring, replacing the old blue). v1.0.46: the
+/// arrow's direction IS the menu state — collapsed (idle) it points
+/// diagonally south-west, away from the screen center; the moment it's tapped
+/// it flips 180° (quick rotation animation) to point north-east at the
+/// fanning icons, and flips back when collapsed. v1.0.47: every toggle fires
+/// a small feedback ceremony — a gold ring pulses out from the disc — and
+/// taps answer back in plain-English toasts. Tapping the arrow slides three
+/// buttons out from behind it toward the center — the infinity reset button
+/// (keeps its reset function: ResetToSprout) plus two placeholder buttons
+/// (star, dots — no function yet) — and tapping it again collapses everything
+/// back. The slide is staggered with an overshoot ease; the three buttons fan
+/// out on even 25° steps along a common radius so the gaps between them are
+/// uniform.
 ///
 /// Raw Input is used (not uGUI Button + EventSystem) to match the tree's tap
 /// detection, which also reads Input directly. TreeGrowthController swallows
@@ -39,8 +43,6 @@ public class TreeResetButton : MonoBehaviour
         public float punch;      // 1 -> 0 feedback pop on placeholder tap
     }
 
-    static readonly Color MenuBlue = new Color(0.361f, 0.659f, 1.0f, 0.85f); // #5CA8FF, top-button blue
-
     const float ArrowSize = 120f;
     const float SubSize = 100f;
     const float SlideDur = 0.32f;
@@ -48,6 +50,9 @@ public class TreeResetButton : MonoBehaviour
 
     RectTransform arrowRect;
     RectTransform glyphRt; // v1.0.46: the arrow glyph rotates to show menu state
+    RectTransform pulseRt; // v1.0.47: gold feedback ring, pulses on toggle
+    Image pulseImg;
+    float pulseT;
     MenuButton[] subButtons;
     bool expanded;
     bool initialized;
@@ -127,12 +132,17 @@ public class TreeResetButton : MonoBehaviour
                         if (i == 0)
                         {
                             if (controller != null) controller.ResetToSprout();
+                            // v1.0.47: plain-English confirmation of what just happened.
+                            MeadowToast.Show("Fresh sprout — tap the tree to grow it again.");
                             ToggleMenu(); // reset done: collapse
                         }
                         else
                         {
                             // Placeholders: acknowledge the tap, no function yet.
                             b.punch = 1f;
+                            MeadowToast.Show(i == 1
+                                ? "Still growing — this one's coming soon."
+                                : "More tools are on the way.");
                             Debug.Log($"TreeResetButton: placeholder button {i} tapped (no function yet).");
                         }
                         break;
@@ -175,6 +185,17 @@ public class TreeResetButton : MonoBehaviour
             if (arrowRect != null) arrowRect.localScale = new Vector3(s, s, 1f);
         }
 
+        // v1.0.47: gold feedback pulse — a hairline ring blooms out from the
+        // disc and dissolves, so every toggle feels answered.
+        if (pulseT > 0f && pulseRt != null)
+        {
+            pulseT = Mathf.Max(0f, pulseT - dt * 2.6f);
+            float s = 1f + 0.55f * (1f - pulseT);
+            pulseRt.localScale = new Vector3(s, s, 1f);
+            if (pulseImg != null)
+                pulseImg.color = new Color(1f, 0.78f, 0.22f, 0.85f * pulseT);
+        }
+
         // v1.0.46: arrow flip — direction is menu state. Collapsed the glyph
         // rests at 180° (pointing south-west, away from center); on expand it
         // swings to 0° (north-east, toward the fanned-out icons) and back on
@@ -189,6 +210,7 @@ public class TreeResetButton : MonoBehaviour
     void ToggleMenu()
     {
         expanded = !expanded;
+        pulseT = 1f; // v1.0.47: every toggle fires the gold feedback pulse
         for (int i = 0; i < subButtons.Length; i++)
         {
             var b = subButtons[i];
@@ -224,9 +246,10 @@ public class TreeResetButton : MonoBehaviour
         scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
         scaler.matchWidthOrHeight = 0.5f;
 
-        // Arrow button: bottom-left, black arrow on the blue disc. The glyph
-        // is drawn pointing north-east; v1.0.46 keeps it rotated 180° (SW)
-        // while collapsed and flips it to NE on expand — direction = state.
+        // Arrow button: bottom-left, warm-white arrow on the meadow-glass
+        // dewdrop disc (v1.0.47: deep green glass + gold hairline ring). The
+        // glyph is drawn pointing north-east; v1.0.46 keeps it rotated 180°
+        // (SW) while collapsed and flips it to NE on expand — direction = state.
         var arrowGO = new GameObject("MenuArrow", typeof(RectTransform));
         arrowGO.transform.SetParent(canvasGO.transform, false);
         arrowRect = arrowGO.GetComponent<RectTransform>();
@@ -244,7 +267,20 @@ public class TreeResetButton : MonoBehaviour
         discRt.pivot = new Vector2(0.5f, 0.5f);
         discRt.anchoredPosition = Vector2.zero;
         discRt.sizeDelta = new Vector2(ArrowSize, ArrowSize);
-        discGO.GetComponent<Image>().sprite = MakeDiscSprite(160, MenuBlue, Color.black, 5);
+        discGO.GetComponent<Image>().sprite = MeadowGlassUI.MakeGlassDisc(160);
+
+        // v1.0.47: the feedback pulse ring, parked invisible until a toggle.
+        var pulseGO = new GameObject("PulseRing", typeof(RectTransform), typeof(Image));
+        pulseGO.transform.SetParent(arrowGO.transform, false);
+        pulseRt = pulseGO.GetComponent<RectTransform>();
+        pulseRt.anchorMin = new Vector2(0.5f, 0.5f);
+        pulseRt.anchorMax = new Vector2(0.5f, 0.5f);
+        pulseRt.pivot = new Vector2(0.5f, 0.5f);
+        pulseRt.anchoredPosition = Vector2.zero;
+        pulseRt.sizeDelta = new Vector2(150f, 150f);
+        pulseImg = pulseGO.GetComponent<Image>();
+        pulseImg.sprite = MeadowGlassUI.MakeGoldRing(150, 7);
+        pulseImg.color = new Color(1f, 0.78f, 0.22f, 0f);
 
         var arrowGlyphGO = new GameObject("ArrowGlyph", typeof(RectTransform), typeof(Image));
         arrowGlyphGO.transform.SetParent(arrowGO.transform, false);
@@ -296,7 +332,7 @@ public class TreeResetButton : MonoBehaviour
             bDiscRt.pivot = new Vector2(0.5f, 0.5f);
             bDiscRt.anchoredPosition = Vector2.zero;
             bDiscRt.sizeDelta = new Vector2(SubSize, SubSize);
-            bDisc.GetComponent<Image>().sprite = MakeDiscSprite(160, MenuBlue, Color.black, 5);
+            bDisc.GetComponent<Image>().sprite = MeadowGlassUI.MakeGlassDisc(160);
 
             var bGlyph = new GameObject("Glyph", typeof(RectTransform), typeof(Image));
             bGlyph.transform.SetParent(btnGO.transform, false);
@@ -320,15 +356,16 @@ public class TreeResetButton : MonoBehaviour
     }
 
     /// <summary>
-    /// Black arrow pointing north-east (toward the screen center), drawn
-    /// directly in texture space: thick shaft + triangular head.
+    /// Warm-white arrow pointing north-east (toward the screen center),
+    /// drawn directly in texture space: thick shaft + triangular head.
+    /// v1.0.47: warm white so it reads on the dark meadow-glass disc.
     /// </summary>
     static Texture2D DrawArrowTexture()
     {
         const int S = 160;
         var tex = new Texture2D(S, S, TextureFormat.RGBA32, false);
         tex.filterMode = FilterMode.Bilinear;
-        var black = Color.black;
+        var ink = new Color(0.96f, 0.94f, 0.86f, 1f);
         // Shaft: from (44,44) to (100,100), half-width 10. Head: triangle
         // with tip (124,124), base corners (86,110) and (110,86).
         Vector2 p0 = new Vector2(44f, 44f), p1 = new Vector2(100f, 100f);
@@ -344,7 +381,7 @@ public class TreeResetButton : MonoBehaviour
                 float a = 0f;
                 if (inHead) a = 1f;
                 else a = Mathf.Clamp01((10f - dShaft) / 2f);
-                tex.SetPixel(x, y, new Color(black.r, black.g, black.b, a));
+                tex.SetPixel(x, y, new Color(ink.r, ink.g, ink.b, a));
             }
         }
         tex.Apply();
@@ -481,31 +518,6 @@ public class TreeResetButton : MonoBehaviour
         return tex;
     }
 
-    /// <summary>
-    /// Soft-edged filled disc sprite with a crisp outer border ring (colors
-    /// baked in so the Image stays plain white). Same recipe as before.
-    /// </summary>
-    static Sprite MakeDiscSprite(int size, Color innerColor, Color borderColor, float borderPx)
-    {
-        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
-        var pixels = new Color[size * size];
-        float r = size / 2f;
-        for (int y = 0; y < size; y++)
-        {
-            for (int x = 0; x < size; x++)
-            {
-                float dx = x - r + 0.5f;
-                float dy = y - r + 0.5f;
-                float d = Mathf.Sqrt(dx * dx + dy * dy);
-                float outer = Mathf.Clamp01((r - d) / 2f);
-                float border = Mathf.Clamp01((r - borderPx - d) / 1.5f);
-                Color c = Color.Lerp(innerColor, borderColor, 1f - border);
-                c.a *= outer;
-                pixels[y * size + x] = c;
-            }
-        }
-        tex.SetPixels(pixels);
-        tex.Apply();
-        return Sprite.Create(tex, new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f), 100f);
-    }
+    // (MakeDiscSprite removed in v1.0.47: discs now come from
+    // MeadowGlassUI.MakeGlassDisc, the shared meadow-glass material.)
 }

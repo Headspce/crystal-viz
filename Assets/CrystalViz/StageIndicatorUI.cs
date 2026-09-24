@@ -273,10 +273,12 @@ public class StageIndicatorUI : MonoBehaviour
         Stretch(border.GetComponent<RectTransform>());
         var borderImg = border.AddComponent<Image>();
         borderImg.sprite = circle;
-        // Sky-blue ring, ~62% opaque so the sky shows through a little
-        // (player request), with the black outline ring sitting just outside
-        // it for definition.
-        borderImg.color = new Color(0.361f, 0.659f, 1.0f, 0.62f);
+        // v1.0.47: the ring is now GOLD (was sky blue) — the same gold
+        // hairline motif as the menu dewdrops, time pill, and sundial ring,
+        // so the whole HUD reads as one instrument. Still ~62% opaque so the
+        // sky shows through a little (player request), with the black
+        // outline ring sitting just outside it for definition.
+        borderImg.color = new Color(1.00f, 0.78f, 0.22f, 0.62f);
 
         // Circular mask holding the stage sprite.
         var maskGO = NewRect("CircleMask", avatar.transform);
@@ -312,7 +314,10 @@ public class StageIndicatorUI : MonoBehaviour
         rowRt.anchoredPosition = new Vector2(0f, -186f);
         rowRt.sizeDelta = new Vector2(448f, 60f);
 
-        Sprite pill = MakePillSprite(256, 72);
+        // v1.0.47: counter pills wear the meadow-glass material (deep green
+        // glass + baked gold hairline, 9-sliced) instead of the old flat
+        // navy tint — one chrome language across the whole HUD.
+        Sprite pill = MeadowGlassUI.MakeGlassPill(256, 72);
         Font hudFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         if (hudFont == null)
             Debug.LogWarning("StageIndicatorUI: built-in LegacyRuntime font not found; HUD counters may not render.");
@@ -328,7 +333,8 @@ public class StageIndicatorUI : MonoBehaviour
         beePillRect = beePillRt;
         var beePillImg = beePillGO.AddComponent<Image>();
         beePillImg.sprite = pill;
-        beePillImg.color = new Color(0.05f, 0.10f, 0.22f, 0.55f);
+        beePillImg.type = Image.Type.Sliced;
+        beePillImg.color = Color.white; // glass + gold colors are baked in
 
         var iconGO = NewRect("BeeIcon", beePillGO.transform);
         var iconRt = iconGO.GetComponent<RectTransform>();
@@ -378,7 +384,8 @@ public class StageIndicatorUI : MonoBehaviour
         pillRt.sizeDelta = new Vector2(264f, 58f);
         var pillImg = pillGO.AddComponent<Image>();
         pillImg.sprite = pill;
-        pillImg.color = new Color(0.05f, 0.10f, 0.22f, 0.55f);
+        pillImg.type = Image.Type.Sliced;
+        pillImg.color = Color.white; // glass + gold colors are baked in
 
         var textGO = NewRect("TapCounter", pillGO.transform);
         var textRt = textGO.GetComponent<RectTransform>();
@@ -439,27 +446,7 @@ public class StageIndicatorUI : MonoBehaviour
         return Sprite.Create(tex, new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.5f), 100f);
     }
 
-    /// <summary>Generates a soft-edged rounded-rect (pill) sprite for the tap-counter backing.</summary>
-    static Sprite MakePillSprite(int w, int h)
-    {
-        var tex = new Texture2D(w, h, TextureFormat.RGBA32, false);
-        var pixels = new Color[w * h];
-        float r = h / 2f;
-        for (int y = 0; y < h; y++)
-        {
-            for (int x = 0; x < w; x++)
-            {
-                // Distance to the pill's inner segment (horizontal capsule).
-                float cx = Mathf.Clamp(x + 0.5f, r, w - r);
-                float dx = (x + 0.5f) - cx;
-                float dy = (y + 0.5f) - r;
-                float d = Mathf.Sqrt(dx * dx + dy * dy);
-                float a = Mathf.Clamp01((r - d) / 1.5f);
-                pixels[y * w + x] = new Color(1f, 1f, 1f, a);
-            }
-        }
-        tex.SetPixels(pixels);
-        tex.Apply();
-        return Sprite.Create(tex, new Rect(0f, 0f, w, h), new Vector2(0.5f, 0.5f), 100f);
-    }
+    // (MakePillSprite removed in v1.0.47: counter pills now use the shared
+    // MeadowGlassUI.MakeGlassPill, the meadow-glass material with a baked
+    // gold hairline.)
 }
