@@ -54,6 +54,9 @@ public class TreeGrowthController : MonoBehaviour
     /// </summary>
     public RectTransform resetButtonRect;
 
+    TreeResetButton menuButton; // v1.0.45: the corner menu (same GameObject)
+    bool menuLookupDone;
+
     const string PrefsKey = "CrystalViz_TreeTaps";
     const string SaplingStartKey = "CrystalViz_TreeTaps_SaplingStart";
     /// <summary>PlayerPrefs key for banked bee-pop tap credits.</summary>
@@ -247,9 +250,21 @@ public class TreeGrowthController : MonoBehaviour
         return results.Count > 0;
     }
 
-    /// <summary>True when the given screen position is inside the reset button.</summary>
+    /// <summary>
+    /// True when the given screen position is inside the corner menu: the
+    /// arrow button, or any expanded sub-button (v1.0.45 collapsible menu).
+    /// </summary>
     bool IsOnResetButton(Vector2 screenPos)
     {
+        // Lazy-resolve: the menu component is added after this controller
+        // initializes (bootstrap order), so the lookup can't happen in
+        // Initialize(). Same self-healing pattern as the bee lookup below.
+        if (!menuLookupDone)
+        {
+            menuLookupDone = true;
+            menuButton = GetComponent<TreeResetButton>();
+        }
+        if (menuButton != null && menuButton.MenuHitTest(screenPos)) return true;
         if (resetButtonRect == null) return false;
         // Null camera is correct here: the button lives on a
         // ScreenSpaceOverlay canvas.

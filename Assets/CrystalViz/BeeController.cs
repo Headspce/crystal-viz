@@ -803,7 +803,13 @@ public class BeeController : MonoBehaviour
         bee.root.SetActive(false);
         bee.alive = false;
         bee.state = State.Popped;
-        bee.stateTimer = RespawnDelay * (0.85f + (float)bee.rng.NextDouble() * 0.4f);
+        // v1.0.45: WIDE per-bee respawn desync (player request). Each bee
+        // rolls its own independent delay — 6s x [0.7, 1.6] = 4.2s..9.6s —
+        // so popping all three at once no longer brings all three back in
+        // lockstep. (The old 0.85..1.25 band was only a 2.4s spread, which
+        // read as simultaneous.) UnityEngine.Random: every pop is a fresh
+        // independent draw per bee.
+        bee.stateTimer = RespawnDelay * UnityEngine.Random.Range(0.7f, 1.6f);
         // v1.0.37 game loop: one pop banks one tree-tap credit.
         if (treeController == null) treeController = FindObjectOfType<TreeGrowthController>();
         if (treeController != null) treeController.AddTapCredit(1);

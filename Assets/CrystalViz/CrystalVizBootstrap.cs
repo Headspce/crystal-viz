@@ -24,10 +24,10 @@ public class CrystalVizBootstrap : MonoBehaviour
 
     void Awake()
     {
-        // Play mode: paint the branded loading screen first, let it render,
-        // then build the diorama behind it and fade the loader away — no
-        // jarring pop-in after the Unity splash. The CI edit-mode screenshot
-        // path (Awake never runs there) keeps calling BuildScene() directly.
+        // Play mode: quote screen (fades in), build the diorama behind it,
+        // then a diagonal 2D wipe reveals the finished scene — no jarring
+        // pop-in after the Unity splash. The CI edit-mode screenshot path
+        // (Awake never runs there) keeps calling BuildScene() directly.
         if (Application.isPlaying)
             StartCoroutine(BuildSceneWithLoading());
         else
@@ -37,14 +37,18 @@ public class CrystalVizBootstrap : MonoBehaviour
     System.Collections.IEnumerator BuildSceneWithLoading()
     {
         var loader = LoadingScreen.Show();
-        yield return null;
-        yield return null; // let the loading screen paint before the heavy build
+        // The quote fades in BEFORE the blocking build so the fade is
+        // actually visible (nothing animates while the diorama builds).
+        yield return loader.FadeInQuote();
         BuildScene();
-        yield return null; // one frame of the finished scene behind the loader
-        loader.Dismiss();
-        // The world then loads in as waves sweeping toward the viewer:
-        // first a glowing grid, then the real meadow growing in.
-        WorldReveal.Begin();
+        yield return null; // one frame of the finished scene behind the quote
+        loader.WipeAway(); // diagonal 2D wipe reveals the loaded scene
+        // v1.0.45: the WorldReveal staged sequence (loading grid sweep,
+        // back-to-front world arrival, tree pop, block dissolve) is DISABLED
+        // per Tyler 2026-09-24 — "ignore that for now". WorldReveal.cs is
+        // kept untouched so the sequence can be re-enabled later; when the
+        // wipe clears, the scene is fully loaded and immediately visible.
+        // WorldReveal.Begin();
     }
 
     /// <summary>

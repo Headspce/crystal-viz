@@ -13,6 +13,7 @@ public class SunOrbitControl : MonoBehaviour
 
     Slider slider;
     Text angleLabel;
+    Text timeLabel; // v1.0.45: clock readout above the slider (12:00 PM at top -> 12:00 AM at bottom)
     RectTransform knobRT;
     float currentAzimuth = 54f;
     float targetAzimuth = 54f;
@@ -25,10 +26,12 @@ public class SunOrbitControl : MonoBehaviour
             targetAzimuth = v * 360f;
             PositionKnob();
             UpdateLabel();
+            UpdateTimeLabel(v);
         });
         slider.value = targetAzimuth / 360f; // fires listener, sets initial sun pos
         PositionKnob();
         UpdateLabel();
+        UpdateTimeLabel(slider.value);
     }
 
     /// <summary>
@@ -44,6 +47,7 @@ public class SunOrbitControl : MonoBehaviour
         slider.value = targetAzimuth / 360f;
         PositionKnob();
         UpdateLabel();
+        UpdateTimeLabel(slider.value);
     }
 
     /// <summary>
@@ -74,6 +78,22 @@ public class SunOrbitControl : MonoBehaviour
     {
         if (angleLabel != null)
             angleLabel.text = $"{Mathf.RoundToInt(targetAzimuth % 360f)}°";
+    }
+
+    /// <summary>
+    /// v1.0.45: clock readout above the slider (player request). The slider
+    /// value t in [0,1] maps linearly to h = 12*t, shown 12-hour style and
+    /// rounded to the hour: top reads "12:00 PM", bottom reads "12:00 AM",
+    /// "11:00 AM", "10:00 AM", ... on the way down. Updates live while
+    /// dragging (called from the value-changed listener).
+    /// </summary>
+    void UpdateTimeLabel(float v)
+    {
+        if (timeLabel == null) return;
+        int hr = Mathf.Clamp(Mathf.RoundToInt(v * 12f), 0, 12);
+        timeLabel.text = hr == 12 ? "12:00 PM"
+            : hr == 0 ? "12:00 AM"
+            : $"{hr}:00 AM";
     }
 
     // ------------------------------------------------------------------ UI build
@@ -238,6 +258,33 @@ public class SunOrbitControl : MonoBehaviour
                 new Vector2(0.5f, 0.5f), 100f);
             sunImg.preserveAspect = true;
         }
+
+        // v1.0.45: clock readout floating just above the sun icon, so the
+        // time sits "directly above the slider" (player request). A canvas
+        // child at full scale (NOT under the slider's 0.25x root) so the
+        // time stays legible: white text with the HUD's navy outline, same
+        // treatment as the tap counter. Positioned over the slider's screen
+        // column: the slider root spans x -88..-28 from the right edge
+        // (center -58), and the sun icon's top lands ~34 canvas px above the
+        // root's top edge (1770), so the label centers at y ~1840. Centered
+        // at x=-80 (inside the track column) so the text never clips the edge.
+        var timeGO = new GameObject("TimeLabel", typeof(RectTransform), typeof(Text));
+        timeGO.transform.SetParent(canvasGo.transform, false);
+        var trt = timeGO.GetComponent<RectTransform>();
+        trt.anchorMin = new Vector2(1f, 1f);
+        trt.anchorMax = new Vector2(1f, 1f);
+        trt.pivot = new Vector2(0.5f, 0.5f);
+        trt.anchoredPosition = new Vector2(-80f, -80f);
+        trt.sizeDelta = new Vector2(200f, 48f);
+        var ttxt = timeGO.GetComponent<Text>();
+        ttxt.font = GetDefaultFont();
+        ttxt.fontSize = 30;
+        ttxt.alignment = TextAnchor.MiddleCenter;
+        ttxt.color = new Color(0.93f, 0.97f, 1f, 0.95f);
+        var tout = timeGO.AddComponent<Outline>();
+        tout.effectColor = new Color(0.04f, 0.08f, 0.18f, 0.95f);
+        tout.effectDistance = new Vector2(2.5f, -2.5f);
+        timeLabel = ttxt;
     }
 
     /// <summary>
