@@ -69,10 +69,11 @@ public class CrystalVizBootstrap : MonoBehaviour
         // Player light control: the right-edge sun slider is back by player
         // request (Tyler missed the light adjustment bar). SunOrbitControl
         // builds its UI in Start(), which never runs in the CI screenshot
-        // path (edit mode), so captures stay clean while player builds get
-        // the working slider.
+        // path (edit mode), so BuildForScreenshot() builds it explicitly —
+        // the timestamp label must be verifiable in captures.
         var sunCtrl = gameObject.AddComponent<SunOrbitControl>();
         sunCtrl.bootstrap = this;
+        sunCtrl.BuildForScreenshot();
     }
 
     /// <summary>
