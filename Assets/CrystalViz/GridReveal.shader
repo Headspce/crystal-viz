@@ -10,6 +10,9 @@ Shader "CrystalViz/GridReveal"
         _BaseColor ("Grid Base Color", Color) = (0.015, 0.02, 0.06, 1)
         _Wave1 ("Grid Appear Wavefront Z", Float) = -10000
         _Wave2 ("Grid Dissolve Wavefront Z", Float) = -10000
+        // v1.0.41: 0 = black & white grid, 1 = full line color. The reveal
+        // sequencer fades it in as the world loads.
+        _Colorize ("Grid Color Amount", Float) = 1.0
     }
     SubShader
     {
@@ -52,6 +55,7 @@ Shader "CrystalViz/GridReveal"
             half4 _BaseColor;
             float _Wave1;
             float _Wave2;
+            float _Colorize;
 
             Varyings Vert(Attributes input)
             {
@@ -78,7 +82,9 @@ Shader "CrystalViz/GridReveal"
                 // Bright scanline riding the appear-wavefront.
                 float band = (1.0 - smoothstep(0.0, 5.0, abs(wp.z - _Wave1))) * gridOn;
 
-                half3 col = _BaseColor.rgb + _LineColor.rgb * (gridLine * 0.85 + band * 1.2);
+                // v1.0.41: black & white start, fading into the line color.
+                half3 lineCol = lerp(half3(1.0, 1.0, 1.0), _LineColor.rgb, _Colorize);
+                half3 col = _BaseColor.rgb + lineCol * (gridLine * 0.85 + band * 1.2);
                 col = MixFog(col, input.fogFactor);
                 float alpha = gridOn * (1.0 - gone);
                 return half4(col, alpha);

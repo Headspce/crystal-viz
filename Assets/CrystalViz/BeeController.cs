@@ -425,6 +425,41 @@ public class BeeController : MonoBehaviour
         bee.state = State.ToFlower;
     }
 
+    /// <summary>
+    /// v1.0.41: park every bee and kill all in-flight FX so the loading
+    /// screen and world reveal own the screen alone. Bee 1's entrance timer
+    /// is 0s, so without this it spawned (with a starburst) on the first
+    /// frame after the diorama built — then the reveal froze the burst
+    /// mid-animation in the middle of the screen. Timers are re-staggered
+    /// here; they only tick once the controller is re-enabled after the
+    /// reveal, so entrances land after the world has loaded.
+    /// </summary>
+    public void HideForReveal()
+    {
+        for (int i = 0; i < bees.Count; i++)
+        {
+            var bee = bees[i];
+            bee.root.SetActive(false);
+            bee.alive = false;
+            bee.state = State.Waiting;
+            bee.stateTimer = i * 0.9f; // staggered entrances, post-reveal
+            bee.spawnT = 1f;
+            if (bee.shadow != null) bee.shadow.SetActive(false);
+        }
+        for (int i = spawnBursts.Count - 1; i >= 0; i--)
+        {
+            Destroy(spawnBursts[i].mat);
+            Destroy(spawnBursts[i].root);
+        }
+        spawnBursts.Clear();
+        for (int i = pops.Count - 1; i >= 0; i--)
+        {
+            foreach (var p in pops[i].petals) Destroy(p.mat);
+            Destroy(pops[i].root);
+        }
+        pops.Clear();
+    }
+
     void Update()
     {
         float dt = Time.deltaTime;
@@ -447,8 +482,13 @@ public class BeeController : MonoBehaviour
                     bee.root.SetActive(true);
                     bee.alive = true;
                     bee.spawnT = 0f;
-                    bee.lastPos = bee.bodyT.position;
                     PickNextFlower(bee, initial: true);
+                    // v1.0.41: teleport the bee to its actual spawn point
+                    // BEFORE the starburst fires — the burst used to spawn at
+                    // the stale pre-teleport position, so it appeared offset
+                    // from where the bee showed up.
+                    bee.bodyT.position = bee.fromPos;
+                    bee.lastPos = bee.bodyT.position;
                     SpawnSpawnBurst(bee.bodyT.position);
                 }
                 break;
@@ -501,6 +541,10 @@ public class BeeController : MonoBehaviour
                     bee.alive = true;
                     bee.spawnT = 0f; // spring back in cartoon-style
                     PickNextFlower(bee, initial: true);
+                    // v1.0.41: same stale-position fix as the entrance burst —
+                    // teleport first so the starburst lands exactly where the
+                    // bee reappears.
+                    bee.bodyT.position = bee.fromPos;
                     bee.lastPos = bee.bodyT.position;
                     SpawnSpawnBurst(bee.bodyT.position);
                 }

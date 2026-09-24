@@ -2,26 +2,27 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Cartoonish "growth feedback" burst: three golden trapezoid emphasis lines
-/// radiating from the top of the tree crown every time a tree tap is accepted
-/// (a bee-pop credit is spent and the tree grows). Anime surprise-line style,
-/// per Tyler's reference image (v1.0.38): chunky, slightly tapered bars that
-/// pop in above the crown, drift outward, and fade.
+/// Cartoonish "growth feedback" burst: three anime sweat drops popping in
+/// above the tree crown every time a tree tap is accepted (a bee-pop credit
+/// is spent and the tree grows). v1.0.41: Tyler replaced the golden trapezoid
+/// emphasis lines with his anime sweat-drop reference — same timing,
+/// stagger, billboard, and rapid-tap restart behavior (never more than
+/// three drops at once), now as textured sprites.
 /// </summary>
 public class TreeGrowthBurstLines : MonoBehaviour
 {
     const float LineLife = 0.75f;   // total burst lifetime (seconds)
     const float PopTime = 0.12f;    // scale pop-in duration
     const float FadeStart = 0.40f;  // alpha fade starts
-    const float Stagger = 0.05f;    // per-line start delay
-    const float BaseGap = 0.35f;    // gap between crown top and line bases
+    const float Stagger = 0.05f;    // per-drop start delay
+    const float BaseGap = 0.35f;    // gap between crown top and drop bases
     const float DriftOut = 0.18f;   // outward drift over the burst
-    const float LineWidth = 0.11f;  // trapezoid base width
+    const float DropHeight = 0.34f; // sweat-drop sprite height (world units)
+    const float DropAspect = 160f / 224f; // sweat-drop.png width/height
 
-    // Golden yellow, anime emphasis-line style. Tyler said to color-code it
-    // as I saw fit: gold complements both the blue sky and the green canopy,
-    // so the lines pop against either background.
-    static readonly Color LineColor = new Color(1.0f, 0.78f, 0.22f, 1.0f);
+    // Ice-blue anime sweat drop, per Tyler's reference. Color of the burst
+    // comes from the texture itself; the tint stays white.
+    static readonly Color DropTint = Color.white;
 
     static readonly float[] BaseAngles = { -34f, 0f, 34f };
     static readonly float[] BaseLengths = { 0.46f, 0.64f, 0.52f };
@@ -30,11 +31,11 @@ public class TreeGrowthBurstLines : MonoBehaviour
     TreeGrowthController growth;
     ParametricTree tree;
     Camera mainCam;
-    Shader lineShader;
-    Mesh lineMesh; // unit trapezoid: base width 1 at y=0, tip width 0.55 at y=1
+    Shader spriteShader;
+    Texture2D sweatTex;
     readonly List<Burst> bursts = new List<Burst>();
 
-    class Line
+    class Drop
     {
         public Transform t;
         public Material mat;
@@ -46,7 +47,7 @@ public class TreeGrowthBurstLines : MonoBehaviour
     class Burst
     {
         public GameObject root;
-        public List<Line> lines = new List<Line>();
+        public List<Drop> drops = new List<Drop>();
         public float age;
     }
 
@@ -67,25 +68,13 @@ public class TreeGrowthBurstLines : MonoBehaviour
         if (tree == null) tree = FindObjectOfType<ParametricTree>();
         mainCam = Camera.main;
 
-        // Same recipe as the bee confetti (proven on device): URP/Lit,
-        // transparent, no culling. Emission keeps the lines flat-bright like
-        // flat anime color regardless of the sun angle.
-        lineShader = Shader.Find("Universal Render Pipeline/Lit");
-
-        lineMesh = new Mesh { name = "GrowthBurstLine" };
-        lineMesh.vertices = new Vector3[]
-        {
-            new Vector3(-0.5f, 0f, 0f),
-            new Vector3(0.5f, 0f, 0f),
-            new Vector3(0.275f, 1f, 0f),
-            new Vector3(-0.275f, 1f, 0f),
-        };
-        lineMesh.uv = new Vector2[]
-        {
-            new Vector2(0f, 0f), new Vector2(1f, 0f),
-            new Vector2(1f, 1f), new Vector2(0f, 1f),
-        };
-        lineMesh.triangles = new int[] { 0, 2, 1, 0, 3, 2 };
+        // Same recipe as the paper bees (proven on device): the keyword-free
+        // CrystalViz/SpritePaper unlit alpha-blend shader, pinned in the
+        // variant collection so Shader.Find resolves on the phone.
+        spriteShader = Shader.Find("CrystalViz/SpritePaper");
+        if (spriteShader == null)
+            spriteShader = Shader.Find("Universal Render Pipeline/Lit");
+        sweatTex = Resources.Load<Texture2D>("sweat-drop");
 
         if (growth != null)
             growth.onTapAccepted.AddListener(FireBurst);
@@ -96,15 +85,12 @@ public class TreeGrowthBurstLines : MonoBehaviour
         if (growth != null) growth.onTapAccepted.RemoveListener(FireBurst);
     }
 
-    static Material MakeLineMaterial(Color c, Shader shader)
+    Material MakeDropMaterial(Texture2D tex, Shader shader)
     {
-        if (shader == null) return null;
+        if (shader == null || tex == null) return null;
         var mat = new Material(shader);
-        mat.SetFloat("_Surface", 1f); // transparent
-        mat.SetFloat("_Cull", 0f);
-        mat.SetColor("_EmissionColor", new Color(c.r, c.g, c.b, 1f));
-        mat.EnableKeyword("_EMISSION");
-        mat.color = c;
+        mat.mainTexture = tex;
+        mat.color = DropTint;
         return mat;
     }
 
@@ -114,16 +100,15 @@ public class TreeGrowthBurstLines : MonoBehaviour
         // Bursts are play-mode-only FX; never spawn from the edit-mode
         // screenshot path.
         if (!Application.isPlaying) return;
-        if (tree == null || growth == null || lineMesh == null) return;
+        if (tree == null || growth == null || sweatTex == null) return;
 
         Vector3 anchor = tree.CrownTop;
         // Scale the burst with the tree so the sprout isn't dwarfed by its
-        // own emphasis lines.
+        // own sweat drops.
         float s = 0.35f + 0.65f * growth.Growth01;
 
-        // v1.0.39: a fast follow-up tap restarts the burst instead of
-        // stacking — kill any in-flight lines so only ever three animate
-        // at once.
+        // A fast follow-up tap restarts the burst instead of stacking — kill
+        // any in-flight drops so only ever three animate at once.
         for (int b = bursts.Count - 1; b >= 0; b--)
             KillBurst(bursts[b]);
         bursts.Clear();
@@ -140,22 +125,23 @@ public class TreeGrowthBurstLines : MonoBehaviour
             float dirY = Mathf.Cos(angle);
             float length = BaseLengths[i] * s * Random.Range(0.9f, 1.1f);
 
-            var go = new GameObject("BurstLine" + i);
+            var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            DestroyImmediate(go.GetComponent<Collider>());
             go.transform.SetParent(root.transform, false);
             go.transform.position = anchor;
+            // Lean the drop outward along its drift direction, like the old
+            // emphasis lines.
             go.transform.rotation = Quaternion.Euler(0f, 0f, -BaseAngles[i]);
             go.transform.localScale = Vector3.zero;
 
-            var mf = go.AddComponent<MeshFilter>();
-            mf.mesh = lineMesh;
-            var mr = go.AddComponent<MeshRenderer>();
-            var mat = MakeLineMaterial(LineColor, lineShader);
+            var mat = MakeDropMaterial(sweatTex, spriteShader);
             if (mat == null) { Destroy(go); continue; }
-            mr.material = mat;
+            go.GetComponent<MeshRenderer>().material = mat;
+            var mr = go.GetComponent<MeshRenderer>();
             mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             mr.receiveShadows = false;
 
-            var line = new Line
+            var drop = new Drop
             {
                 t = go.transform,
                 mat = mat,
@@ -163,7 +149,7 @@ public class TreeGrowthBurstLines : MonoBehaviour
                 dirX = dirX, dirY = dirY,
                 length = length,
             };
-            burst.lines.Add(line);
+            burst.drops.Add(drop);
         }
 
         burst.age = 0f;
@@ -185,9 +171,9 @@ public class TreeGrowthBurstLines : MonoBehaviour
                 burst.root.transform.rotation = mainCam.transform.rotation;
 
             bool allDone = true;
-            foreach (var line in burst.lines)
+            foreach (var drop in burst.drops)
             {
-                float localAge = burst.age - line.delay;
+                float localAge = burst.age - drop.delay;
                 if (localAge < 0f) { allDone = false; continue; }
 
                 // Pop-in with a little overshoot.
@@ -197,12 +183,13 @@ public class TreeGrowthBurstLines : MonoBehaviour
                 float alpha = 1f - Mathf.Clamp01((localAge - FadeStart) / (LineLife - FadeStart));
                 float radius = BaseGap * (0.35f + 0.65f * growth.Growth01) + DriftOut * lifeT;
 
-                line.t.localPosition = new Vector3(line.dirX * radius, line.dirY * radius, 0f);
-                line.t.localScale = new Vector3(LineWidth * (0.35f + 0.65f * growth.Growth01) * scale, line.length * scale, 1f);
+                drop.t.localPosition = new Vector3(drop.dirX * radius, drop.dirY * radius, 0f);
+                float h = DropHeight * (0.35f + 0.65f * growth.Growth01) * scale;
+                drop.t.localScale = new Vector3(h * DropAspect, h, 1f);
 
-                var c = line.mat.color;
+                var c = drop.mat.color;
                 c.a = alpha;
-                line.mat.color = c;
+                drop.mat.color = c;
 
                 if (localAge < LineLife) allDone = false;
             }
@@ -215,12 +202,12 @@ public class TreeGrowthBurstLines : MonoBehaviour
         }
     }
 
-    /// <summary>Destroy a burst's GameObject and its line materials.</summary>
+    /// <summary>Destroy a burst's GameObject and its drop materials.</summary>
     static void KillBurst(Burst burst)
     {
         if (burst == null) return;
-        foreach (var line in burst.lines)
-            if (line.mat != null) Destroy(line.mat);
+        foreach (var drop in burst.drops)
+            if (drop.mat != null) Destroy(drop.mat);
         if (burst.root != null) Destroy(burst.root);
     }
 }

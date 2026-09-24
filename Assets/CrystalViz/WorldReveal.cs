@@ -74,8 +74,14 @@ public class WorldReveal : MonoBehaviour
             treeWrapper.transform.localScale = Vector3.zero;
         }
 
-        // Bees and HUD wait until the world has loaded.
-        if (beeController != null) beeController.enabled = false;
+        // Bees and HUD wait until the world has loaded. The bee controller is
+        // parked and its entrance timers re-staggered (v1.0.41) so no bee
+        // or FX spawns or floats in view while the reveal owns the screen.
+        if (beeController != null)
+        {
+            beeController.HideForReveal();
+            beeController.enabled = false;
+        }
         SetUI(false);
     }
 
@@ -90,6 +96,7 @@ public class WorldReveal : MonoBehaviour
         gridMat = new Material(shader);
         gridMat.SetFloat("_Wave1", FarZ);
         gridMat.SetFloat("_Wave2", FarZ);
+        gridMat.SetFloat("_Colorize", 0f); // v1.0.41: starts black & white
         gridPlane = GameObject.CreatePrimitive(PrimitiveType.Plane);
         DestroyImmediate(gridPlane.GetComponent<Collider>());
         gridPlane.name = "RevealGrid";
@@ -110,6 +117,9 @@ public class WorldReveal : MonoBehaviour
         {
             gridMat.SetFloat("_Wave1", w1);
             gridMat.SetFloat("_Wave2", w2);
+            // v1.0.41: the grid starts black & white and fades into its blue
+            // color as the reveal plays.
+            gridMat.SetFloat("_Colorize", Mathf.Clamp01((t - 0.4f) / 2.4f));
         }
         if (grassMat != null) grassMat.SetFloat("_GrowFront", w2);
         if (flowerMat != null) flowerMat.SetFloat("_GrowFront", w2);
