@@ -69,7 +69,7 @@ Shader "CrystalViz/GridReveal"
 
                 // Procedural grid lines.
                 float2 g = abs(frac(wp.xz / _CellSize) - 0.5);
-                float line = 1.0 - smoothstep(0.0, 0.045, min(g.x, g.y));
+                float gridLine = 1.0 - smoothstep(0.0, 0.045, min(g.x, g.y));
 
                 // Wave 1: grid sweeps in from the back.
                 float gridOn = 1.0 - smoothstep(_Wave1 - 1.0, _Wave1 + 1.0, wp.z);
@@ -78,7 +78,7 @@ Shader "CrystalViz/GridReveal"
                 // Bright scanline riding the appear-wavefront.
                 float band = (1.0 - smoothstep(0.0, 5.0, abs(wp.z - _Wave1))) * gridOn;
 
-                half3 col = _BaseColor.rgb + _LineColor.rgb * (line * 0.85 + band * 1.2);
+                half3 col = _BaseColor.rgb + _LineColor.rgb * (gridLine * 0.85 + band * 1.2);
                 col = MixFog(col, input.fogFactor);
                 float alpha = gridOn * (1.0 - gone);
                 return half4(col, alpha);
