@@ -131,7 +131,10 @@ public class TreeGrowthBurstLines : MonoBehaviour
             go.transform.position = anchor;
             // Lean the drop outward along its drift direction, like the old
             // emphasis lines.
-            go.transform.rotation = Quaternion.Euler(0f, 0f, -BaseAngles[i]);
+            // v1.0.43: flipped 180° — the drops used to read as diving INTO
+            // the crown; now the round bulb leads and they flick outward,
+            // like sweat flying off the tree.
+            go.transform.rotation = Quaternion.Euler(0f, 0f, -BaseAngles[i] + 180f);
             go.transform.localScale = Vector3.zero;
 
             var mat = MakeDropMaterial(sweatTex, spriteShader);

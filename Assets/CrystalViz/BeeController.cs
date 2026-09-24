@@ -906,6 +906,7 @@ public class BeeController : MonoBehaviour
     // ------------------------------------------------------- spawn burst FX
 
     const float SpawnBurstLife = 0.6f;  // starburst pop lifetime
+    const float SpawnBurstFadeStart = 0.20f; // dissolve begins (smoothstepped to 0)
     const float SpawnBurstSize = 0.34f; // ~2x the bee quad
 
     readonly List<SpawnBurst> spawnBursts = new List<SpawnBurst>();
@@ -1035,7 +1036,11 @@ public class BeeController : MonoBehaviour
             fx.t.localScale = new Vector3(s, s, 1f);
 
             var c = fx.mat.color;
-            c.a = 1f - Mathf.Clamp01((fx.age - 0.30f) / (SpawnBurstLife - 0.30f));
+            // v1.0.43: smooth transparent dissolve over the back half of the
+            // life (was a quick linear tail that read as a pop-out, and on
+            // <=v1.0.41 the opaque shader ignored alpha entirely).
+            float fadeT = Mathf.Clamp01((fx.age - SpawnBurstFadeStart) / (SpawnBurstLife - SpawnBurstFadeStart));
+            c.a = 1f - fadeT * fadeT * (3f - 2f * fadeT);
             fx.mat.color = c;
 
             if (t >= 1f)
