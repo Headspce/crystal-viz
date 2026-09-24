@@ -985,7 +985,16 @@ public class BeeController : MonoBehaviour
     /// </summary>
     void SpawnSpawnBurst(Vector3 pos)
     {
-        if (popShader == null || mainCam == null) return;
+        // v1.0.42: the starburst texture has transparent texels, so it needs
+        // REAL alpha blending. It used to build its material on URP/Lit via
+        // MakePopMaterial, but setting _Surface=1 never enables the
+        // _SURFACE_TYPE_TRANSPARENT keyword on a runtime-created material —
+        // the quad rendered opaque and the transparent texels showed as a
+        // black box around the golden star on the phone (same bug class as
+        // the v1.0.35 bee-sprite black boxes). CrystalViz/SpritePaper is a
+        // keyword-free unlit alpha-blend shader, pinned in the variant
+        // collection so Shader.Find resolves on device.
+        if (spriteShader == null || mainCam == null) return;
         EnsureBurstTexture();
 
         var fx = new SpawnBurst();
@@ -995,7 +1004,7 @@ public class BeeController : MonoBehaviour
         go.transform.position = pos - mainCam.transform.forward * 0.03f;
         go.transform.rotation = mainCam.transform.rotation;
         go.transform.localScale = Vector3.zero;
-        var mat = MakePopMaterial(Color.white, popShader);
+        var mat = MakePopMaterial(Color.white, spriteShader);
         if (mat == null) { Destroy(go); return; }
         mat.mainTexture = burstTex;
         go.GetComponent<MeshRenderer>().material = mat;
