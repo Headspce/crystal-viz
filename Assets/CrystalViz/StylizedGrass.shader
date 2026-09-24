@@ -12,6 +12,12 @@ Shader "CrystalViz/StylizedGrass"
         _GustLighten ("Wind Gust Lighten", Float) = 0.28
         _GrowFront ("Reveal Wavefront Z", Float) = 10000
         _GrowWidth ("Reveal Wavefront Width", Float) = 3
+        // v1.0.44: pixel-dissolve reveal (Blender geometry-nodes style).
+        _DissolveBlockSize ("Pixel Block Size", Float) = 2.0
+        _DissolveSpread ("Dissolve Scatter", Float) = 0.6
+        _DissolvePop ("Block Pop Sharpness", Float) = 0.06
+        _DissolveEdgeWidth ("Dissolve Edge Width", Float) = 0.10
+        _DissolveEdgeColor ("Dissolve Edge Color", Color) = (0.45, 0.9, 1.0, 1)
     }
     SubShader
     {
@@ -56,6 +62,7 @@ Shader "CrystalViz/StylizedGrass"
                 // from fragment to vertex (2 sins per vertex not per pixel;
                 // patches are huge — 57+ unit wavelength — so interpolation
                 // is visually identical).
+                float  dissolve     : TEXCOORD7; // v1.0.44: pixel-dissolve coord
             };
 
             half4 _RootColor;
@@ -68,6 +75,11 @@ Shader "CrystalViz/StylizedGrass"
             float _GustLighten;
             float _GrowFront;
             float _GrowWidth;
+            float _DissolveBlockSize;
+            float _DissolveSpread;
+            float _DissolvePop;
+            float _DissolveEdgeWidth;
+            half4 _DissolveEdgeColor;
 
             Varyings vert(Attributes IN)
             {
@@ -75,14 +87,20 @@ Shader "CrystalViz/StylizedGrass"
 
                 float3 wp = TransformObjectToWorld(IN.positionOS.xyz);
 
-                // World-reveal wave (v1.0.40): blades stay collapsed flat
-                // until the reveal wavefront sweeps past their Z, so the
-                // meadow grows in as a wave coming toward the viewer.
+                // World-reveal wave (v1.0.40, pixel-dissolve v1.0.44): the
+                // meadow is chopped into world-space blocks, each carrying
+                // a stable hash. Blocks punch in when the reveal wavefront
+                // passes their hash threshold — a crumbling pixel frontier
+                // (Blender geometry-nodes style) instead of a smooth wave.
                 // Defaults to fully grown; the reveal sequencer drives it.
-                float growT = 1.0 - smoothstep(_GrowFront - _GrowWidth,
-                                              _GrowFront + _GrowWidth, wp.z);
-                float grow = growT * growT * (3.0 - 2.0 * growT);
+                float2 blockId = floor(wp.xz / _DissolveBlockSize);
+                float blockHash = frac(sin(dot(blockId, float2(127.1, 311.7))) * 43758.5453);
+                float waveT = 1.0 - smoothstep(_GrowFront - _GrowWidth,
+                                               _GrowFront + _GrowWidth, wp.z);
+                float dissolve = waveT * (1.0 + _DissolveSpread) - blockHash * _DissolveSpread;
+                float grow = smoothstep(0.5 - _DissolvePop, 0.5 + _DissolvePop, dissolve);
                 wp.y *= grow;
+                OUT.dissolve = dissolve;
 
                 // Wind sway: two layered sines drifting across the field, with
                 // bend growing toward the blade tip (uv.y^2) so roots stay planted.
@@ -158,6 +176,11 @@ Shader "CrystalViz/StylizedGrass"
                     half d = dot(IN.normalWS, l.direction) * 0.5 + 0.5;
                     col += albedo * l.color * d * l.distanceAttenuation;
                 }
+
+                // v1.0.44: hot crumble-edge riding the pixel-dissolve
+                // frontier — the signature geometry-nodes dissolve look.
+                float dEdge = 1.0 - smoothstep(0.0, _DissolveEdgeWidth, abs(IN.dissolve - 0.5));
+                col += _DissolveEdgeColor.rgb * (dEdge * step(0.5, IN.dissolve));
 
                 col = MixFog(col, IN.fogFactor);
                 return half4(col, 1.0);

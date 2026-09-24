@@ -22,6 +22,13 @@ Shader "CrystalViz/Wildflower"
         _GustLighten ("Wind Gust Lighten", Float) = 0.28
         _GrowFront ("Reveal Wavefront Z", Float) = 10000
         _GrowWidth ("Reveal Wavefront Width", Float) = 3
+        // v1.0.44: pixel-dissolve reveal (Blender geometry-nodes style),
+        // shared with the grass field.
+        _DissolveBlockSize ("Pixel Block Size", Float) = 2.0
+        _DissolveSpread ("Dissolve Scatter", Float) = 0.6
+        _DissolvePop ("Block Pop Sharpness", Float) = 0.06
+        _DissolveEdgeWidth ("Dissolve Edge Width", Float) = 0.10
+        _DissolveEdgeColor ("Dissolve Edge Color", Color) = (0.45, 0.9, 1.0, 1)
     }
     SubShader
     {
@@ -65,6 +72,7 @@ Shader "CrystalViz/Wildflower"
                 float4 shadowCoord : TEXCOORD5;
                 half   fogFactor   : TEXCOORD6;
                 float  gust        : TEXCOORD7;
+                float  dissolve    : TEXCOORD8; // v1.0.44: pixel-dissolve coord
             };
 
             half4 _RootColor;
@@ -79,6 +87,11 @@ Shader "CrystalViz/Wildflower"
             float _GustLighten;
             float _GrowFront;
             float _GrowWidth;
+            float _DissolveBlockSize;
+            float _DissolveSpread;
+            float _DissolvePop;
+            float _DissolveEdgeWidth;
+            half4 _DissolveEdgeColor;
 
             Varyings vert(Attributes IN)
             {
@@ -86,12 +99,18 @@ Shader "CrystalViz/Wildflower"
 
                 float3 wp = TransformObjectToWorld(IN.positionOS.xyz);
 
-                // World-reveal wave (v1.0.40): same as the grass — flowers
-                // stay collapsed until the wavefront sweeps past their Z.
-                float growT = 1.0 - smoothstep(_GrowFront - _GrowWidth,
-                                              _GrowFront + _GrowWidth, wp.z);
-                float grow = growT * growT * (3.0 - 2.0 * growT);
+                // World-reveal wave (v1.0.40, pixel-dissolve v1.0.44): same
+                // as the grass — flowers stay collapsed until the reveal
+                // wavefront passes their block's hash threshold, so the
+                // meadow crumbles in as pixels instead of a smooth wave.
+                float2 blockId = floor(wp.xz / _DissolveBlockSize);
+                float blockHash = frac(sin(dot(blockId, float2(127.1, 311.7))) * 43758.5453);
+                float waveT = 1.0 - smoothstep(_GrowFront - _GrowWidth,
+                                               _GrowFront + _GrowWidth, wp.z);
+                float dissolve = waveT * (1.0 + _DissolveSpread) - blockHash * _DissolveSpread;
+                float grow = smoothstep(0.5 - _DissolvePop, 0.5 + _DissolvePop, dissolve);
                 wp.y *= grow;
+                OUT.dissolve = dissolve;
 
                 // Same wind field as the grass so flowers and blades ripple
                 // together: two layered sines, bend growing toward the
@@ -162,6 +181,11 @@ Shader "CrystalViz/Wildflower"
                     half d = dot(IN.normalWS, l.direction) * 0.5 + 0.5;
                     col += albedo * l.color * d * l.distanceAttenuation;
                 }
+
+                // v1.0.44: hot crumble-edge riding the pixel-dissolve
+                // frontier, matching the grass.
+                float dEdge = 1.0 - smoothstep(0.0, _DissolveEdgeWidth, abs(IN.dissolve - 0.5));
+                col += _DissolveEdgeColor.rgb * (dEdge * step(0.5, IN.dissolve));
 
                 col = MixFog(col, IN.fogFactor);
                 return half4(col, 1.0);

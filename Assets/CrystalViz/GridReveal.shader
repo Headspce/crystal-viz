@@ -13,6 +13,10 @@ Shader "CrystalViz/GridReveal"
         // v1.0.41: 0 = black & white grid, 1 = full line color. The reveal
         // sequencer fades it in as the world loads.
         _Colorize ("Grid Color Amount", Float) = 1.0
+        // v1.0.44: the grid crumbles away in the same pixel blocks the
+        // world dissolves in on.
+        _DissolveBlockSize ("Pixel Block Size", Float) = 2.0
+        _DissolveEdgeWidth ("Dissolve Edge Width", Float) = 0.08
     }
     SubShader
     {
@@ -56,6 +60,8 @@ Shader "CrystalViz/GridReveal"
             float _Wave1;
             float _Wave2;
             float _Colorize;
+            float _DissolveBlockSize;
+            float _DissolveEdgeWidth;
 
             Varyings Vert(Attributes input)
             {
@@ -79,14 +85,21 @@ Shader "CrystalViz/GridReveal"
                 float gridOn = 1.0 - smoothstep(_Wave1 - 1.0, _Wave1 + 1.0, wp.z);
                 // Wave 2: grid dissolves as the real world arrives.
                 float gone = smoothstep(_Wave2 - 1.5, _Wave2 + 1.5, wp.z);
+                // v1.0.44: pixel-dissolve — the grid crumbles away block by
+                // block in hash order (same block grid as the world's
+                // dissolve) instead of a smooth alpha fade.
+                float2 blockId = floor(wp.xz / _DissolveBlockSize);
+                float blockHash = frac(sin(dot(blockId, float2(127.1, 311.7))) * 43758.5453);
+                float alive = 1.0 - step(blockHash, gone);
+                float crumbleEdge = (1.0 - smoothstep(0.0, _DissolveEdgeWidth, abs(gone - blockHash))) * gridOn;
                 // Bright scanline riding the appear-wavefront.
                 float band = (1.0 - smoothstep(0.0, 5.0, abs(wp.z - _Wave1))) * gridOn;
 
                 // v1.0.41: black & white start, fading into the line color.
                 half3 lineCol = lerp(half3(1.0, 1.0, 1.0), _LineColor.rgb, _Colorize);
-                half3 col = _BaseColor.rgb + lineCol * (gridLine * 0.85 + band * 1.2);
+                half3 col = _BaseColor.rgb + lineCol * (gridLine * 0.85 + band * 1.2 + crumbleEdge * 1.4);
                 col = MixFog(col, input.fogFactor);
-                float alpha = gridOn * (1.0 - gone);
+                float alpha = gridOn * alive;
                 return half4(col, alpha);
             }
             ENDHLSL
