@@ -17,7 +17,6 @@ public class SunOrbitControl : MonoBehaviour
     Text periodText; // v1.0.48: quiet AM/PM suffix beside the numerals
     RectTransform knobRT;
     RectTransform ringRT; // v1.0.47: gold sundial ring riding behind the sun thumb
-    RectTransform handlePillRT; // v1.0.48: the clock pill riding beside the knob
     float currentAzimuth = 54f;
     float targetAzimuth = 54f;
     float lastSyncedV = -1f; // v1.0.48: last value pushed through SetTimeOfDay
@@ -130,29 +129,8 @@ public class SunOrbitControl : MonoBehaviour
             ringRT.anchorMax = new Vector2(0.5f, v);
             ringRT.anchoredPosition = Vector2.zero;
         }
-        PositionHandlePill(v);
-    }
-
-    /// <summary>
-    /// v1.0.48: parks the clock pill beside the sun thumb so it travels
-    /// with every drag (player request). The pill is a full-scale canvas
-    /// child; its position is derived from the knob's ACTUAL rendered
-    /// position (same canvas space) — the slider root's 0.25x scale about
-    /// its vertical-center pivot made the old hardcoded 150px-margin math
-    /// park the pill ~800px too high. Robust to any layout change.
-    /// </summary>
-    void PositionHandlePill(float v)
-    {
-        if (handlePillRT == null || knobRT == null) return;
-        // Edit-mode screenshot path (BuildForScreenshot): the RectTransforms
-        // were just created, so force a layout pass before reading the
-        // knob's position. In play mode Update() the 1-frame staleness is
-        // imperceptible, so no per-frame force there.
-        if (!Application.isPlaying)
-            Canvas.ForceUpdateCanvases();
-        // Pill pivot is (1, 0.5): its right-center lands 110px left of the
-        // thumb's center — beside the knob, clear of the fingertip.
-        handlePillRT.position = knobRT.position + new Vector3(-110f, 0f, 0f);
+        // v1.0.48 fix: the clock pill is a CHILD OF THE KNOB — it inherits
+        // the thumb's anchors structurally, so no per-frame pill math here.
     }
 
     void Update()
@@ -352,19 +330,30 @@ public class SunOrbitControl : MonoBehaviour
 
         // v1.0.48: the handle pill — the clock now RIDES the sun thumb
         // (player request: "attach it to the button so it drags with us")
-        // instead of floating at the top of the screen. A full-scale canvas
-        // child so the numerals stay large and legible; PositionKnob() parks
-        // its right-center 110px left of the knob every frame (derived from
-        // the knob's actual rendered position), clear of the fingertip.
+        // instead of floating at the top of the screen. The pill is a CHILD
+        // OF THE KNOB: it inherits the thumb's anchors structurally, so it
+        // travels with every drag with zero per-frame math and stays glued
+        // in every canvas render mode. (d71adeb parked it by absolute
+        // RectTransform.position, which the CI screenshot harness silently
+        // invalidated when it flips the canvas to ScreenSpaceCamera after
+        // BuildForScreenshot — the pill rendered top-center while the
+        // anchor-driven knob stayed correct. This cannot drift: same anchors
+        // as the thumb, on a real phone or in the harness.)
         // raycastTarget is off on the pill and its texts so touches fall
         // through to the slider's touch zone.
         var pillGO = new GameObject("HandleTimePill", typeof(RectTransform), typeof(Image));
-        pillGO.transform.SetParent(canvasGo.transform, false);
-        handlePillRT = pillGO.GetComponent<RectTransform>();
-        handlePillRT.anchorMin = new Vector2(1f, 1f);
-        handlePillRT.anchorMax = new Vector2(1f, 1f);
-        handlePillRT.pivot = new Vector2(1f, 0.5f);
-        handlePillRT.sizeDelta = new Vector2(300f, 84f);
+        pillGO.transform.SetParent(knobRT.transform, false);
+        var pillRT = pillGO.GetComponent<RectTransform>();
+        pillRT.anchorMin = new Vector2(0.5f, 0.5f);
+        pillRT.anchorMax = new Vector2(0.5f, 0.5f);
+        pillRT.pivot = new Vector2(1f, 0.5f);
+        // The knob lives under the slider root's 0.25x scale: counter-scale
+        // the pill so the numerals render full-size and legible, and express
+        // the 110px thumb offset in knob-local units (110 / 0.25 = 440).
+        float pillCounter = 1f / rrt.localScale.x;
+        pillRT.localScale = new Vector3(pillCounter, pillCounter, 1f);
+        pillRT.anchoredPosition = new Vector2(-110f * pillCounter, 0f);
+        pillRT.sizeDelta = new Vector2(300f, 84f);
         var pillImg = pillGO.GetComponent<Image>();
         pillImg.sprite = MeadowGlassUI.MakeGlassPill(256, 96);
         // v1.0.48 fix: Simple, not Sliced. The sprite is generated at
