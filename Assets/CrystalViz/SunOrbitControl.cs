@@ -136,18 +136,23 @@ public class SunOrbitControl : MonoBehaviour
     /// <summary>
     /// v1.0.48: parks the clock pill beside the sun thumb so it travels
     /// with every drag (player request). The pill is a full-scale canvas
-    /// child (top-right anchored); its position is derived from the
-    /// slider's screen geometry — 150px margins top/bottom, strip center
-    /// 58px from the right edge — so it lands just left of the knob,
-    /// clear of the fingertip.
+    /// child; its position is derived from the knob's ACTUAL rendered
+    /// position (same canvas space) — the slider root's 0.25x scale about
+    /// its vertical-center pivot made the old hardcoded 150px-margin math
+    /// park the pill ~800px too high. Robust to any layout change.
     /// </summary>
     void PositionHandlePill(float v)
     {
-        if (handlePillRT == null) return;
-        float h = Screen.height; // canvas is ConstantPixelSize scale 1: units == px
-        float stripH = h - 300f;
-        float knobY = 150f + (1f - v) * stripH; // px from the top edge
-        handlePillRT.anchoredPosition = new Vector2(-96f, -knobY);
+        if (handlePillRT == null || knobRT == null) return;
+        // Edit-mode screenshot path (BuildForScreenshot): the RectTransforms
+        // were just created, so force a layout pass before reading the
+        // knob's position. In play mode Update() the 1-frame staleness is
+        // imperceptible, so no per-frame force there.
+        if (!Application.isPlaying)
+            Canvas.ForceUpdateCanvases();
+        // Pill pivot is (1, 0.5): its right-center lands 110px left of the
+        // thumb's center — beside the knob, clear of the fingertip.
+        handlePillRT.position = knobRT.position + new Vector3(-110f, 0f, 0f);
     }
 
     void Update()
@@ -348,10 +353,11 @@ public class SunOrbitControl : MonoBehaviour
         // v1.0.48: the handle pill — the clock now RIDES the sun thumb
         // (player request: "attach it to the button so it drags with us")
         // instead of floating at the top of the screen. A full-scale canvas
-        // child (top-right anchored) so the numerals stay large and legible;
-        // PositionKnob() parks it beside the knob every frame, ~30px left of
-        // the thumb, clear of the fingertip. raycastTarget is off on the pill
-        // and its texts so touches fall through to the slider's touch zone.
+        // child so the numerals stay large and legible; PositionKnob() parks
+        // its right-center 110px left of the knob every frame (derived from
+        // the knob's actual rendered position), clear of the fingertip.
+        // raycastTarget is off on the pill and its texts so touches fall
+        // through to the slider's touch zone.
         var pillGO = new GameObject("HandleTimePill", typeof(RectTransform), typeof(Image));
         pillGO.transform.SetParent(canvasGo.transform, false);
         handlePillRT = pillGO.GetComponent<RectTransform>();
@@ -361,16 +367,25 @@ public class SunOrbitControl : MonoBehaviour
         handlePillRT.sizeDelta = new Vector2(300f, 84f);
         var pillImg = pillGO.GetComponent<Image>();
         pillImg.sprite = MeadowGlassUI.MakeGlassPill(256, 96);
-        pillImg.type = Image.Type.Sliced;
+        // v1.0.48 fix: Simple, not Sliced. The sprite is generated at
+        // near-display size (256x96 -> 300x84 rect), and Sliced with
+        // half-height borders produced a zero-height center strip that
+        // rendered nothing — the glass never drew. Simple stretches the
+        // whole baked capsule (~17% wider) and the gold ring survives.
+        pillImg.type = Image.Type.Simple;
+        pillImg.preserveAspect = false;
         pillImg.raycastTarget = false;
 
         var timeGO = new GameObject("TimeText", typeof(RectTransform), typeof(Text));
         timeGO.transform.SetParent(pillGO.transform, false);
         var ttrt = timeGO.GetComponent<RectTransform>();
-        ttrt.anchorMin = new Vector2(0f, 0.5f);
-        ttrt.anchorMax = new Vector2(0f, 0.5f);
+        // v1.0.48 fix: the numerals live INSIDE the glass pill, right-aligned
+        // (the old negative offsets parked them outside the pill, floating
+        // detached to its left).
+        ttrt.anchorMin = new Vector2(1f, 0.5f);
+        ttrt.anchorMax = new Vector2(1f, 0.5f);
         ttrt.pivot = new Vector2(1f, 0.5f);
-        ttrt.anchoredPosition = new Vector2(-70f, 2f);
+        ttrt.anchoredPosition = new Vector2(-88f, 2f);
         ttrt.sizeDelta = new Vector2(196f, 84f);
         timeText = timeGO.GetComponent<Text>();
         timeText.font = GetDefaultFont();
@@ -382,10 +397,12 @@ public class SunOrbitControl : MonoBehaviour
         var periodGO = new GameObject("PeriodText", typeof(RectTransform), typeof(Text));
         periodGO.transform.SetParent(pillGO.transform, false);
         var perRt = periodGO.GetComponent<RectTransform>();
-        perRt.anchorMin = new Vector2(0f, 0.5f);
-        perRt.anchorMax = new Vector2(0f, 0.5f);
+        // v1.0.48 fix: the AM/PM sits inside the pill just right of the
+        // numerals ("12:00 PM" reads left to right).
+        perRt.anchorMin = new Vector2(1f, 0.5f);
+        perRt.anchorMax = new Vector2(1f, 0.5f);
         perRt.pivot = new Vector2(0f, 0.5f);
-        perRt.anchoredPosition = new Vector2(-62f, 4f);
+        perRt.anchoredPosition = new Vector2(-80f, 4f);
         perRt.sizeDelta = new Vector2(64f, 84f);
         periodText = periodGO.GetComponent<Text>();
         periodText.font = GetDefaultFont();
