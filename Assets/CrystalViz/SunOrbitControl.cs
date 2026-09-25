@@ -6,7 +6,10 @@ using UnityEngine.EventSystems;
 /// Sun-orbit slider: a vertical slider pinned to the right edge of the screen.
 /// Sliding UP rotates the sun clockwise around the tree; sliding DOWN
 /// rotates it counter-clockwise. v1.0.49: the slider runs 12:00 PM (bottom,
-/// v=0) to 12:00 AM (top, v=1) — the direction Tyler asked for. The whole UI
+/// v=0) to 12:00 AM (top, v=1) — the direction Tyler asked for. v1.0.50: the
+/// tick labels and the clock pill are gone (one clean solid slider again);
+/// the panel starts HIDDEN and pops in/out via the corner menu's star button,
+/// and a day/night toggle button sits at the top of the panel. The whole UI
 /// is built in code (no prefabs) so the scene file stays tiny and everything
 /// is version-controlled as C#.
 /// </summary>
@@ -15,13 +18,23 @@ public class SunOrbitControl : MonoBehaviour
     [HideInInspector] public CrystalVizBootstrap bootstrap;
 
     Slider slider;
-    Text timeText;   // v1.0.48: big numerals inside the handle pill ("12:00")
-    Text periodText; // v1.0.48: quiet AM/PM suffix beside the numerals
     RectTransform knobRT;
     RectTransform ringRT; // v1.0.47: gold sundial ring riding behind the sun thumb
     float currentAzimuth = 54f;
     float targetAzimuth = 54f;
     float lastSyncedV = -1f; // v1.0.48: last value pushed through SetTimeOfDay
+
+    // v1.0.50: the lighting slider lives on its own panel so the corner
+    // menu's star button can pop it in/out. The panel starts HIDDEN.
+    GameObject panelGO;
+    bool panelVisible;
+    float panelT;   // 0 = hidden, 1 = shown
+    float panelDir; // +1 popping in, -1 popping out, 0 idle
+    const float PanelPopDur = 0.28f;
+
+    // v1.0.50: day/night toggle button at the top of the slider panel.
+    RectTransform dayNightRT;
+    float dayNightPunch;
 
     void Start()
     {
@@ -29,8 +42,8 @@ public class SunOrbitControl : MonoBehaviour
         // v1.0.48: every path that changes the time-of-day funnels through
         // SetTimeOfDay — the Slider's own drag events, the wide touch zone,
         // and the per-frame reconciliation in Update(). One funnel: the sun
-        // azimuth, the knob + handle pill, the clock text, and the day/night
-        // lighting can never drift apart again.
+        // azimuth, the knob, and the day/night lighting can never drift
+        // apart again.
         slider.onValueChanged.AddListener(v => SetTimeOfDay(v));
         // v1.0.46: the slider initializes to the device's real local time
         // (player request) — opening the app on a real evening lands in
@@ -40,8 +53,9 @@ public class SunOrbitControl : MonoBehaviour
 
     /// <summary>
     /// v1.0.48: the single funnel for time-of-day changes. Drives the sun
-    /// azimuth target, the knob position, the handle-pill clock text, and
-    /// the day/night lighting together from one value.
+    /// azimuth target, the knob position, and the day/night lighting together
+    /// from one value. (v1.0.50: the clock pill is gone — no times on the
+    /// slider anymore; the day/night button is the quick switch.)
     /// </summary>
     public void SetTimeOfDay(float v)
     {
@@ -53,7 +67,6 @@ public class SunOrbitControl : MonoBehaviour
         if (slider != null && !Mathf.Approximately(slider.value, v))
             slider.SetValueWithoutNotify(v);
         PositionKnob();
-        UpdateTimeLabel(v);
         ApplyTimeOfDay(v);
     }
 
@@ -136,6 +149,82 @@ public class SunOrbitControl : MonoBehaviour
         }
         // v1.0.48 fix: the clock pill is a CHILD OF THE KNOB — it inherits
         // the thumb's anchors structurally, so no per-frame pill math here.
+        // (v1.0.50: the pill is gone — no times on the slider anymore.)
+    }
+
+    /// <summary>
+    /// v1.0.50: the lighting slider panel starts HIDDEN — the corner menu's
+    /// star button pops it in/out (ToggleSliderPanel). In edit mode (the CI
+    /// screenshot path runs no Update) the panel snaps instantly instead of
+    /// animating.
+    /// </summary>
+    public bool IsSliderPanelVisible => panelVisible;
+
+    public void ToggleSliderPanel() => SetSliderPanelVisible(!panelVisible);
+
+    public void SetSliderPanelVisible(bool show)
+    {
+        if (show)
+        {
+            if (panelVisible && panelDir == 0f) return;
+            panelVisible = true;
+            if (panelGO != null)
+            {
+                panelGO.SetActive(true);
+                if (Application.isPlaying) panelDir = 1f;
+                else { panelT = 1f; panelDir = 0f; panelGO.transform.localScale = Vector3.one; }
+            }
+        }
+        else
+        {
+            if (!panelVisible && panelDir == 0f) return;
+            panelVisible = false;
+            if (panelGO != null)
+            {
+                if (Application.isPlaying) panelDir = -1f;
+                else { panelT = 0f; panelDir = 0f; panelGO.SetActive(false); }
+            }
+        }
+    }
+
+    /// <summary>
+    /// v1.0.50: the day/night button's action — jump the slider between noon
+    /// (day) and 10 PM (night) when the current lighting is the other one.
+    /// The hard 7 PM / 6 AM switch in NightFactor applies the lighting.
+    /// Called by the slider touch zone (it owns every touch on the right
+    /// edge and forwards taps landing on the day/night disc).
+    /// </summary>
+    public void OnDayNightTapped()
+    {
+        ToggleDayNight();
+        dayNightPunch = 1f;
+    }
+
+    public void ToggleDayNight()
+    {
+        float v = slider != null ? slider.normalizedValue : lastSyncedV;
+        if (NightFactor(v) > 0.5f) SetTimeOfDay(0f);       // night -> day (12:00 PM)
+        else SetTimeOfDay(10f / 12f);                      // day -> night (10:00 PM)
+    }
+
+    /// <summary>
+    /// v1.0.50: does this screen point land on the day/night disc? The touch
+    /// zone calls this before scrubbing — a tap on the disc toggles
+    /// day/night instead of moving the slider.
+    /// </summary>
+    public bool DayNightHit(Vector2 screenPos, Camera cam)
+    {
+        if (dayNightRT == null || !dayNightRT.gameObject.activeInHierarchy)
+            return false;
+        return RectTransformUtility.RectangleContainsScreenPoint(dayNightRT, screenPos, cam);
+    }
+
+    static float EaseOutBack(float t)
+    {
+        float c1 = 1.70158f;
+        float c3 = c1 + 1f;
+        float u = t - 1f;
+        return 1f + c3 * u * u * u + c1 * u * u;
     }
 
     void Update()
@@ -152,36 +241,34 @@ public class SunOrbitControl : MonoBehaviour
             1f - Mathf.Exp(-8f * Time.deltaTime));
         bootstrap.PlaceSun(currentAzimuth);
         PositionKnob();
-    }
 
-    /// <summary>
-    /// v1.0.49: the slider runs 12 PM (bottom, v=0) to 12 AM (top, v=1) —
-    /// the direction Tyler asked for. The pill reads the selected time
-    /// rounded to the hour: bottom reads 12:00 PM, top reads 12:00 AM.
-    /// Updates live while dragging (called from the value-changed listener).
-    /// </summary>
-    void UpdateTimeLabel(float v)
-    {
-        float hour24 = 12f + v * 12f; // 12 (noon) .. 24 (midnight)
-        int h = Mathf.Clamp(Mathf.RoundToInt(hour24), 12, 24);
-        if (timeText != null)
-            timeText.text = (h == 12 || h == 24) ? "12:00" : $"{h - 12}:00";
-        if (periodText != null)
-            periodText.text = (h >= 12 && h < 24) ? "PM" : "AM";
-    }
+        // v1.0.50: slider-panel pop animation (quick and snappy, like the
+        // corner menu). Pop-in overshoots; pop-out eases back and deactivates.
+        if (panelDir != 0f && panelGO != null)
+        {
+            float dt = Time.deltaTime;
+            panelT = Mathf.Clamp01(panelT + panelDir * dt / PanelPopDur);
+            float e = panelDir > 0f
+                ? EaseOutBack(panelT)
+                : panelT * panelT * (3f - 2f * panelT);
+            float s = Mathf.Max(0.001f, e);
+            panelGO.transform.localScale = new Vector3(s, s, 1f);
+            if (panelT <= 0f) { panelDir = 0f; panelGO.SetActive(false); }
+            else if (panelT >= 1f)
+            {
+                panelDir = 0f;
+                panelGO.transform.localScale = Vector3.one;
+            }
+        }
 
-    /// <summary>
-    /// v1.0.49: formats an hour for the slider tick labels — 12 → "12 PM",
-    /// 14 → "2 PM", …, 24 → "12 AM".
-    /// </summary>
-    static string FormatHourLabel(int hour24)
-    {
-        if (hour24 <= 12) return "12 PM";
-        if (hour24 >= 24) return "12 AM";
-        return $"{hour24 - 12} PM";
+        // v1.0.50: day/night button tap feedback.
+        if (dayNightPunch > 0f)
+        {
+            dayNightPunch = Mathf.Max(0f, dayNightPunch - Time.deltaTime * 4f);
+            float s = 1f + 0.18f * dayNightPunch;
+            if (dayNightRT != null) dayNightRT.localScale = new Vector3(s, s, 1f);
+        }
     }
-
-    // ------------------------------------------------------------------ UI build
 
     // ------------------------------------------------------------------ UI build
 
@@ -215,13 +302,33 @@ public class SunOrbitControl : MonoBehaviour
             8, new Color(0.827f, 0.851f, 0.145f, 0.35f));
         // (knob texture is created lazily in the handle section below)
 
+        // v1.0.50: the slider panel — everything visible (the slider strip,
+        // the day/night button, the touch zone) hangs under this wrapper so
+        // the corner menu's star button can pop it in/out with one scale
+        // animation. The panel spans the full canvas so the children's rects
+        // need no conversion; the pivot sits at the right-edge center so the
+        // pop originates beside the slider. It starts HIDDEN.
+        var panelGO_ = new GameObject("SliderPanel", typeof(RectTransform));
+        panelGO_.transform.SetParent(canvasGo.transform, false);
+        var prt = panelGO_.GetComponent<RectTransform>();
+        prt.anchorMin = Vector2.zero;
+        prt.anchorMax = Vector2.one;
+        prt.offsetMin = Vector2.zero;
+        prt.offsetMax = Vector2.zero;
+        prt.pivot = new Vector2(1f, 0.5f);
+        panelGO = panelGO_;
+        panelGO.SetActive(false);
+        panelVisible = false;
+        panelT = 0f;
+        panelDir = 0f;
+
         // Slider root: slim vertical strip hugging the RIGHT edge.
         // v1.0.8: the whole bar is 75% smaller — rendered at quarter scale
         // about its right-center pivot so it stays glued to the edge.
         // v1.0.26: 25% wider (48px -> 60px) for easier touch targeting,
         // right edge stays glued at -28px.
         var root = new GameObject("SunSlider", typeof(RectTransform), typeof(Slider));
-        root.transform.SetParent(canvasGo.transform, false);
+        root.transform.SetParent(panelGO.transform, false);
         var rrt = root.GetComponent<RectTransform>();
         rrt.anchorMin = new Vector2(1f, 0f);
         rrt.anchorMax = new Vector2(1f, 1f);
@@ -313,158 +420,55 @@ public class SunOrbitControl : MonoBehaviour
         knobImg.preserveAspect = true;
         knobImg.type = Image.Type.Simple;
 
-        // (v1.0.47: the old angle readout under the slider is gone — the
-        // clock pill above now carries the slider's whole meaning.)
+        // (v1.0.47: the old angle readout under the slider is gone for good.)
 
-        // Sun icon: child of the slider root so it rides with the slider and
-        // sits stuck to the top of the track (v1.0.29: was a free-floating
-        // canvas child at the top-right corner). Anchored to the slider's
-        // top-center; the slider root's 0.25 scale applies, so localScale
-        // stays 1 and the 126px size renders at the same 31.5px as before.
-        var sunTex = Resources.Load<Texture2D>("sun-icon");
-        if (sunTex != null)
-        {
-            var sunGo = new GameObject("SunIcon", typeof(RectTransform), typeof(Image));
-            sunGo.transform.SetParent(root.transform, false);
-            var srt = sunGo.GetComponent<RectTransform>();
-            srt.anchorMin = new Vector2(0.5f, 1f);
-            srt.anchorMax = new Vector2(0.5f, 1f);
-            srt.pivot = new Vector2(0.5f, 0.5f);
-            // Center 75px above the slider's top edge: icon half-height (63)
-            // + 12px gap, so it sits snug against the track.
-            srt.anchoredPosition = new Vector2(0f, 75f);
-            srt.sizeDelta = new Vector2(126f, 126f); // v1.0.28: 75% bigger (was 72)
-            srt.localScale = new Vector3(1f, 1f, 1f);
-            var sunImg = sunGo.GetComponent<Image>();
-            sunImg.sprite = Sprite.Create(sunTex,
-                new Rect(0, 0, sunTex.width, sunTex.height),
-                new Vector2(0.5f, 0.5f), 100f);
-            sunImg.preserveAspect = true;
-        }
+        // v1.0.50: the day/night toggle — a glass disc at the top of the
+        // lighting slider wearing the SAME sun+moon symbol as the corner
+        // menu's star button (player request). Taps jump the slider between
+        // noon (day) and 10 PM (night); the hard 7 PM / 6 AM switch applies
+        // the lighting. It replaces the old decorative sun icon (the thumb
+        // already IS the sun PNG, so nothing is lost). Child of the slider
+        // root: the root's 0.25 scale applies, so the 180px disc renders
+        // ~45px, parked just above the track's top edge like the old icon.
+        // NOTE: it is NOT a uGUI Button — the slider's invisible touch zone
+        // sits above it in hit order and owns every touch on the right edge,
+        // so the zone forwards taps landing on this disc to OnDayNightTapped
+        // (see SliderTouchZone). Keeps one input owner, zero hit-order bugs.
+        var dnGO = new GameObject("DayNightButton", typeof(RectTransform), typeof(Image));
+        dnGO.transform.SetParent(root.transform, false);
+        var drt = dnGO.GetComponent<RectTransform>();
+        drt.anchorMin = new Vector2(0.5f, 1f);
+        drt.anchorMax = new Vector2(0.5f, 1f);
+        drt.pivot = new Vector2(0.5f, 0.5f);
+        drt.anchoredPosition = new Vector2(0f, 90f);
+        drt.sizeDelta = new Vector2(180f, 180f);
+        drt.localScale = new Vector3(1f, 1f, 1f);
+        var dnBg = dnGO.GetComponent<Image>();
+        dnBg.sprite = MeadowGlassUI.MakeGlassDisc(160);
+        dnBg.preserveAspect = true;
+        var dnGlyphGO = new GameObject("Glyph", typeof(RectTransform), typeof(Image));
+        dnGlyphGO.transform.SetParent(dnGO.transform, false);
+        var dgrt = dnGlyphGO.GetComponent<RectTransform>();
+        dgrt.anchorMin = new Vector2(0.5f, 0.5f);
+        dgrt.anchorMax = new Vector2(0.5f, 0.5f);
+        dgrt.pivot = new Vector2(0.5f, 0.5f);
+        dgrt.anchoredPosition = Vector2.zero;
+        dgrt.sizeDelta = new Vector2(120f, 120f);
+        var dnGlyphImg = dnGlyphGO.GetComponent<Image>();
+        var dnTex = MeadowGlassUI.MakeSunMoonIcon(160);
+        dnGlyphImg.sprite = Sprite.Create(dnTex,
+            new Rect(0, 0, dnTex.width, dnTex.height),
+            new Vector2(0.5f, 0.5f), 100f);
+        dnGlyphImg.preserveAspect = true;
+        dnGlyphImg.raycastTarget = false; // the zone owns the tap, forwards it
+        dayNightRT = drt;
 
-        // v1.0.48: the handle pill — the clock now RIDES the sun thumb
-        // (player request: "attach it to the button so it drags with us")
-        // instead of floating at the top of the screen. The pill is a CHILD
-        // OF THE KNOB: it inherits the thumb's anchors structurally, so it
-        // travels with every drag with zero per-frame math and stays glued
-        // in every canvas render mode. (d71adeb parked it by absolute
-        // RectTransform.position, which the CI screenshot harness silently
-        // invalidated when it flips the canvas to ScreenSpaceCamera after
-        // BuildForScreenshot — the pill rendered top-center while the
-        // anchor-driven knob stayed correct. This cannot drift: same anchors
-        // as the thumb, on a real phone or in the harness.)
-        // raycastTarget is off on the pill and its texts so touches fall
-        // through to the slider's touch zone.
-        var pillGO = new GameObject("HandleTimePill", typeof(RectTransform), typeof(Image));
-        pillGO.transform.SetParent(knobRT.transform, false);
-        var pillRT = pillGO.GetComponent<RectTransform>();
-        pillRT.anchorMin = new Vector2(0.5f, 0.5f);
-        pillRT.anchorMax = new Vector2(0.5f, 0.5f);
-        pillRT.pivot = new Vector2(1f, 0.5f);
-        // The knob lives under the slider root's 0.25x scale: counter-scale
-        // the pill so the numerals render full-size and legible, and express
-        // the 110px thumb offset in knob-local units (110 / 0.25 = 440).
-        float pillCounter = 1f / rrt.localScale.x;
-        pillRT.localScale = new Vector3(pillCounter, pillCounter, 1f);
-        pillRT.anchoredPosition = new Vector2(-110f * pillCounter, 0f);
-        pillRT.sizeDelta = new Vector2(300f, 84f);
-        var pillImg = pillGO.GetComponent<Image>();
-        pillImg.sprite = MeadowGlassUI.MakeGlassPill(256, 96);
-        // v1.0.48 fix: Simple, not Sliced. The sprite is generated at
-        // near-display size (256x96 -> 300x84 rect), and Sliced with
-        // half-height borders produced a zero-height center strip that
-        // rendered nothing — the glass never drew. Simple stretches the
-        // whole baked capsule (~17% wider) and the gold ring survives.
-        pillImg.type = Image.Type.Simple;
-        pillImg.preserveAspect = false;
-        pillImg.raycastTarget = false;
+        // v1.0.50: the handle pill and its clock are GONE (player request —
+        // no times on the slider anymore; the day/night button above is the
+        // quick switch). The slider is one clean solid strip again.
 
-        var timeGO = new GameObject("TimeText", typeof(RectTransform), typeof(Text));
-        timeGO.transform.SetParent(pillGO.transform, false);
-        var ttrt = timeGO.GetComponent<RectTransform>();
-        // v1.0.48 fix: the numerals live INSIDE the glass pill, right-aligned
-        // (the old negative offsets parked them outside the pill, floating
-        // detached to its left).
-        ttrt.anchorMin = new Vector2(1f, 0.5f);
-        ttrt.anchorMax = new Vector2(1f, 0.5f);
-        ttrt.pivot = new Vector2(1f, 0.5f);
-        ttrt.anchoredPosition = new Vector2(-88f, 2f);
-        ttrt.sizeDelta = new Vector2(196f, 84f);
-        timeText = timeGO.GetComponent<Text>();
-        timeText.font = GetDefaultFont();
-        timeText.fontSize = 44;
-        timeText.alignment = TextAnchor.MiddleRight;
-        timeText.color = MeadowGlassUI.WarmWhite;
-        timeText.raycastTarget = false;
-
-        var periodGO = new GameObject("PeriodText", typeof(RectTransform), typeof(Text));
-        periodGO.transform.SetParent(pillGO.transform, false);
-        var perRt = periodGO.GetComponent<RectTransform>();
-        // v1.0.48 fix: the AM/PM sits inside the pill just right of the
-        // numerals ("12:00 PM" reads left to right).
-        perRt.anchorMin = new Vector2(1f, 0.5f);
-        perRt.anchorMax = new Vector2(1f, 0.5f);
-        perRt.pivot = new Vector2(0f, 0.5f);
-        perRt.anchoredPosition = new Vector2(-80f, 4f);
-        perRt.sizeDelta = new Vector2(64f, 84f);
-        periodText = periodGO.GetComponent<Text>();
-        periodText.font = GetDefaultFont();
-        periodText.fontSize = 24;
-        periodText.alignment = TextAnchor.MiddleLeft;
-        periodText.color = MeadowGlassUI.Sage;
-        periodText.raycastTarget = false;
-
-        // v1.0.49: hour tick labels — the slider runs 12 PM (bottom, v=0)
-        // to 12 AM (top, v=1). A tick mark every hour, text labels every
-        // 2 hours (12 PM, 2 PM, 4 PM, 6 PM, 8 PM, 10 PM, 12 AM). Labels are
-        // counter-scaled 4x so they render full-size under the slider
-        // root's 0.25x scale; anchors (0.5, v) put each tick at exactly the
-        // track position the knob reaches at that time (same space as
-        // PositionKnob). raycastTarget off — the touch zone owns input.
-        var ticksGO = new GameObject("TickLabels", typeof(RectTransform));
-        ticksGO.transform.SetParent(root.transform, false);
-        var ticksRT = ticksGO.GetComponent<RectTransform>();
-        ticksRT.anchorMin = Vector2.zero; ticksRT.anchorMax = Vector2.one;
-        ticksRT.offsetMin = Vector2.zero; ticksRT.offsetMax = Vector2.zero;
-        float tickCounter = 1f / rrt.localScale.x; // 4x
-        var tickFont = GetDefaultFont();
-        for (int h24 = 12; h24 <= 24; h24++)
-        {
-            float tv = (h24 - 12) / 12f;
-            var tickGO = new GameObject($"Tick{h24}", typeof(RectTransform), typeof(Image));
-            tickGO.transform.SetParent(ticksGO.transform, false);
-            var trt = tickGO.GetComponent<RectTransform>();
-            trt.anchorMin = new Vector2(0.5f, tv);
-            trt.anchorMax = new Vector2(0.5f, tv);
-            trt.pivot = new Vector2(0.5f, 0.5f);
-            trt.localScale = new Vector3(tickCounter, tickCounter, 1f);
-            trt.sizeDelta = new Vector2(10f, 2f); // screen px at net 1x
-            var timg = tickGO.GetComponent<Image>();
-            timg.color = new Color(1f, 1f, 1f, 0.45f);
-            timg.raycastTarget = false;
-            if (h24 % 2 == 0)
-            {
-                var labGO = new GameObject($"Label{h24}", typeof(RectTransform), typeof(Text));
-                labGO.transform.SetParent(ticksGO.transform, false);
-                var lrt = labGO.GetComponent<RectTransform>();
-                lrt.anchorMin = new Vector2(0.5f, tv);
-                lrt.anchorMax = new Vector2(0.5f, tv);
-                lrt.pivot = new Vector2(1f, 0.5f);
-                lrt.localScale = new Vector3(tickCounter, tickCounter, 1f);
-                // anchoredPosition is in the (0.25x-scaled) parent's units:
-                // multiply the desired screen-px offset by the counter so
-                // the label's right edge parks 30px left of the track.
-                lrt.anchoredPosition = new Vector2(-30f * tickCounter, 0f);
-                lrt.sizeDelta = new Vector2(150f, 40f);
-                var txt = labGO.GetComponent<Text>();
-                txt.font = tickFont;
-                txt.fontSize = 26;
-                txt.alignment = TextAnchor.MiddleRight;
-                txt.color = new Color(1f, 1f, 1f, 0.85f);
-                txt.raycastTarget = false;
-                txt.text = FormatHourLabel(h24);
-            }
-        }
+        // v1.0.50: the hour tick labels are GONE too — back to one clean
+        // solid slider, per the player request.
 
         // v1.0.48: the generous touch zone — the visible strip renders only
         // ~15px wide on screen (Tyler prefers the slim look), far too narrow
@@ -474,7 +478,7 @@ public class SunOrbitControl : MonoBehaviour
         // changing how it looks. Added last so it raycasts above the strip;
         // it drives everything directly through SetTimeOfDay.
         var zoneGO = new GameObject("SliderTouchZone", typeof(RectTransform), typeof(Image));
-        zoneGO.transform.SetParent(canvasGo.transform, false);
+        zoneGO.transform.SetParent(panelGO.transform, false); // v1.0.50: under the panel so it hides with it
         var zrt = zoneGO.GetComponent<RectTransform>();
         zrt.anchorMin = new Vector2(1f, 0f);
         zrt.anchorMax = new Vector2(1f, 1f);
@@ -561,26 +565,10 @@ public class SunOrbitControl : MonoBehaviour
     }
 
     /// <summary>
-    /// Unity 6 removed the built-in Arial.ttf — GetBuiltinResource now THROWS
-    /// for it instead of returning null. LegacyRuntime.ttf is the bundled
-    /// replacement. A missing font must never crash UI construction.
+    /// Unity 6 removed the built-in Arial.ttf — note kept for history:
+    /// v1.0.50 removed the slider's last Text users (pill + tick labels),
+    /// so no font lookup is needed anymore.
     /// </summary>
-    static Font GetDefaultFont()
-    {
-        foreach (var name in new[] { "LegacyRuntime.ttf", "Arial.ttf" })
-        {
-            try
-            {
-                var f = Resources.GetBuiltinResource<Font>(name);
-                if (f != null) return f;
-            }
-            catch (System.Exception e)
-            {
-                Debug.LogWarning($"SunOrbitControl: built-in font '{name}' unavailable ({e.GetType().Name}).");
-            }
-        }
-        return null;
-    }
 }
 
 /// <summary>
@@ -591,9 +579,12 @@ public class SunOrbitControl : MonoBehaviour
 /// SunOrbitControl.SetTimeOfDay, so the slider is easy to grab without
 /// changing how it looks.
 /// </summary>
-public class SliderTouchZone : MonoBehaviour, IPointerDownHandler, IDragHandler
+public class SliderTouchZone : MonoBehaviour, IPointerDownHandler, IDragHandler, IPointerUpHandler
 {
     [HideInInspector] public SunOrbitControl orbit;
+    // v1.0.50: a press that starts on the day/night disc toggles day/night
+    // instead of scrubbing — suppress the scrub until the finger lifts.
+    bool suppressScrub;
     RectTransform rt;
 
     void Awake()
@@ -601,8 +592,23 @@ public class SliderTouchZone : MonoBehaviour, IPointerDownHandler, IDragHandler
         rt = GetComponent<RectTransform>();
     }
 
-    public void OnPointerDown(PointerEventData eventData) { DragTo(eventData); }
-    public void OnDrag(PointerEventData eventData) { DragTo(eventData); }
+    public void OnPointerDown(PointerEventData eventData)
+    {
+        if (orbit != null && orbit.DayNightHit(eventData.position, eventData.pressEventCamera))
+        {
+            orbit.OnDayNightTapped();
+            suppressScrub = true;
+            return;
+        }
+        suppressScrub = false;
+        DragTo(eventData);
+    }
+    public void OnDrag(PointerEventData eventData)
+    {
+        if (suppressScrub) return;
+        DragTo(eventData);
+    }
+    public void OnPointerUp(PointerEventData eventData) { suppressScrub = false; }
 
     void DragTo(PointerEventData eventData)
     {

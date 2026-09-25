@@ -71,8 +71,9 @@ public static class CrystalVizScreenshot
         bootstrap.BuildScene(); // edit-mode equivalent of Awake
 
         // SunOrbitControl IS attached by the bootstrap (player light slider),
-        // but its UI is built in Start(), which never runs in edit mode —
-        // so the slider stays out of captures while player builds get it.
+        // and BuildScene() builds its UI explicitly in edit mode (Start
+        // never runs in edit mode) — so the slider renders in captures AND
+        // in player builds from the same code path.
 
         var cam = Camera.main;
         if (cam == null)
@@ -99,12 +100,20 @@ public static class CrystalVizScreenshot
         // Portrait, close to Tyler's phone aspect.
         const int w = 720;
         const int h = 1600;
+        // v1.0.50: the lighting slider panel starts HIDDEN (the corner
+        // menu's star button pops it in/out at runtime) — pop it in for the
+        // captures, and snap the corner menu open so the sun+moon star
+        // button shows. Both snap instantly in edit mode (no Update there).
         // v1.0.49: the sun-slider screenshot pins to noon ("12:00 PM", full
         // daylight) — render it, then flip the slider to night (~9:36 PM,
         // past the 7 PM hard switch) and render again, proving both
-        // lighting states plus the tick labels and the thumb-riding pill.
-        CaptureFrame(cam, w, h, Path.Combine("Screenshots", "crystalviz.png"));
+        // lighting states on the clean solid slider plus the day/night
+        // button. (v1.0.50: tick labels and the clock pill are gone.)
         var orbit = Object.FindFirstObjectByType<SunOrbitControl>();
+        if (orbit != null) orbit.SetSliderPanelVisible(true);
+        var menu = Object.FindFirstObjectByType<TreeResetButton>();
+        if (menu != null) menu.SnapExpandedForScreenshot();
+        CaptureFrame(cam, w, h, Path.Combine("Screenshots", "crystalviz.png"));
         if (orbit != null)
         {
             orbit.SetTimeOfDay(0.8f); // ~9:36 PM -> hard night switch

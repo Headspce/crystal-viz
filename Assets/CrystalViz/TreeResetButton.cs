@@ -12,11 +12,12 @@ using UnityEngine.UI;
 /// a small feedback ceremony — a gold ring pulses out from the disc — and
 /// taps answer back in plain-English toasts. Tapping the arrow slides three
 /// buttons out from behind it toward the center — the infinity reset button
-/// (keeps its reset function: ResetToSprout) plus two placeholder buttons
-/// (star, dots — no function yet) — and tapping it again collapses everything
-/// back. The slide is staggered with an overshoot ease; the three buttons fan
-/// out on even 25° steps along a common radius so the gaps between them are
-/// uniform.
+/// (keeps its reset function: ResetToSprout), the lighting button (v1.0.50:
+/// a sun-and-moon paired glyph that toggles the right-side lighting slider
+/// panel with a pop in/out), and one placeholder (dots, no function yet) —
+/// and tapping the arrow again collapses everything back. The slide is
+/// staggered with an overshoot ease; the three buttons fan out on even 25°
+/// steps along a common radius so the gaps between them are uniform.
 ///
 /// Raw Input is used (not uGUI Button + EventSystem) to match the tree's tap
 /// detection, which also reads Input directly. TreeGrowthController swallows
@@ -31,7 +32,8 @@ public class TreeResetButton : MonoBehaviour
 {
     public TreeGrowthController controller;
 
-    // The three slide-out buttons: 0 = infinity (reset), 1-2 = placeholders.
+    // The three slide-out buttons: 0 = infinity (reset), 1 = lighting
+    // (toggles the sun-slider panel), 2 = placeholder.
     class MenuButton
     {
         public RectTransform rt;
@@ -101,6 +103,43 @@ public class TreeResetButton : MonoBehaviour
         return false;
     }
 
+    /// <summary>
+    /// v1.0.50: CI screenshot helper — snaps the corner menu open instantly
+    /// (edit mode runs no Update, so the stagger animation never plays).
+    /// </summary>
+    public void SnapExpandedForScreenshot()
+    {
+        if (!initialized) Initialize();
+        expanded = true;
+        pulseT = 0f;
+        if (subButtons != null)
+        {
+            foreach (var b in subButtons)
+            {
+                b.t = 1f; b.dir = 0f; b.delay = 0f; b.punch = 0f;
+                b.rt.anchoredPosition = b.outPos;
+                b.rt.localScale = Vector3.one;
+            }
+        }
+        arrowAngle = 0f;
+        if (glyphRt != null) glyphRt.localRotation = Quaternion.Euler(0f, 0f, 0f);
+    }
+
+    /// <summary>
+    /// v1.0.50: lazy handle on the sun slider — the star button toggles the
+    /// lighting panel through it. Resolved on first tap so menu/slider build
+    /// order never matters.
+    /// </summary>
+    SunOrbitControl orbitRef;
+    SunOrbitControl Orbit
+    {
+        get
+        {
+            if (orbitRef == null) orbitRef = FindObjectOfType<SunOrbitControl>();
+            return orbitRef;
+        }
+    }
+
     void Update()
     {
         float dt = Time.deltaTime;
@@ -136,13 +175,31 @@ public class TreeResetButton : MonoBehaviour
                             MeadowToast.Show("Fresh sprout — tap the tree to grow it again.");
                             ToggleMenu(); // reset done: collapse
                         }
+                        else if (i == 1)
+                        {
+                            // v1.0.50: the star button is the lighting toggle —
+                            // it pops the right-side lighting slider panel
+                            // in/out (the panel starts hidden).
+                            b.punch = 1f;
+                            var o = Orbit;
+                            if (o != null)
+                            {
+                                o.ToggleSliderPanel();
+                                MeadowToast.Show(o.IsSliderPanelVisible
+                                    ? "Lighting slider popped in — drag to change the light."
+                                    : "Lighting slider tucked away.");
+                            }
+                            else
+                            {
+                                MeadowToast.Show("Still growing — this one's coming soon.");
+                            }
+                            Debug.Log("TreeResetButton: star button toggled the lighting slider panel.");
+                        }
                         else
                         {
-                            // Placeholders: acknowledge the tap, no function yet.
+                            // Placeholder: acknowledge the tap, no function yet.
                             b.punch = 1f;
-                            MeadowToast.Show(i == 1
-                                ? "Still growing — this one's coming soon."
-                                : "More tools are on the way.");
+                            MeadowToast.Show("More tools are on the way.");
                             Debug.Log($"TreeResetButton: placeholder button {i} tapped (no function yet).");
                         }
                         break;
@@ -343,8 +400,11 @@ public class TreeResetButton : MonoBehaviour
             bGlyphRt.anchoredPosition = Vector2.zero;
             bGlyphRt.sizeDelta = new Vector2(64f, 64f);
             var bImg = bGlyph.GetComponent<Image>();
+            // v1.0.50: the star button now wears the sun-and-moon paired
+            // glyph — it is the lighting toggle (same symbol as the day/night
+            // button atop the slider panel).
             Texture2D glyphTex = i == 0 ? DrawInfinityTexture()
-                : i == 1 ? DrawStarTexture() : DrawDotsTexture();
+                : i == 1 ? MeadowGlassUI.MakeSunMoonIcon(160) : DrawDotsTexture();
             bImg.sprite = Sprite.Create(glyphTex,
                 new Rect(0f, 0f, glyphTex.width, glyphTex.height),
                 new Vector2(0.5f, 0.5f), 100f);
@@ -439,61 +499,7 @@ public class TreeResetButton : MonoBehaviour
         return tex;
     }
 
-    /// <summary>Golden 5-point star (placeholder glyph 1).</summary>
-    static Texture2D DrawStarTexture()
-    {
-        const int S = 160;
-        var tex = new Texture2D(S, S, TextureFormat.RGBA32, false);
-        tex.filterMode = FilterMode.Bilinear;
-        Vector2 c = new Vector2(S / 2f, S / 2f);
-        const int spikes = 5;
-        var pts = new Vector2[spikes * 2];
-        for (int i = 0; i < spikes * 2; i++)
-        {
-            float r = (i % 2 == 0) ? 62f : 27f;
-            float a = (i / (float)(spikes * 2)) * Mathf.PI * 2f - Mathf.PI / 2f;
-            pts[i] = c + new Vector2(Mathf.Cos(a) * r, Mathf.Sin(a) * r);
-        }
-        var outline = new Color(0.23f, 0.10f, 0.02f);
-        var gold = new Color(1.00f, 0.80f, 0.16f);
-        var big = new Vector2[spikes * 2]; // outline star: slightly larger
-        for (int i = 0; i < big.Length; i++)
-            big[i] = c + (pts[i] - c) * 1.14f;
-        for (int y = 0; y < S; y++)
-        {
-            for (int x = 0; x < S; x++)
-            {
-                Vector2 p = new Vector2(x + 0.5f, y + 0.5f);
-                bool inside = PointInPolygon(p, pts);
-                bool inOutline = PointInPolygon(p, big);
-                Color col;
-                if (inside) col = gold;
-                else if (inOutline) col = outline;
-                else col = new Color(0f, 0f, 0f, 0f);
-                if (col.a > 0f && !inside)
-                    col.a *= 0.5f; // feather the outer edge
-                tex.SetPixel(x, y, col);
-            }
-        }
-        tex.Apply();
-        return tex;
-    }
-
-    static bool PointInPolygon(Vector2 p, Vector2[] pts)
-    {
-        bool inside = false;
-        int n = pts.Length;
-        for (int i = 0, j = n - 1; i < n; j = i++)
-        {
-            Vector2 pi = pts[i], pj = pts[j];
-            if (((pi.y > p.y) != (pj.y > p.y)) &&
-                (p.x < (pj.x - pi.x) * (p.y - pi.y) / (pj.y - pi.y) + pi.x))
-                inside = !inside;
-        }
-        return inside;
-    }
-
-    /// <summary>Three white dots (placeholder glyph 2 — "more to come").</summary>
+    /// <summary>Three white dots (placeholder glyph — "more to come").</summary>
     static Texture2D DrawDotsTexture()
     {
         const int S = 160;
