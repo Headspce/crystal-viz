@@ -27,6 +27,7 @@ public class SunOrbitControl : MonoBehaviour
     // v1.0.50: the lighting slider lives on its own panel so the corner
     // menu's star button can pop it in/out. The panel starts HIDDEN.
     GameObject panelGO;
+    CanvasGroup panelCG; // v1.0.50: alpha fade for the pop-in/out
     bool panelVisible;
     float panelT;   // 0 = hidden, 1 = shown
     float panelDir; // +1 popping in, -1 popping out, 0 idle
@@ -171,8 +172,21 @@ public class SunOrbitControl : MonoBehaviour
             if (panelGO != null)
             {
                 panelGO.SetActive(true);
-                if (Application.isPlaying) panelDir = 1f;
-                else { panelT = 1f; panelDir = 0f; panelGO.transform.localScale = Vector3.one; }
+                // Start the pop-in from invisible: tiny scale + zero alpha,
+                // so the first frame doesn't flash at full size.
+                panelGO.transform.localScale = new Vector3(0.001f, 0.001f, 1f);
+                if (panelCG != null)
+                {
+                    panelCG.alpha = 0f;
+                    panelCG.blocksRaycasts = true;
+                }
+                if (Application.isPlaying) { panelT = 0f; panelDir = 1f; }
+                else
+                {
+                    panelT = 1f; panelDir = 0f;
+                    panelGO.transform.localScale = Vector3.one;
+                    if (panelCG != null) panelCG.alpha = 1f;
+                }
             }
         }
         else
@@ -181,8 +195,14 @@ public class SunOrbitControl : MonoBehaviour
             panelVisible = false;
             if (panelGO != null)
             {
+                if (panelCG != null) panelCG.blocksRaycasts = false;
                 if (Application.isPlaying) panelDir = -1f;
-                else { panelT = 0f; panelDir = 0f; panelGO.SetActive(false); }
+                else
+                {
+                    panelT = 0f; panelDir = 0f;
+                    if (panelCG != null) panelCG.alpha = 0f;
+                    panelGO.SetActive(false);
+                }
             }
         }
     }
@@ -244,6 +264,7 @@ public class SunOrbitControl : MonoBehaviour
 
         // v1.0.50: slider-panel pop animation (quick and snappy, like the
         // corner menu). Pop-in overshoots; pop-out eases back and deactivates.
+        // Scale + alpha fade together.
         if (panelDir != 0f && panelGO != null)
         {
             float dt = Time.deltaTime;
@@ -253,11 +274,18 @@ public class SunOrbitControl : MonoBehaviour
                 : panelT * panelT * (3f - 2f * panelT);
             float s = Mathf.Max(0.001f, e);
             panelGO.transform.localScale = new Vector3(s, s, 1f);
-            if (panelT <= 0f) { panelDir = 0f; panelGO.SetActive(false); }
+            if (panelCG != null) panelCG.alpha = Mathf.Clamp01(panelT);
+            if (panelT <= 0f)
+            {
+                panelDir = 0f;
+                if (panelCG != null) panelCG.alpha = 0f;
+                panelGO.SetActive(false);
+            }
             else if (panelT >= 1f)
             {
                 panelDir = 0f;
                 panelGO.transform.localScale = Vector3.one;
+                if (panelCG != null) panelCG.alpha = 1f;
             }
         }
 
@@ -308,7 +336,7 @@ public class SunOrbitControl : MonoBehaviour
         // animation. The panel spans the full canvas so the children's rects
         // need no conversion; the pivot sits at the right-edge center so the
         // pop originates beside the slider. It starts HIDDEN.
-        var panelGO_ = new GameObject("SliderPanel", typeof(RectTransform));
+        var panelGO_ = new GameObject("SliderPanel", typeof(RectTransform), typeof(CanvasGroup));
         panelGO_.transform.SetParent(canvasGo.transform, false);
         var prt = panelGO_.GetComponent<RectTransform>();
         prt.anchorMin = Vector2.zero;
@@ -317,6 +345,10 @@ public class SunOrbitControl : MonoBehaviour
         prt.offsetMax = Vector2.zero;
         prt.pivot = new Vector2(1f, 0.5f);
         panelGO = panelGO_;
+        panelCG = panelGO_.GetComponent<CanvasGroup>();
+        panelCG.alpha = 0f;
+        panelCG.blocksRaycasts = false;
+        panelGO.transform.localScale = new Vector3(0.001f, 0.001f, 1f);
         panelGO.SetActive(false);
         panelVisible = false;
         panelT = 0f;

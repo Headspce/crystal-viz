@@ -389,7 +389,11 @@ public class TreeResetButton : MonoBehaviour
             bDiscRt.pivot = new Vector2(0.5f, 0.5f);
             bDiscRt.anchoredPosition = Vector2.zero;
             bDiscRt.sizeDelta = new Vector2(SubSize, SubSize);
-            bDisc.GetComponent<Image>().sprite = MeadowGlassUI.MakeGlassDisc(160);
+            // v1.0.50: the lighting toggle (i==1) is a STAR-shaped button
+            // (not a round disc) containing the sun-and-moon glyph.
+            bDisc.GetComponent<Image>().sprite = i == 1
+                ? MeadowGlassUI.MakeStarDisc(160)
+                : MeadowGlassUI.MakeGlassDisc(160);
 
             var bGlyph = new GameObject("Glyph", typeof(RectTransform), typeof(Image));
             bGlyph.transform.SetParent(btnGO.transform, false);

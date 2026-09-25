@@ -128,11 +128,13 @@ public static class MeadowGlassUI
                 Vector2 p = new Vector2(x + 0.5f, y + 0.5f);
                 // Keep the two halves cleanly paired: sun clipped to the
                 // left half, moon to the right half.
-                float leftClip = 1f - Mathf.SmoothStep(S * 0.50f, S * 0.54f, p.x);
-                float rightClip = Mathf.SmoothStep(S * 0.46f, S * 0.50f, p.x);
+                // NOTE: using local SStep instead of Mathf.SmoothStep —
+                // the latter misbehaved in this Unity build (returned `to`).
+                float leftClip = 1f - SStep(S * 0.50f, S * 0.54f, p.x);
+                float rightClip = SStep(S * 0.46f, S * 0.50f, p.x);
                 // Sun disc.
                 float dSun = Vector2.Distance(p, sunC);
-                float sunA = (1f - Mathf.SmoothStep(sunR - 1.5f, sunR + 1.5f, dSun)) * leftClip;
+                float sunA = (1f - SStep(sunR - 1.5f, sunR + 1.5f, dSun)) * leftClip;
                 // Sun rays: 8 blades fanning from just outside the disc.
                 float rayA = 0f;
                 Vector2 rel = p - sunC;
@@ -141,18 +143,18 @@ public static class MeadowGlassUI
                 {
                     float ang = Mathf.Atan2(rel.y, rel.x); // -pi..pi
                     float sector = Mathf.PI / 4f; // fold into one 45° sector
-                    float a = Mathf.Abs(Mathf.Repeat(ang + sector / 2f, sector) - sector / 2f);
+                    float aIn = Mathf.Abs(Mathf.Repeat(ang + sector / 2f, sector) - sector / 2f);
                     float halfW = 0.10f + 0.06f * ((rd - sunR) / (S * 0.12f));
-                    float inRay = 1f - Mathf.SmoothStep(halfW - 0.03f, halfW + 0.03f, a);
-                    float band = Mathf.SmoothStep(sunR + 1f, sunR + 5f, rd) *
-                                 (1f - Mathf.SmoothStep(sunR + S * 0.10f, sunR + S * 0.12f, rd));
+                    float inRay = 1f - SStep(halfW - 0.03f, halfW + 0.03f, aIn);
+                    float band = SStep(sunR + 1f, sunR + 5f, rd) *
+                                 (1f - SStep(sunR + S * 0.10f, sunR + S * 0.12f, rd));
                     rayA = inRay * band * leftClip;
                 }
                 // Crescent moon: disc minus an offset cutout disc.
                 float dMoon = Vector2.Distance(p, moonC);
-                float moonDisc = 1f - Mathf.SmoothStep(moonR - 1.5f, moonR + 1.5f, dMoon);
+                float moonDisc = 1f - SStep(moonR - 1.5f, moonR + 1.5f, dMoon);
                 float dCut = Vector2.Distance(p, cutC);
-                float cut = 1f - Mathf.SmoothStep(cutR - 1.5f, cutR + 1.5f, dCut);
+                float cut = 1f - SStep(cutR - 1.5f, cutR + 1.5f, dCut);
                 float moonA = moonDisc * (1f - cut) * rightClip;
                 float a = Mathf.Max(Mathf.Max(sunA, rayA), moonA);
                 Color col = (moonA >= sunA && moonA >= rayA) ? moonSilver : sunGold;
@@ -161,6 +163,17 @@ public static class MeadowGlassUI
         }
         tex.Apply();
         return tex;
+    }
+
+    /// <summary>
+    /// Local smoothstep (0..1). Used by MakeSunMoonIcon instead of
+    /// Mathf.SmoothStep, which returned its `to` argument in this build.
+    /// </summary>
+    static float SStep(float from, float to, float t)
+    {
+        float x = (t - from) / (to - from);
+        x = x < 0f ? 0f : (x > 1f ? 1f : x);
+        return x * x * (3f - 2f * x);
     }
 
     /// <summary>
@@ -194,5 +207,88 @@ public static class MeadowGlassUI
         tex.Apply();
         return Sprite.Create(tex, new Rect(0f, 0f, size, size),
             new Vector2(0.5f, 0.5f), 100f);
+    }
+
+    /// <summary>
+    /// Star-shaped meadow-glass button: a 5-pointed star with deep-green
+    /// fill and a thin gold outline, for the corner menu's lighting toggle
+    /// (the "star button" containing the sun-and-moon glyph).
+    /// </summary>
+    public static Sprite MakeStarDisc(int size)
+    {
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        tex.filterMode = FilterMode.Bilinear;
+        float r = size / 2f;
+        Vector2 c = new Vector2(r, r);
+        float outerR = r - 4f;
+        float innerR = outerR * 0.45f;
+        // Star vertices (5 points, starting at top, going clockwise).
+        var pts = new Vector2[10];
+        for (int i = 0; i < 10; i++)
+        {
+            float rad = (i % 2 == 0) ? outerR : innerR;
+            float ang = -Mathf.PI / 2f + i * Mathf.PI / 5f;
+            pts[i] = c + new Vector2(Mathf.Cos(ang) * rad, Mathf.Sin(ang) * rad);
+        }
+        // Slightly larger star for the gold outline.
+        var outlinePts = new Vector2[10];
+        float outlineOuter = outerR + 3f;
+        float outlineInner = innerR + 3f;
+        for (int i = 0; i < 10; i++)
+        {
+            float rad = (i % 2 == 0) ? outlineOuter : outlineInner;
+            float ang = -Mathf.PI / 2f + i * Mathf.PI / 5f;
+            outlinePts[i] = c + new Vector2(Mathf.Cos(ang) * rad, Mathf.Sin(ang) * rad);
+        }
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                Vector2 p = new Vector2(x + 0.5f, y + 0.5f);
+                bool inOutline = PointInPolygon(p, outlinePts);
+                bool inStar = PointInPolygon(p, pts);
+                Color col = new Color(0f, 0f, 0f, 0f);
+                if (inOutline)
+                {
+                    if (inStar)
+                    {
+                        // Deep green fill with gentle top-light.
+                        float dy = y - r + 0.5f;
+                        float light = 1f + 0.10f * Mathf.Clamp01(-dy / r);
+                        col = new Color(
+                            Mathf.Clamp01(GlassDeep.r * light),
+                            Mathf.Clamp01(GlassDeep.g * light),
+                            Mathf.Clamp01(GlassDeep.b * light),
+                            GlassDeep.a);
+                    }
+                    else
+                    {
+                        // Gold outline.
+                        col = new Color(Gold.r, Gold.g, Gold.b, 0.95f);
+                    }
+                }
+                tex.SetPixel(x, y, col);
+            }
+        }
+        tex.Apply();
+        return Sprite.Create(tex, new Rect(0f, 0f, size, size),
+            new Vector2(0.5f, 0.5f), 100f);
+    }
+
+    /// <summary>
+    /// Even-odd point-in-polygon test.
+    /// </summary>
+    static bool PointInPolygon(Vector2 p, Vector2[] pts)
+    {
+        bool inside = false;
+        int n = pts.Length;
+        for (int i = 0, j = n - 1; i < n; j = i++)
+        {
+            Vector2 pi = pts[i], pj = pts[j];
+            if (((pi.y > p.y) != (pj.y > p.y)) &&
+                (p.x < (pj.x - pi.x) * (p.y - pi.y) / (pj.y - pi.y) + pi.x))
+                inside = !inside;
+        }
+        return inside;
     }
 }

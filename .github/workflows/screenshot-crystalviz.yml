@@ -84,8 +84,7 @@ jobs:
       - name: Capture CrystalViz screenshot
         # Builds the runtime diorama in edit mode and renders the Main Camera
         # (with the slider UI) to Screenshots/crystalviz.png. Needs a GL
-        # context: xvfb + Mesa software rendering. Non-fatal.
-        continue-on-error: true
+        # context: xvfb + Mesa software rendering.
         run: |
           set -e
           EDITOR_BIN=""
@@ -107,7 +106,15 @@ jobs:
             -executeMethod CrystalVizScreenshot.Capture \
             -cvizTaps "${{ inputs.taps }}" \
             ${{ inputs.reset && '-cvizReset' || '' }} \
-            -logFile Builds/Logs/Screenshot.log || echo "screenshot run exited non-zero"
+            -logFile Builds/Logs/Screenshot.log
+          # Hard fail if the screenshots weren't produced (don't swallow).
+          for f in Screenshots/crystalviz.png Screenshots/crystalviz-night.png; do
+            if [ ! -s "$f" ]; then
+              echo "ERROR: expected screenshot missing or empty: $f"
+              exit 1
+            fi
+            echo "OK: $f ($(stat -c%s "$f") bytes)"
+          done
 
       - name: Upload screenshot
         uses: actions/upload-artifact@v4
