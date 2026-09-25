@@ -105,10 +105,14 @@ public static class CrystalVizScreenshot
         // captures, and snap the corner menu open so the sun+moon star
         // button shows. Both snap instantly in edit mode (no Update there).
         // v1.0.49: the sun-slider screenshot pins to noon ("12:00 PM", full
-        // daylight) — render it, then flip the slider to night (~9:36 PM,
-        // past the 7 PM hard switch) and render again, proving both
-        // lighting states on the clean solid slider plus the day/night
-        // button. (v1.0.50: tick labels and the clock pill are gone.)
+        // daylight) — render it, then flip the slider to night and render
+        // again, proving both lighting states on the clean solid slider.
+        // (v1.0.50: tick labels and the clock pill are gone. v1.0.51: the
+        // day/night button is gone and the slider is stepped — 13 hourly
+        // detents — so 0.8 snaps to 10 PM, still past the 7 PM hard switch.
+        // Bees only exist in play mode, so the night capture builds the
+        // firefly preview squad explicitly (glow bodies, halos, ground
+        // light pools) — that's the CI proof of the transformation.)
         var orbit = Object.FindFirstObjectByType<SunOrbitControl>();
         if (orbit != null) orbit.SetSliderPanelVisible(true);
         var menu = Object.FindFirstObjectByType<TreeResetButton>();
@@ -119,6 +123,11 @@ public static class CrystalVizScreenshot
             orbit.SetTimeOfDay(0.8f); // ~9:36 PM -> hard night switch
             Debug.Log("CrystalVizScreenshot: night-state frame at slider 0.8 (~9:36 PM).");
         }
+        // v1.0.51: the BeeController's Start never runs in edit mode — build
+        // the firefly preview squad so the night capture shows the
+        // bee->firefly transformation (glowing orbs + ground light pools).
+        var beeCtl = Object.FindFirstObjectByType<BeeController>();
+        if (beeCtl != null) beeCtl.BuildPreview();
         CaptureFrame(cam, w, h, Path.Combine("Screenshots", "crystalviz-night.png"));
         Debug.Log("CrystalVizScreenshot: saved Screenshots/crystalviz.png + crystalviz-night.png");
     }

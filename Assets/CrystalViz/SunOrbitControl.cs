@@ -8,10 +8,12 @@ using UnityEngine.EventSystems;
 /// rotates it counter-clockwise. v1.0.49: the slider runs 12:00 PM (bottom,
 /// v=0) to 12:00 AM (top, v=1) — the direction Tyler asked for. v1.0.50: the
 /// tick labels and the clock pill are gone (one clean solid slider again);
-/// the panel starts HIDDEN and pops in/out via the corner menu's star button,
-/// and a day/night toggle button sits at the top of the panel. The whole UI
-/// is built in code (no prefabs) so the scene file stays tiny and everything
-/// is version-controlled as C#.
+/// the panel starts HIDDEN and pops in/out via the corner menu's star button.
+/// v1.0.51: the day/night button is GONE (accidental taps); the slider is
+/// STEPPED — 13 hourly detents that "click into place" with a haptic tick —
+/// and the hard 7 PM / 6 AM switch now also flips bees into fireflies.
+/// The whole UI is built in code (no prefabs) so the scene file stays tiny
+/// and everything is version-controlled as C#.
 /// </summary>
 public class SunOrbitControl : MonoBehaviour
 {
@@ -33,9 +35,16 @@ public class SunOrbitControl : MonoBehaviour
     float panelDir; // +1 popping in, -1 popping out, 0 idle
     const float PanelPopDur = 0.28f;
 
-    // v1.0.50: day/night toggle button at the top of the slider panel.
-    RectTransform dayNightRT;
-    float dayNightPunch;
+    // v1.0.51: the slider is STEPPED — 13 hourly detents (12 PM .. 12 AM),
+    // each hour "clicking into place" as the finger drags (player request).
+    // Every time-of-day path funnels through SetTimeOfDay, which snaps to
+    // the nearest hour; SliderTouchZone adds a haptic tick per detent.
+    public const int HourSteps = 12; // 12 one-hour steps -> 13 detents
+
+    // v1.0.51: the bee<->firefly swap rides the hard day/night switch — when
+    // the night factor flips, the BeeController transforms the squad.
+    BeeController beeController;
+    float lastNightFactor = -1f;
 
     void Start()
     {
@@ -56,11 +65,13 @@ public class SunOrbitControl : MonoBehaviour
     /// v1.0.48: the single funnel for time-of-day changes. Drives the sun
     /// azimuth target, the knob position, and the day/night lighting together
     /// from one value. (v1.0.50: the clock pill is gone — no times on the
-    /// slider anymore; the day/night button is the quick switch.)
+    /// slider anymore. v1.0.51: the day/night button is gone too — the slider
+    /// is the day/night control again — and every value snaps to the nearest
+    /// hourly detent, so the thumb always rests "clicked into place".)
     /// </summary>
     public void SetTimeOfDay(float v)
     {
-        v = Mathf.Clamp01(v);
+        v = SnapHour(v);
         lastSyncedV = v;
         targetAzimuth = v * 360f;
         // Push the value into the Slider without re-firing its callback
@@ -70,6 +81,25 @@ public class SunOrbitControl : MonoBehaviour
         PositionKnob();
         ApplyTimeOfDay(v);
     }
+
+    /// <summary>
+    /// v1.0.51: snaps a slider value to the nearest hourly detent (13 stops:
+    /// 12 PM at v=0 through 12 AM at v=1) — the stepped "click into place"
+    /// feel Tyler asked for.
+    /// </summary>
+    public static float SnapHour(float v)
+    {
+        v = Mathf.Clamp01(v);
+        return Mathf.Round(v * HourSteps) / HourSteps;
+    }
+
+    /// <summary>
+    /// v1.0.51: the current time-of-day snapped to its hourly detent.
+    /// The touch zone reads this so a fresh press on the current hour
+    /// doesn't fire a spurious haptic tick.
+    /// </summary>
+    public float CurrentSnappedValue =>
+        slider != null ? SnapHour(slider.normalizedValue) : SnapHour(lastSyncedV);
 
     /// <summary>
     /// Builds the slider UI and sets its initial value. Called from Start at
@@ -123,10 +153,29 @@ public class SunOrbitControl : MonoBehaviour
 
     /// <summary>
     /// v1.0.46: pushes the slider's time-of-day into the scene lighting.
+    /// v1.0.51: the bee<->firefly swap rides the hard 7 PM / 6 AM switch —
+    /// when the night factor flips, the BeeController transforms the squad
+    /// (every active bee becomes a firefly at night, back to a bee at day).
+    /// Safe in the CI edit-mode screenshot path: the bees list is empty
+    /// there until Start runs, so the calls are no-ops.
     /// </summary>
     void ApplyTimeOfDay(float v)
     {
         if (bootstrap != null) bootstrap.ApplyTimeOfDayLighting(NightFactor(v));
+        float nf = NightFactor(v);
+        if (lastNightFactor < 0f)
+        {
+            // First frame: seed the mode without transforming anyone — no
+            // bees are flying yet; the spawn path applies the night form.
+            if (beeController == null) beeController = FindObjectOfType<BeeController>();
+            if (beeController != null) beeController.SeedNightMode(nf > 0.5f);
+        }
+        else if (!Mathf.Approximately(nf, lastNightFactor))
+        {
+            if (beeController == null) beeController = FindObjectOfType<BeeController>();
+            if (beeController != null) beeController.SetNightMode(nf > 0.5f);
+        }
+        lastNightFactor = nf;
     }
 
     /// <summary>
@@ -207,37 +256,10 @@ public class SunOrbitControl : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// v1.0.50: the day/night button's action — jump the slider between noon
-    /// (day) and 10 PM (night) when the current lighting is the other one.
-    /// The hard 7 PM / 6 AM switch in NightFactor applies the lighting.
-    /// Called by the slider touch zone (it owns every touch on the right
-    /// edge and forwards taps landing on the day/night disc).
-    /// </summary>
-    public void OnDayNightTapped()
-    {
-        ToggleDayNight();
-        dayNightPunch = 1f;
-    }
-
-    public void ToggleDayNight()
-    {
-        float v = slider != null ? slider.normalizedValue : lastSyncedV;
-        if (NightFactor(v) > 0.5f) SetTimeOfDay(0f);       // night -> day (12:00 PM)
-        else SetTimeOfDay(10f / 12f);                      // day -> night (10:00 PM)
-    }
-
-    /// <summary>
-    /// v1.0.50: does this screen point land on the day/night disc? The touch
-    /// zone calls this before scrubbing — a tap on the disc toggles
-    /// day/night instead of moving the slider.
-    /// </summary>
-    public bool DayNightHit(Vector2 screenPos, Camera cam)
-    {
-        if (dayNightRT == null || !dayNightRT.gameObject.activeInHierarchy)
-            return false;
-        return RectTransformUtility.RectangleContainsScreenPoint(dayNightRT, screenPos, cam);
-    }
+    // v1.0.51: the day/night button is GONE (player request — accidental
+    // taps). The slider is the day/night control again: dragging across the
+    // 7 PM / 6 AM thresholds flips the hard lighting switch (and the
+    // bee<->firefly transformation with it).
 
     static float EaseOutBack(float t)
     {
@@ -289,13 +311,6 @@ public class SunOrbitControl : MonoBehaviour
             }
         }
 
-        // v1.0.50: day/night button tap feedback.
-        if (dayNightPunch > 0f)
-        {
-            dayNightPunch = Mathf.Max(0f, dayNightPunch - Time.deltaTime * 4f);
-            float s = 1f + 0.18f * dayNightPunch;
-            if (dayNightRT != null) dayNightRT.localScale = new Vector3(s, s, 1f);
-        }
     }
 
     // ------------------------------------------------------------------ UI build
@@ -454,69 +469,34 @@ public class SunOrbitControl : MonoBehaviour
 
         // (v1.0.47: the old angle readout under the slider is gone for good.)
 
-        // v1.0.50: the day/night toggle — a glass disc at the top of the
-        // lighting slider wearing the SAME sun+moon symbol as the corner
-        // menu's star button (player request). Taps jump the slider between
-        // noon (day) and 10 PM (night); the hard 7 PM / 6 AM switch applies
-        // the lighting. It replaces the old decorative sun icon (the thumb
-        // already IS the sun PNG, so nothing is lost). Child of the slider
-        // root: the root's 0.25 scale applies, so the 180px disc renders
-        // ~45px, parked just above the track's top edge like the old icon.
-        // NOTE: it is NOT a uGUI Button — the slider's invisible touch zone
-        // sits above it in hit order and owns every touch on the right edge,
-        // so the zone forwards taps landing on this disc to OnDayNightTapped
-        // (see SliderTouchZone). Keeps one input owner, zero hit-order bugs.
-        var dnGO = new GameObject("DayNightButton", typeof(RectTransform), typeof(Image));
-        dnGO.transform.SetParent(root.transform, false);
-        var drt = dnGO.GetComponent<RectTransform>();
-        drt.anchorMin = new Vector2(0.5f, 1f);
-        drt.anchorMax = new Vector2(0.5f, 1f);
-        drt.pivot = new Vector2(0.5f, 0.5f);
-        drt.anchoredPosition = new Vector2(0f, 90f);
-        drt.sizeDelta = new Vector2(180f, 180f);
-        drt.localScale = new Vector3(1f, 1f, 1f);
-        var dnBg = dnGO.GetComponent<Image>();
-        dnBg.sprite = MeadowGlassUI.MakeGlassDisc(160);
-        dnBg.preserveAspect = true;
-        var dnGlyphGO = new GameObject("Glyph", typeof(RectTransform), typeof(Image));
-        dnGlyphGO.transform.SetParent(dnGO.transform, false);
-        var dgrt = dnGlyphGO.GetComponent<RectTransform>();
-        dgrt.anchorMin = new Vector2(0.5f, 0.5f);
-        dgrt.anchorMax = new Vector2(0.5f, 0.5f);
-        dgrt.pivot = new Vector2(0.5f, 0.5f);
-        dgrt.anchoredPosition = Vector2.zero;
-        dgrt.sizeDelta = new Vector2(120f, 120f);
-        var dnGlyphImg = dnGlyphGO.GetComponent<Image>();
-        var dnTex = MeadowGlassUI.MakeSunMoonIcon(160);
-        dnGlyphImg.sprite = Sprite.Create(dnTex,
-            new Rect(0, 0, dnTex.width, dnTex.height),
-            new Vector2(0.5f, 0.5f), 100f);
-        dnGlyphImg.preserveAspect = true;
-        dnGlyphImg.raycastTarget = false; // the zone owns the tap, forwards it
-        dayNightRT = drt;
+        // v1.0.51: the day/night button is GONE (player request — it kept
+        // getting hit accidentally). The slider is the day/night control
+        // again: dragging across the 7 PM / 6 AM thresholds flips the hard
+        // lighting switch (and the bee<->firefly transformation with it).
 
         // v1.0.50: the handle pill and its clock are GONE (player request —
-        // no times on the slider anymore; the day/night button above is the
-        // quick switch). The slider is one clean solid strip again.
+        // no times on the slider anymore). The slider is one clean solid
+        // strip again.
 
         // v1.0.50: the hour tick labels are GONE too — back to one clean
         // solid slider, per the player request.
 
-        // v1.0.48: the generous touch zone — the visible strip renders only
-        // ~15px wide on screen (Tyler prefers the slim look), far too narrow
-        // for a fingertip to hit reliably. This invisible 160px-wide catcher
-        // sits over the slider column (and the sun icon) and maps vertical
-        // drags to time-of-day, so the slider is easy to grab without
-        // changing how it looks. Added last so it raycasts above the strip;
-        // it drives everything directly through SetTimeOfDay.
+        // v1.0.51: the touch zone is SHRUNK (player request — the old
+        // 160px-wide catcher ate gameplay swipes on the right side of the
+        // screen). The strip's track sits ~58px left of the right edge in
+        // panel space; this 56px column hugs the track + thumb and nothing
+        // else, so bee swipes can never reach the slider. The panel itself
+        // has no background graphic — nothing else here raycasts. Added
+        // last so it raycasts above the strip; it drives everything
+        // directly through SetTimeOfDay (which snaps to hourly detents).
         var zoneGO = new GameObject("SliderTouchZone", typeof(RectTransform), typeof(Image));
         zoneGO.transform.SetParent(panelGO.transform, false); // v1.0.50: under the panel so it hides with it
         var zrt = zoneGO.GetComponent<RectTransform>();
         zrt.anchorMin = new Vector2(1f, 0f);
         zrt.anchorMax = new Vector2(1f, 1f);
         zrt.pivot = new Vector2(0.5f, 0.5f);
-        zrt.offsetMin = new Vector2(-168f, 100f);
-        zrt.offsetMax = new Vector2(-8f, -100f);
+        zrt.offsetMin = new Vector2(-86f, 100f);
+        zrt.offsetMax = new Vector2(-30f, -100f);
         var zoneImg = zoneGO.GetComponent<Image>();
         zoneImg.color = new Color(0f, 0f, 0f, 0f); // invisible but raycastable
         var zone = zoneGO.AddComponent<SliderTouchZone>();
@@ -604,20 +584,24 @@ public class SunOrbitControl : MonoBehaviour
 }
 
 /// <summary>
-/// v1.0.48: invisible, generous touch catcher over the sun-slider column.
-/// The visible strip renders only ~15px wide on screen (Tyler prefers the
-/// slim look) — too narrow for a fingertip to hit reliably. This 160px-wide
-/// zone maps vertical drags to time-of-day and funnels them through
-/// SunOrbitControl.SetTimeOfDay, so the slider is easy to grab without
-/// changing how it looks.
+/// v1.0.48: invisible touch catcher over the sun-slider column. The visible
+/// strip renders only ~15px wide on screen (Tyler prefers the slim look) —
+/// too narrow for a fingertip to hit reliably, so this zone maps vertical
+/// drags to time-of-day and funnels them through
+/// SunOrbitControl.SetTimeOfDay.
+/// v1.0.51: SHRUNK to a 56px column hugging the track + thumb (the old
+/// 160px-wide catcher ate gameplay swipes — player request), and the drag
+/// is now STEPPED: the thumb "clicks into place" at each hourly detent with
+/// a short haptic tick per click. The day/night disc is gone, so every
+/// press on the zone scrubs the slider.
 /// </summary>
 public class SliderTouchZone : MonoBehaviour, IPointerDownHandler, IDragHandler, IPointerUpHandler
 {
     [HideInInspector] public SunOrbitControl orbit;
-    // v1.0.50: a press that starts on the day/night disc toggles day/night
-    // instead of scrubbing — suppress the scrub until the finger lifts.
-    bool suppressScrub;
     RectTransform rt;
+    // v1.0.51: last hourly detent the thumb rested on — a change means the
+    // thumb clicked into a new hour, which fires the haptic tick.
+    float lastDetent = -1f;
 
     void Awake()
     {
@@ -626,21 +610,13 @@ public class SliderTouchZone : MonoBehaviour, IPointerDownHandler, IDragHandler,
 
     public void OnPointerDown(PointerEventData eventData)
     {
-        if (orbit != null && orbit.DayNightHit(eventData.position, eventData.pressEventCamera))
-        {
-            orbit.OnDayNightTapped();
-            suppressScrub = true;
-            return;
-        }
-        suppressScrub = false;
+        // Seed from the current hour so a fresh press on the hour the thumb
+        // already sits on doesn't fire a spurious tick.
+        if (orbit != null) lastDetent = orbit.CurrentSnappedValue;
         DragTo(eventData);
     }
-    public void OnDrag(PointerEventData eventData)
-    {
-        if (suppressScrub) return;
-        DragTo(eventData);
-    }
-    public void OnPointerUp(PointerEventData eventData) { suppressScrub = false; }
+    public void OnDrag(PointerEventData eventData) { DragTo(eventData); }
+    public void OnPointerUp(PointerEventData eventData) { }
 
     void DragTo(PointerEventData eventData)
     {
@@ -651,7 +627,49 @@ public class SliderTouchZone : MonoBehaviour, IPointerDownHandler, IDragHandler,
         {
             // BottomToTop: touch at the zone's bottom edge -> 0, top -> 1.
             float v = Mathf.Clamp01((local.y - rt.rect.yMin) / rt.rect.height);
+            // v1.0.51: stepped feel — only tick when the thumb actually
+            // clicks into a NEW hourly detent. SetTimeOfDay snaps the value
+            // itself, so the thumb rests on the hour when the finger lifts.
+            float detent = SunOrbitControl.SnapHour(v);
+            if (!Mathf.Approximately(detent, lastDetent))
+            {
+                lastDetent = detent;
+                VibrateTick();
+            }
             orbit.SetTimeOfDay(v);
         }
+    }
+
+    /// <summary>
+    /// v1.0.51: ~15 ms haptic "click" each time the thumb snaps to a new
+    /// hourly detent. Android-only; every failure mode (no vibrator, denied
+    /// permission, non-Android) degrades silently to no vibration — it never
+    /// throws and never blocks the gesture.
+    /// </summary>
+    static void VibrateTick()
+    {
+#if UNITY_ANDROID && !UNITY_EDITOR
+        try
+        {
+            using (var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
+            using (var activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity"))
+            using (var vibrator = activity.Call<AndroidJavaObject>("getSystemService", "vibrator"))
+            {
+                if (vibrator == null) return;
+                int sdk = new AndroidJavaClass("android.os.Build$VERSION").GetStatic<int>("SDK_INT");
+                if (sdk >= 26)
+                {
+                    using (var effectClass = new AndroidJavaClass("android.os.VibrationEffect"))
+                    using (var effect = effectClass.CallStatic<AndroidJavaObject>("createOneShot", 15L, 90))
+                        vibrator.Call("vibrate", effect);
+                }
+                else
+                {
+                    vibrator.Call("vibrate", 15L);
+                }
+            }
+        }
+        catch (System.Exception) { /* no haptics on this device — stay silent */ }
+#endif
     }
 }

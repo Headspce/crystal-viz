@@ -21,6 +21,16 @@ using System.Collections.Generic;
 /// No assets to go missing. Start() only fires in play mode; in the CI
 /// edit-mode screenshot path the Bee GameObject stays empty so captures
 /// stay clean.
+/// v1.0.51: NIGHT TRANSFORMATION (player request, raw prototype). When the
+/// hard day/night lighting switch flips to night, every active bee becomes
+/// a firefly; flipping back to day turns every firefly back into a bee.
+/// Bees that spawn while night is active spawn directly as fireflies.
+/// The firefly is a glowing orb (procedural placeholder texture —
+/// SWAPPABLE: drop Tyler's artwork at Assets/CrystalViz/Resources/firefly.png
+/// and it loads automatically, no code changes) with a short-range point
+/// light for real local illumination, a soft glow billboard, and a warm
+/// pool of light on the ground beneath it. Fireflies pop and respawn like
+/// bees; the pop still banks a tree-tap credit.
 /// </summary>
 public class BeeController : MonoBehaviour
 {
@@ -62,6 +72,14 @@ public class BeeController : MonoBehaviour
         public float speed;
         public float cruiseH;
         public bool alive;
+        // v1.0.51: night form. The firefly visuals are created once per
+        // agent and toggled — repeated day/night switches never leak.
+        public bool isFirefly;
+        public Light fireflyLight;       // short-range point light (local only)
+        public GameObject fireflyGlow;   // soft glow billboard on the bug
+        public Material fireflyGlowMat;  // per-agent: pulses its alpha
+        public GameObject lightPool;     // warm pool of light on the ground
+        public Material lightPoolMat;    // per-agent: pulses its alpha
     }
 
     // One pop particle: a confetti petal with its own motion.
@@ -390,6 +408,229 @@ public class BeeController : MonoBehaviour
             }
     }
 
+    // v1.0.51: night mode — the bee<->firefly transformation. SunOrbitControl
+    // flips this on the hard 7 PM / 6 AM lighting switch; every active bee
+    // becomes a firefly at night and turns back at day. Bees that spawn
+    // while night is active spawn directly as fireflies. Repeatable, any
+    // count (1, 2, 3, N).
+    bool nightMode;
+    public bool IsNightMode => nightMode;
+
+    /// <summary>
+    /// v1.0.51: seeds the initial night mode (the app can open at night via
+    /// the device-time slider init) WITHOUT transforming anyone — no bees
+    /// are flying on the first frame; the spawn path applies the night form.
+    /// </summary>
+    public void SeedNightMode(bool night) { nightMode = night; }
+
+    /// <summary>
+    /// v1.0.51: flips the whole squad between bee and firefly form. Called
+    /// by SunOrbitControl when the hard day/night switch flips. Only bees
+    /// that are actually flying transform — waiting/popped bees pick up the
+    /// form when they spawn. Safe in the CI edit-mode screenshot path: the
+    /// bees list is empty there until Start runs, so this is a no-op.
+    /// </summary>
+    public void SetNightMode(bool night)
+    {
+        if (night == nightMode) return;
+        nightMode = night;
+        foreach (var bee in bees)
+            if (bee.alive && bee.root != null && bee.root.activeSelf)
+                ApplyNightForm(bee);
+    }
+
+    void ApplyNightForm(BeeAgent bee)
+    {
+        if (nightMode) BecomeFirefly(bee);
+        else BecomeBee(bee);
+    }
+
+    static Texture2D fireflyTex; // v1.0.51: the firefly glow body
+
+    /// <summary>
+    /// v1.0.51: the firefly body texture. SWAPPABLE WITHOUT CODE CHANGES —
+    /// drop Tyler's artwork at Assets/CrystalViz/Resources/firefly.png (same
+    /// file name) and it loads automatically; this procedural glow is only
+    /// the placeholder used when that file is missing.
+    /// </summary>
+    static void EnsureFireflyTexture()
+    {
+        if (fireflyTex != null) return;
+        fireflyTex = Resources.Load<Texture2D>("firefly");
+        if (fireflyTex == null) fireflyTex = DrawFireflyGlow();
+    }
+
+    /// <summary>
+    /// v1.0.51: procedural firefly-glow fallback — a warm yellow-green orb
+    /// with a hot core and a soft halo falloff, on a 128px canvas.
+    /// </summary>
+    static Texture2D DrawFireflyGlow()
+    {
+        int s = 128;
+        var tex = new Texture2D(s, s, TextureFormat.RGBA32, false);
+        for (int y = 0; y < s; y++)
+            for (int x = 0; x < s; x++)
+            {
+                float dx = (x + 0.5f - s / 2f) / (s / 2f);
+                float dy = (y + 0.5f - s / 2f) / (s / 2f);
+                float d = Mathf.Sqrt(dx * dx + dy * dy);
+                if (d >= 1f) { tex.SetPixel(x, y, new Color(0f, 0f, 0f, 0f)); continue; }
+                float core = Mathf.Clamp01(1f - d / 0.30f);
+                float halo = Mathf.Pow(Mathf.Clamp01(1f - d), 2f);
+                float a = Mathf.Clamp01(core + halo * 0.85f);
+                tex.SetPixel(x, y, new Color(0.72f + 0.28f * core, 1f, 0.35f + 0.20f * core, a));
+            }
+        tex.Apply();
+        tex.filterMode = FilterMode.Bilinear;
+        return tex;
+    }
+
+    static Texture2D lightPoolTex; // v1.0.51: warm ground light-pool gradient
+
+    static void EnsureLightPoolTexture()
+    {
+        if (lightPoolTex != null) return;
+        int s = 128;
+        var tex = new Texture2D(s, s, TextureFormat.RGBA32, false);
+        for (int y = 0; y < s; y++)
+            for (int x = 0; x < s; x++)
+            {
+                float dx = (x + 0.5f - s / 2f) / (s / 2f);
+                float dy = (y + 0.5f - s / 2f) / (s / 2f);
+                float d = Mathf.Sqrt(dx * dx + dy * dy);
+                float a = d >= 1f ? 0f : Mathf.Pow(Mathf.Clamp01(1f - d), 2.2f);
+                tex.SetPixel(x, y, new Color(0.85f, 1f, 0.45f, a));
+            }
+        tex.Apply();
+        tex.filterMode = FilterMode.Bilinear;
+        lightPoolTex = tex;
+    }
+
+    /// <summary>
+    /// v1.0.51: transforms a bee into its night form. The paper quad swaps
+    /// to the firefly glow texture; a warm point light with a SHORT range
+    /// gives real local illumination (one light per firefly — counts are
+    /// small, and the custom meadow shaders ignore lights they don't use);
+    /// a soft glow billboard reads at a glance; and a warm pool of light
+    /// appears on the ground beneath the bug so the surroundings light up
+    /// locally even on unlit stylized shaders. The blob shadow hides — a
+    /// glowing bug casts no dark shadow. Everything is created once per
+    /// agent and toggled afterwards: repeated day/night switches never leak.
+    /// </summary>
+    void BecomeFirefly(BeeAgent bee)
+    {
+        if (bee.isFirefly) return;
+        bee.isFirefly = true;
+        EnsureFireflyTexture();
+        if (bee.spriteMat != null && fireflyTex != null)
+            bee.spriteMat.mainTexture = fireflyTex;
+        // Real local light: short range, modest intensity, no shadows.
+        if (bee.fireflyLight == null && bee.bodyT != null)
+        {
+            var lg = new GameObject("FireflyLight");
+            lg.transform.SetParent(bee.bodyT, false);
+            lg.transform.localPosition = new Vector3(0f, 0f, -0.15f);
+            var light = lg.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.color = new Color(0.72f, 1.0f, 0.38f);
+            light.range = 1.4f;
+            light.intensity = 1.6f;
+            light.shadows = LightShadows.None;
+            bee.fireflyLight = light;
+        }
+        if (bee.fireflyLight != null) bee.fireflyLight.gameObject.SetActive(true);
+        // Glow billboard riding on the bug (inherits the paper billboard).
+        if (bee.fireflyGlow == null && bee.bodyT != null && spriteShader != null)
+        {
+            var g = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            DestroyImmediate(g.GetComponent<Collider>());
+            g.name = "FireflyGlow";
+            g.transform.SetParent(bee.bodyT, false);
+            g.transform.localPosition = new Vector3(0f, 0f, -0.02f);
+            g.transform.localScale = new Vector3(0.42f, 0.42f, 1f);
+            var mat = new Material(spriteShader);
+            mat.mainTexture = fireflyTex;
+            var c = mat.color; c.a = 0.55f; mat.color = c;
+            g.GetComponent<MeshRenderer>().material = mat;
+            var mr = g.GetComponent<MeshRenderer>();
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            mr.receiveShadows = false;
+            bee.fireflyGlow = g;
+            bee.fireflyGlowMat = mat;
+        }
+        if (bee.fireflyGlow != null) bee.fireflyGlow.SetActive(true);
+        // Warm pool of light on the ground under the bug — world-space, like
+        // the blob shadow it replaces at night.
+        if (bee.lightPool == null && spriteShader != null)
+        {
+            EnsureLightPoolTexture();
+            var p = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            DestroyImmediate(p.GetComponent<Collider>());
+            p.name = "FireflyLightPool";
+            p.transform.SetParent(transform, false);
+            p.transform.rotation = Quaternion.Euler(-90f, 0f, 0f);
+            var mat = new Material(spriteShader);
+            mat.mainTexture = lightPoolTex;
+            var c = mat.color; c.a = 0.5f; mat.color = c;
+            p.GetComponent<MeshRenderer>().material = mat;
+            var mr = p.GetComponent<MeshRenderer>();
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            mr.receiveShadows = false;
+            bee.lightPool = p;
+            bee.lightPoolMat = mat;
+        }
+        if (bee.lightPool != null) bee.lightPool.SetActive(true);
+        if (bee.shadow != null) bee.shadow.SetActive(false);
+    }
+
+    /// <summary>
+    /// v1.0.51: transforms a firefly back into its day form. Idempotent —
+    /// safe to call on a bee that never transformed (fresh spawns).
+    /// </summary>
+    void BecomeBee(BeeAgent bee)
+    {
+        bee.isFirefly = false;
+        if (bee.spriteMat != null)
+            bee.spriteMat.mainTexture = beeTexUp; // the wing flap resumes from here
+        if (bee.fireflyLight != null) bee.fireflyLight.gameObject.SetActive(false);
+        if (bee.fireflyGlow != null) bee.fireflyGlow.SetActive(false);
+        if (bee.lightPool != null) bee.lightPool.SetActive(false);
+        // The blob shadow reappears via the normal per-frame block in UpdateBee.
+    }
+
+    /// <summary>
+    /// v1.0.51: builds the bees in edit mode for the CI screenshot tool
+    /// (Start never runs in edit mode). All agents are activated directly
+    /// in firefly form at fixed visible spots in front of the tree — this
+    /// is how CI verifies the night transformation (glow body, halo,
+    /// ground light pool). Idempotent within a session; in play mode Start
+    /// builds the real squad from scratch instead.
+    /// </summary>
+    public void BuildPreview()
+    {
+        if (bees.Count == 0) BuildBeeAgent();
+        SeedNightMode(true);
+        // In front of the tree on the camera side, at bee-cruise heights.
+        var spots = new[]
+        {
+            new Vector3(-0.55f, 1.10f, 0.55f),
+            new Vector3(0.15f, 1.50f, 0.75f),
+            new Vector3(0.70f, 1.00f, 0.45f),
+        };
+        for (int i = 0; i < bees.Count; i++)
+        {
+            var bee = bees[i];
+            bee.root.SetActive(true);
+            bee.alive = true;
+            bee.state = BeeState.Hover;
+            bee.stateTimer = 1f;
+            bee.spawnT = 1f;
+            ApplyNightForm(bee); // BecomeFirefly — creates light, glow, pool
+            bee.bodyT.position = spots[i % spots.Length];
+            bee.bodyT.rotation = Quaternion.identity;
+        }
+    }
+
     void PickNextFlower(BeeAgent bee, bool initial = false)
     {
         Vector3 choice;
@@ -445,6 +686,12 @@ public class BeeController : MonoBehaviour
             bee.stateTimer = i * 0.9f; // staggered entrances, post-reveal
             bee.spawnT = 1f;
             if (bee.shadow != null) bee.shadow.SetActive(false);
+            // v1.0.51: park the night form too — the reveal owns the screen
+            // alone, and the spawn path re-applies the form afterwards.
+            bee.isFirefly = false;
+            if (bee.fireflyLight != null) bee.fireflyLight.gameObject.SetActive(false);
+            if (bee.fireflyGlow != null) bee.fireflyGlow.SetActive(false);
+            if (bee.lightPool != null) bee.lightPool.SetActive(false);
         }
         for (int i = spawnBursts.Count - 1; i >= 0; i--)
         {
@@ -481,6 +728,7 @@ public class BeeController : MonoBehaviour
                 {
                     bee.root.SetActive(true);
                     bee.alive = true;
+                    ApplyNightForm(bee); // v1.0.51: spawn as a firefly if night
                     bee.spawnT = 0f;
                     PickNextFlower(bee, initial: true);
                     // v1.0.41: teleport the bee to its actual spawn point
@@ -539,6 +787,7 @@ public class BeeController : MonoBehaviour
                 {
                     bee.root.SetActive(true);
                     bee.alive = true;
+                    ApplyNightForm(bee); // v1.0.51: respawn as a firefly if night
                     bee.spawnT = 0f; // spring back in cartoon-style
                     PickNextFlower(bee, initial: true);
                     // v1.0.41: same stale-position fix as the entrance burst —
@@ -576,14 +825,19 @@ public class BeeController : MonoBehaviour
                 float bank = Mathf.Clamp(-velC.y * 5f, -12f, 12f);
                 bee.bodyT.Rotate(0f, 0f, bank);
             }
-            bee.bodyT.localScale = new Vector3(SpriteSize * bee.flipX * spawnS, SpriteSize * spawnS, 1f);
+            // v1.0.51: fireflies render slightly larger so the glow reads.
+            float formS = bee.isFirefly ? 1.6f : 1f;
+            bee.bodyT.localScale = new Vector3(SpriteSize * bee.flipX * spawnS * formS,
+                SpriteSize * spawnS * formS, 1f);
 
             // Tyler (v1.0.31): no bee ever leaves the phone screen.
             ClampToScreen(bee.bodyT);
 
             // Blob shadow: tracks the bee on the ground, growing fainter and
             // wider as the bee climbs — semi-transparent like the tree's.
-            if (bee.shadowT != null)
+            // v1.0.51: fireflies cast no dark shadow — their warm light pool
+            // (below) replaces it while the night form is active.
+            if (bee.shadowT != null && !bee.isFirefly)
             {
                 bee.shadow.SetActive(true);
                 Vector3 bp = bee.bodyT.position;
@@ -595,6 +849,35 @@ public class BeeController : MonoBehaviour
                 var sc = bee.shadowMat.color;
                 sc.a = 0.36f * fade * Mathf.Clamp01(spawnS);
                 bee.shadowMat.color = sc;
+            }
+
+            // v1.0.51: the firefly's local light. The ground pool tracks the
+            // bug and everything breathes with a firefly flicker (two slow
+            // sines multiplied — irregular, never mechanical).
+            if (bee.isFirefly)
+            {
+                float flicker = 0.75f + 0.25f
+                    * Mathf.Sin(Time.time * 7f + bee.flapPhase * 3f)
+                    * Mathf.Sin(Time.time * 3.1f + bee.flapPhase);
+                if (bee.lightPool != null)
+                {
+                    bee.lightPool.SetActive(true);
+                    Vector3 bp2 = bee.bodyT.position;
+                    bee.lightPool.transform.position = new Vector3(bp2.x, 0.016f, bp2.z);
+                    float ps = 0.70f + 0.30f * flicker;
+                    bee.lightPool.transform.localScale = new Vector3(ps, ps, 1f);
+                    var pc = bee.lightPoolMat.color;
+                    pc.a = 0.42f * flicker;
+                    bee.lightPoolMat.color = pc;
+                }
+                if (bee.fireflyGlowMat != null)
+                {
+                    var gc = bee.fireflyGlowMat.color;
+                    gc.a = 0.40f + 0.30f * flicker;
+                    bee.fireflyGlowMat.color = gc;
+                }
+                if (bee.fireflyLight != null)
+                    bee.fireflyLight.intensity = 1.1f + 0.9f * flicker;
             }
         }
         else if (bee.shadow != null)
@@ -609,6 +892,8 @@ public class BeeController : MonoBehaviour
     /// </summary>
     void Flap(BeeAgent bee, float dt, float speed)
     {
+        // v1.0.51: fireflies don't flap bee wings — the glow texture stays.
+        if (bee.isFirefly) return;
         bee.flapPhase += dt * speed;
         var frame = Mathf.Sin(bee.flapPhase) > 0f ? beeTexUp : beeTexDown;
         if (bee.spriteMat != null && bee.spriteMat.mainTexture != frame)
