@@ -150,6 +150,17 @@ public class BeeController : MonoBehaviour
         if (bootstrap == null) bootstrap = FindObjectOfType<CrystalVizBootstrap>();
         treeController = FindObjectOfType<TreeGrowthController>();
         mainCam = Camera.main;
+        EnsureAgentsBuilt();
+    }
+
+    /// <summary>
+    /// v1.0.51: builds the bee agents exactly once. Start calls it in play
+    /// mode; BuildPreview calls it in edit mode for the CI screenshot tool
+    /// (Start never runs in edit mode).
+    /// </summary>
+    void EnsureAgentsBuilt()
+    {
+        if (bees.Count > 0) return;
         popShader = Shader.Find("Universal Render Pipeline/Lit");
         if (popShader == null)
             Debug.LogError("BeeController: URP/Lit not found; pop FX will be skipped.");
@@ -608,7 +619,7 @@ public class BeeController : MonoBehaviour
     /// </summary>
     public void BuildPreview()
     {
-        if (bees.Count == 0) BuildBeeAgent();
+        EnsureAgentsBuilt();
         SeedNightMode(true);
         // In front of the tree on the camera side, at bee-cruise heights.
         var spots = new[]
@@ -622,7 +633,7 @@ public class BeeController : MonoBehaviour
             var bee = bees[i];
             bee.root.SetActive(true);
             bee.alive = true;
-            bee.state = BeeState.Hover;
+            bee.state = State.Hover;
             bee.stateTimer = 1f;
             bee.spawnT = 1f;
             ApplyNightForm(bee); // BecomeFirefly — creates light, glow, pool
