@@ -5,8 +5,10 @@ using UnityEngine.EventSystems;
 /// <summary>
 /// Sun-orbit slider: a vertical slider pinned to the right edge of the screen.
 /// Sliding UP rotates the sun clockwise around the tree; sliding DOWN
-/// rotates it counter-clockwise. The whole UI is built in code (no prefabs) so
-/// the scene file stays tiny and everything is version-controlled as C#.
+/// rotates it counter-clockwise. v1.0.49: the slider runs 12:00 PM (bottom,
+/// v=0) to 12:00 AM (top, v=1) — the direction Tyler asked for. The whole UI
+/// is built in code (no prefabs) so the scene file stays tiny and everything
+/// is version-controlled as C#.
 /// </summary>
 public class SunOrbitControl : MonoBehaviour
 {
@@ -66,11 +68,12 @@ public class SunOrbitControl : MonoBehaviour
         if (bootstrap == null) bootstrap = FindObjectOfType<CrystalVizBootstrap>();
         BuildUI();
         // v1.0.46: captures must be deterministic — CI runs at any hour, so
-        // the screenshot pins the slider to noon (top, "12:00 PM", full
-        // daylight) instead of the device clock. The sun keeps its pleasant
-        // 54° 3/4 modeling azimuth for continuity with earlier captures.
+        // the screenshot pins the slider to noon ("12:00 PM", full daylight)
+        // instead of the device clock. v1.0.49: noon is the BOTTOM of the
+        // slider now (v=0). The sun keeps its pleasant 54° 3/4 modeling
+        // azimuth for continuity with earlier captures.
         // v1.0.48: funnel through SetTimeOfDay like every other path.
-        SetTimeOfDay(1f);
+        SetTimeOfDay(0f);
         targetAzimuth = 54f;
         currentAzimuth = 54f;
         if (bootstrap != null) bootstrap.PlaceSun(54f);
@@ -78,28 +81,30 @@ public class SunOrbitControl : MonoBehaviour
 
     /// <summary>
     /// v1.0.46: maps the device's real local time onto the slider (player
-    /// request). The slider spans noon (top, v=1) to midnight (bottom, v=0);
-    /// morning hours clamp to noon — daylight, which is the honest answer
-    /// for 9 AM on a 12-hour afternoon/evening scale.
+    /// request). v1.0.49: the slider runs noon (BOTTOM, v=0) to midnight
+    /// (TOP, v=1) — the direction Tyler asked for. Morning hours clamp to
+    /// noon — daylight, which is the honest answer for 9 AM on a 12-hour
+    /// afternoon/evening scale.
     /// </summary>
     static float DeviceTimeSliderValue()
     {
         var now = System.DateTime.Now;
         float hour = now.Hour + now.Minute / 60f + now.Second / 3600f;
-        if (hour < 12f) return 1f;
-        return Mathf.Clamp01((24f - hour) / 12f);
+        if (hour < 12f) return 0f;
+        return Mathf.Clamp01((hour - 12f) / 12f);
     }
 
     /// <summary>
-    /// v1.0.46: day/night factor from the slider's time-of-day. v=1 is
-    /// 12:00 PM (noon), v=0 is 12:00 AM (midnight). Daylight runs noon–7 PM,
-    /// moonlight 7 PM–midnight, with a smooth 1-hour crossfade centered on
-    /// 7 PM (SmoothStep => no pop at the boundary).
+    /// v1.0.49: HARD day/night switch (player request — no gradual fade).
+    /// v=0 is 12:00 PM (noon, bottom), v=1 is 12:00 AM (midnight, top).
+    /// Daylight runs noon until 7:00 PM; dark runs 7:00 PM until midnight.
+    /// Stated generally: dark when hour >= 19 OR hour < 6, daylight
+    /// otherwise — so a 6:00 AM sunrise holds if the range ever extends.
     /// </summary>
     public static float NightFactor(float v)
     {
-        float hour24 = 12f + (1f - v) * 12f; // 12 (noon) .. 24 (midnight)
-        return Mathf.SmoothStep(18.5f, 19.5f, hour24);
+        float hour24 = 12f + v * 12f; // 12 (noon) .. 24 (midnight)
+        return (hour24 >= 19f || hour24 < 6f) ? 1f : 0f;
     }
 
     /// <summary>
@@ -150,21 +155,30 @@ public class SunOrbitControl : MonoBehaviour
     }
 
     /// <summary>
-    /// v1.0.47: the time pill — big warm-white numerals ("12:00") with a
-    /// quiet sage AM/PM beside them, on the meadow-glass badge. The slider
-    /// value t in [0,1] maps linearly to h = 12*t, rounded to the hour: top
-    /// reads 12:00 PM, bottom reads 12:00 AM. Updates live while dragging
-    /// (called from the value-changed listener). The old floating text and
-    /// the tiny angle readout are gone — the clock now carries the slider's
-    /// whole meaning.
+    /// v1.0.49: the slider runs 12 PM (bottom, v=0) to 12 AM (top, v=1) —
+    /// the direction Tyler asked for. The pill reads the selected time
+    /// rounded to the hour: bottom reads 12:00 PM, top reads 12:00 AM.
+    /// Updates live while dragging (called from the value-changed listener).
     /// </summary>
     void UpdateTimeLabel(float v)
     {
-        int hr = Mathf.Clamp(Mathf.RoundToInt(v * 12f), 0, 12);
+        float hour24 = 12f + v * 12f; // 12 (noon) .. 24 (midnight)
+        int h = Mathf.Clamp(Mathf.RoundToInt(hour24), 12, 24);
         if (timeText != null)
-            timeText.text = hr == 12 ? "12:00" : hr == 0 ? "12:00" : $"{hr}:00";
+            timeText.text = (h == 12 || h == 24) ? "12:00" : $"{h - 12}:00";
         if (periodText != null)
-            periodText.text = hr == 12 ? "PM" : "AM";
+            periodText.text = (h >= 12 && h < 24) ? "PM" : "AM";
+    }
+
+    /// <summary>
+    /// v1.0.49: formats an hour for the slider tick labels — 12 → "12 PM",
+    /// 14 → "2 PM", …, 24 → "12 AM".
+    /// </summary>
+    static string FormatHourLabel(int hour24)
+    {
+        if (hour24 <= 12) return "12 PM";
+        if (hour24 >= 24) return "12 AM";
+        return $"{hour24 - 12} PM";
     }
 
     // ------------------------------------------------------------------ UI build
@@ -399,6 +413,58 @@ public class SunOrbitControl : MonoBehaviour
         periodText.alignment = TextAnchor.MiddleLeft;
         periodText.color = MeadowGlassUI.Sage;
         periodText.raycastTarget = false;
+
+        // v1.0.49: hour tick labels — the slider runs 12 PM (bottom, v=0)
+        // to 12 AM (top, v=1). A tick mark every hour, text labels every
+        // 2 hours (12 PM, 2 PM, 4 PM, 6 PM, 8 PM, 10 PM, 12 AM). Labels are
+        // counter-scaled 4x so they render full-size under the slider
+        // root's 0.25x scale; anchors (0.5, v) put each tick at exactly the
+        // track position the knob reaches at that time (same space as
+        // PositionKnob). raycastTarget off — the touch zone owns input.
+        var ticksGO = new GameObject("TickLabels", typeof(RectTransform));
+        ticksGO.transform.SetParent(root.transform, false);
+        var ticksRT = ticksGO.GetComponent<RectTransform>();
+        ticksRT.anchorMin = Vector2.zero; ticksRT.anchorMax = Vector2.one;
+        ticksRT.offsetMin = Vector2.zero; ticksRT.offsetMax = Vector2.zero;
+        float tickCounter = 1f / rrt.localScale.x; // 4x
+        var tickFont = GetDefaultFont();
+        for (int h24 = 12; h24 <= 24; h24++)
+        {
+            float tv = (h24 - 12) / 12f;
+            var tickGO = new GameObject($"Tick{h24}", typeof(RectTransform), typeof(Image));
+            tickGO.transform.SetParent(ticksGO.transform, false);
+            var trt = tickGO.GetComponent<RectTransform>();
+            trt.anchorMin = new Vector2(0.5f, tv);
+            trt.anchorMax = new Vector2(0.5f, tv);
+            trt.pivot = new Vector2(0.5f, 0.5f);
+            trt.localScale = new Vector3(tickCounter, tickCounter, 1f);
+            trt.sizeDelta = new Vector2(10f, 2f); // screen px at net 1x
+            var timg = tickGO.GetComponent<Image>();
+            timg.color = new Color(1f, 1f, 1f, 0.45f);
+            timg.raycastTarget = false;
+            if (h24 % 2 == 0)
+            {
+                var labGO = new GameObject($"Label{h24}", typeof(RectTransform), typeof(Text));
+                labGO.transform.SetParent(ticksGO.transform, false);
+                var lrt = labGO.GetComponent<RectTransform>();
+                lrt.anchorMin = new Vector2(0.5f, tv);
+                lrt.anchorMax = new Vector2(0.5f, tv);
+                lrt.pivot = new Vector2(1f, 0.5f);
+                lrt.localScale = new Vector3(tickCounter, tickCounter, 1f);
+                // anchoredPosition is in the (0.25x-scaled) parent's units:
+                // multiply the desired screen-px offset by the counter so
+                // the label's right edge parks 30px left of the track.
+                lrt.anchoredPosition = new Vector2(-30f * tickCounter, 0f);
+                lrt.sizeDelta = new Vector2(150f, 40f);
+                var txt = labGO.GetComponent<Text>();
+                txt.font = tickFont;
+                txt.fontSize = 26;
+                txt.alignment = TextAnchor.MiddleRight;
+                txt.color = new Color(1f, 1f, 1f, 0.85f);
+                txt.raycastTarget = false;
+                txt.text = FormatHourLabel(h24);
+            }
+        }
 
         // v1.0.48: the generous touch zone — the visible strip renders only
         // ~15px wide on screen (Tyler prefers the slim look), far too narrow

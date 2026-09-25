@@ -99,6 +99,26 @@ public static class CrystalVizScreenshot
         // Portrait, close to Tyler's phone aspect.
         const int w = 720;
         const int h = 1600;
+        // v1.0.49: the sun-slider screenshot pins to noon ("12:00 PM", full
+        // daylight) — render it, then flip the slider to night (~9:36 PM,
+        // past the 7 PM hard switch) and render again, proving both
+        // lighting states plus the tick labels and the thumb-riding pill.
+        CaptureFrame(cam, w, h, Path.Combine("Screenshots", "crystalviz.png"));
+        var orbit = Object.FindFirstObjectByType<SunOrbitControl>();
+        if (orbit != null)
+        {
+            orbit.SetTimeOfDay(0.8f); // ~9:36 PM -> hard night switch
+            Debug.Log("CrystalVizScreenshot: night-state frame at slider 0.8 (~9:36 PM).");
+        }
+        CaptureFrame(cam, w, h, Path.Combine("Screenshots", "crystalviz-night.png"));
+        Debug.Log("CrystalVizScreenshot: saved Screenshots/crystalviz.png + crystalviz-night.png");
+    }
+
+    /// <summary>
+    /// Renders the camera to a PNG at the given path.
+    /// </summary>
+    static void CaptureFrame(Camera cam, int w, int h, string path)
+    {
         var rt = new RenderTexture(w, h, 24, RenderTextureFormat.ARGB32);
         cam.targetTexture = rt;
         cam.Render();
@@ -110,10 +130,8 @@ public static class CrystalVizScreenshot
         RenderTexture.active = null;
         Object.DestroyImmediate(rt);
 
-        Directory.CreateDirectory("Screenshots");
-        var path = Path.Combine("Screenshots", "crystalviz.png");
+        Directory.CreateDirectory(Path.GetDirectoryName(path));
         File.WriteAllBytes(path, tex.EncodeToPNG());
         Object.DestroyImmediate(tex);
-        Debug.Log("CrystalVizScreenshot: saved " + path);
     }
 }
