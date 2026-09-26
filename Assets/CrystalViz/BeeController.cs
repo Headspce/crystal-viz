@@ -825,16 +825,28 @@ public class BeeController : MonoBehaviour
             // Turning is an illusion — a horizontal paper flip (scale.x
             // sweeping through edge-on) driven by camera-space motion, plus
             // a slight paper tilt with vertical movement.
+            // v1.0.54: fireflies keep the camera billboard but their facing
+            // is LOCKED — no paper flip, no banking tilt — so they keep
+            // the illusion of facing one way only (player request). Bees
+            // keep the existing flip/tilt behavior.
             if (mainCam != null)
             {
                 bee.bodyT.rotation = mainCam.transform.rotation;
-                Vector3 velW = (bee.bodyT.position - bee.lastPos) / Mathf.Max(dt, 0.0001f);
-                bee.lastPos = bee.bodyT.position;
-                Vector3 velC = mainCam.transform.InverseTransformDirection(velW);
-                if (Mathf.Abs(velC.x) > 0.2f) bee.flipTarget = velC.x > 0f ? 1f : -1f;
-                bee.flipX = Mathf.MoveTowards(bee.flipX, bee.flipTarget, dt * 9f);
-                float bank = Mathf.Clamp(-velC.y * 5f, -12f, 12f);
-                bee.bodyT.Rotate(0f, 0f, bank);
+                if (bee.isFirefly)
+                {
+                    bee.flipX = Mathf.MoveTowards(bee.flipX, 1f, dt * 9f);
+                    bee.lastPos = bee.bodyT.position;
+                }
+                else
+                {
+                    Vector3 velW = (bee.bodyT.position - bee.lastPos) / Mathf.Max(dt, 0.0001f);
+                    bee.lastPos = bee.bodyT.position;
+                    Vector3 velC = mainCam.transform.InverseTransformDirection(velW);
+                    if (Mathf.Abs(velC.x) > 0.2f) bee.flipTarget = velC.x > 0f ? 1f : -1f;
+                    bee.flipX = Mathf.MoveTowards(bee.flipX, bee.flipTarget, dt * 9f);
+                    float bank = Mathf.Clamp(-velC.y * 5f, -12f, 12f);
+                    bee.bodyT.Rotate(0f, 0f, bank);
+                }
             }
             // v1.0.51: fireflies render slightly larger so the glow reads.
             float formS = bee.isFirefly ? 1.6f : 1f;
