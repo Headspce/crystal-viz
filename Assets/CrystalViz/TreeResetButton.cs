@@ -635,8 +635,8 @@ public class TreeResetButton : MonoBehaviour
         inventoryPanelRt.anchoredPosition = Vector2.zero;
         inventoryPanelRt.sizeDelta = new Vector2(680f, 620f);
         var panelImg = panelGO.GetComponent<Image>();
-        panelImg.sprite = MeadowGlassUI.MakeGlassPill(256, 100);
-        panelImg.type = Image.Type.Sliced;
+        // v1.0.55 diagnostic: plain color (no sprite) to isolate render issue.
+        panelImg.color = new Color(0.9f, 0.2f, 0.2f, 0.9f);
 
         // Six empty slots, 3 columns x 2 rows.
         var slotSprite = MeadowGlassUI.MakeRoundedSquare(160, 30f);
