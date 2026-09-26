@@ -11,20 +11,21 @@ using UnityEngine.UI;
 /// fanning icons, and flips back when collapsed. v1.0.47: every toggle fires
 /// a small feedback ceremony — a gold ring pulses out from the disc — and
 /// taps answer back in plain-English toasts. Tapping the arrow slides three
-/// buttons out from behind it toward the center — the light-bulb button
-/// (v1.0.55: toggles the right-side lighting slider panel with a pop
-/// in/out), the day/night button (v1.0.55: a sun-and-moon glyph on the star
-/// that snaps the stepped slider to 12 PM / 12 AM, flipping the lighting
-/// and the bee<->firefly transformation through the existing hour
-/// mechanism), and one placeholder (dots, no function yet) — and tapping
-/// the arrow again collapses everything back. The slide is
+/// buttons out from behind it toward the center — the sapling button
+/// (v1.0.55: opens the inventory prototype — a frosted overlay with six
+/// empty rounded slots), the day/night button (v1.0.55: a sun-and-moon
+/// glyph on the star that snaps the time engine to 12 PM / 12 AM, flipping
+/// the lighting and the bee<->firefly transformation through the existing
+/// hour mechanism), and one placeholder (dots, no function yet) — and
+/// tapping the arrow again collapses everything back. The slide is
 /// staggered with an overshoot ease; the three buttons fan out on even 25°
 /// steps along a common radius so the gaps between them are uniform.
 ///
-/// v1.0.55: the old infinity reset mark (ResetToSprout) is gone — button 0
-/// is now the lighting-panel toggle. The day/night glyph re-renders
-/// whenever the lighting state flips so the button always reads the
-/// current state (bright sun by day, bright moon by night).
+/// v1.0.55: the old infinity reset mark (ResetToSprout) is gone, and so is
+/// the lighting slider (player request) — button 0 is now the
+/// sapling/inventory button. The day/night glyph re-renders whenever the
+/// lighting state flips so the button always reads the current state
+/// (bright sun by day, bright moon by night).
 ///
 /// Raw Input is used (not uGUI Button + EventSystem) to match the tree's tap
 /// detection, which also reads Input directly. TreeGrowthController swallows
@@ -39,9 +40,9 @@ public class TreeResetButton : MonoBehaviour
 {
     public TreeGrowthController controller;
 
-    // The three slide-out buttons: 0 = light bulb (toggles the
-    // lighting slider panel), 1 = day/night (snaps the stepped slider to
-    // 12 PM / 12 AM), 2 = placeholder.
+    // The three slide-out buttons: 0 = sapling (opens the inventory
+    // prototype), 1 = day/night (snaps the time engine to 12 PM / 12 AM),
+    // 2 = placeholder.
     class MenuButton
     {
         public RectTransform rt;
@@ -68,6 +69,7 @@ public class TreeResetButton : MonoBehaviour
     bool initialized;
     float arrowPunch;
     float arrowAngle = 180f; // v1.0.46: collapsed = SW (180°); expanded = NE (0°)
+    GameObject menuCanvasGO; // v1.0.55: stored so BuildInventory can parent to it
 
     // v1.0.55: the day/night button's glyph re-renders on state flips so it
     // always reads the current lighting (bright sun by day, bright moon by
@@ -76,6 +78,17 @@ public class TreeResetButton : MonoBehaviour
     Image dayNightGlyphImg;
     Texture2D dayNightGlyphTex;
     bool dayNightIsNight;
+
+    // v1.0.55: inventory prototype (sapling button). A frosted full-screen
+    // overlay with a small centered panel holding six empty rounded slots.
+    // Taps outside the panel close it; while open, MenuHitTest swallows
+    // every tap so the tree never grows underneath it.
+    public static bool InventoryOpen { get; private set; }
+    GameObject inventoryRoot;
+    RectTransform inventoryPanelRt;
+    float inventoryT;   // 0 = closed, 1 = open
+    float inventoryDir; // +1 opening, -1 closing, 0 idle
+    const float InventoryPopDur = 0.26f;
 
     void Awake()
     {
@@ -104,6 +117,10 @@ public class TreeResetButton : MonoBehaviour
     /// </summary>
     public bool MenuHitTest(Vector2 screenPos)
     {
+        // v1.0.55: while the inventory prototype is open (or animating),
+        // EVERY tap counts as menu UI — the tree must never grow under the
+        // frosted overlay.
+        if (InventoryOpen || inventoryDir != 0f) return true;
         if (arrowRect != null &&
             RectTransformUtility.RectangleContainsScreenPoint(arrowRect, screenPos, null))
             return true;
@@ -156,10 +173,9 @@ public class TreeResetButton : MonoBehaviour
     }
 
     /// <summary>
-    /// v1.0.50: lazy handle on the sun slider — the corner menu drives the
-    /// lighting panel (v1.0.55: the light-bulb button) and the day/night
-    /// snap (v1.0.55: the star button) through it. Resolved on first tap so
-    /// menu/slider build order never matters.
+    /// v1.0.50: lazy handle on the time-of-day engine — the corner menu's
+    /// day/night snap (v1.0.55: the star button) drives it. Resolved on
+    /// first tap so menu/engine build order never matters.
     /// </summary>
     SunOrbitControl orbitRef;
     SunOrbitControl Orbit
@@ -205,8 +221,20 @@ public class TreeResetButton : MonoBehaviour
         }
         if (pressed)
         {
+            // v1.0.55: while the inventory prototype is open it owns every
+            // tap — a tap outside the panel closes it, taps on the panel do
+            // nothing (the slots are empty for now).
+            if (InventoryOpen)
+            {
+                if (inventoryPanelRt == null ||
+                    !RectTransformUtility.RectangleContainsScreenPoint(
+                        inventoryPanelRt, pos, null))
+                {
+                    SetInventoryOpen(false);
+                }
+            }
             // Null camera is correct: the menu lives on a ScreenSpaceOverlay canvas.
-            if (arrowRect != null &&
+            else if (arrowRect != null &&
                 RectTransformUtility.RectangleContainsScreenPoint(arrowRect, pos, null))
             {
                 ToggleMenu();
@@ -222,34 +250,25 @@ public class TreeResetButton : MonoBehaviour
                     {
                         if (i == 0)
                         {
-                            // v1.0.55: the light-bulb button took over the
-                            // lighting-panel toggle — it pops the right-side
-                            // lighting slider panel in/out (the panel starts
-                            // hidden). The old infinity reset is gone.
+                            // v1.0.55: the sapling button opens the
+                            // inventory prototype — a frosted overlay with
+                            // six empty rounded slots. Tap outside the
+                            // panel to close it.
                             b.punch = 1f;
-                            var o = Orbit;
-                            if (o != null)
-                            {
-                                o.ToggleSliderPanel();
-                                MeadowToast.Show(o.IsSliderPanelVisible
-                                    ? "Lighting slider popped in — drag to change the light."
-                                    : "Lighting slider tucked away.");
-                            }
-                            else
-                            {
-                                MeadowToast.Show("Still growing — this one's coming soon.");
-                            }
-                            Debug.Log("TreeResetButton: light-bulb button toggled the lighting slider panel.");
+                            SetInventoryOpen(true);
+                            MeadowToast.Show("Inventory sprouted — six empty slots, for now.");
+                            Debug.Log("TreeResetButton: sapling button opened the inventory prototype.");
                         }
                         else if (i == 1)
                         {
-                            // v1.0.55: the star button is now the day/night
-                            // toggle — it snaps the stepped slider to 12 PM
+                            // v1.0.55: the star button is the day/night
+                            // toggle — it snaps the time engine to 12 PM
                             // (day) or 12 AM (night) based on the current
-                            // lighting state, so the slider position, the
-                            // hard 7 PM / 6 AM lighting switch, and the
-                            // bee<->firefly transformation all stay
-                            // consistent through the existing hour mechanism.
+                            // lighting state, so the hard 7 PM / 6 AM
+                            // lighting switch and the bee<->firefly
+                            // transformation stay consistent through the
+                            // existing hour mechanism. (The lighting slider
+                            // is gone — this button is the only time control.)
                             b.punch = 1f;
                             var o = Orbit;
                             if (o != null)
@@ -267,7 +286,7 @@ public class TreeResetButton : MonoBehaviour
                             {
                                 MeadowToast.Show("Still growing — this one's coming soon.");
                             }
-                            Debug.Log("TreeResetButton: day/night button snapped the slider.");
+                            Debug.Log("TreeResetButton: day/night button snapped the time engine.");
                         }
                         else
                         {
@@ -337,9 +356,38 @@ public class TreeResetButton : MonoBehaviour
         if (glyphRt != null)
             glyphRt.localRotation = Quaternion.Euler(0f, 0f, arrowAngle);
 
-        // v1.0.55: keep the day/night glyph honest — the slider can also be
-        // dragged by hand, so re-render the button's icon whenever the
-        // lighting state flips outside the button's own tap path.
+        // v1.0.55: inventory pop animation — the panel overshoots in like
+        // the corner menu, and the frosted veil fades with it.
+        if (inventoryDir != 0f && inventoryRoot != null)
+        {
+            float idt = Time.deltaTime;
+            inventoryT = Mathf.Clamp01(inventoryT + inventoryDir * idt / InventoryPopDur);
+            float ie = inventoryDir > 0f
+                ? EaseOutBack(inventoryT)
+                : inventoryT * inventoryT * (3f - 2f * inventoryT);
+            float s = Mathf.Max(0.001f, ie);
+            if (inventoryPanelRt != null)
+                inventoryPanelRt.localScale = new Vector3(s, s, 1f);
+            var icg = inventoryRoot.GetComponent<CanvasGroup>();
+            if (icg != null) icg.alpha = Mathf.Clamp01(inventoryT);
+            if (inventoryT <= 0f)
+            {
+                inventoryDir = 0f;
+                if (icg != null) icg.alpha = 0f;
+                inventoryRoot.SetActive(false);
+            }
+            else if (inventoryT >= 1f)
+            {
+                inventoryDir = 0f;
+                if (inventoryPanelRt != null)
+                    inventoryPanelRt.localScale = Vector3.one;
+                if (icg != null) icg.alpha = 1f;
+            }
+        }
+
+        // v1.0.55: keep the day/night glyph honest — re-render the button's
+        // icon whenever the lighting state flips outside the button's own
+        // tap path.
         var orbit = Orbit;
         if (orbit != null && dayNightGlyphImg != null)
         {
@@ -383,6 +431,7 @@ public class TreeResetButton : MonoBehaviour
         // but the CI screenshot path re-points canvases at the camera
         // (ScreenSpaceCamera), where inherited 3D scales can affect the UI.
         var canvasGO = new GameObject("ResetButtonCanvas");
+        menuCanvasGO = canvasGO;
         var canvas = canvasGO.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         canvas.sortingOrder = 90; // below the stage avatar canvas (100); different corner anyway
@@ -450,7 +499,7 @@ public class TreeResetButton : MonoBehaviour
         // v1.0.46: fan toward the screen center on EVEN spacing — equal 25°
         // steps (20/45/70) on a common 280px radius. Adjacent buttons sit
         // ~122px apart center-to-center, so the 100px discs keep a uniform
-        // ~22px gap instead of touching. The bulb leads at 45°.
+        // ~22px gap instead of touching. The sapling leads at 45°.
         float[] angles = { 20f, 45f, 70f };
         float[] dists = { 280f, 280f, 280f };
         for (int i = 0; i < 3; i++)
@@ -494,13 +543,13 @@ public class TreeResetButton : MonoBehaviour
             bGlyphRt.anchoredPosition = Vector2.zero;
             bGlyphRt.sizeDelta = new Vector2(64f, 64f);
             var bImg = bGlyph.GetComponent<Image>();
-            // v1.0.55: button 0 wears the light-bulb glyph (lighting-panel
-            // toggle); button 1 wears the state-aware day/night glyph —
+            // v1.0.55: button 0 wears the sapling glyph (inventory
+            // prototype); button 1 wears the state-aware day/night glyph —
             // its icon is cached and re-rendered on every lighting flip.
             Texture2D glyphTex;
             if (i == 0)
             {
-                glyphTex = MeadowGlassUI.MakeLightBulbIcon(160);
+                glyphTex = MeadowGlassUI.MakeSaplingIcon(160);
             }
             else if (i == 1)
             {
@@ -526,7 +575,119 @@ public class TreeResetButton : MonoBehaviour
 
             subButtons[i] = b;
         }
+        BuildInventory();
         Debug.Log($"TreeResetButton: corner menu built (arrow at {arrowCenter}, 3 sub-buttons).");
+    }
+
+    // ------------------------------------------------- inventory prototype
+
+    /// <summary>
+    /// v1.0.55: builds the inventory prototype overlay — a frosted
+    /// full-screen veil (prototype stand-in for a real blur) with a small
+    /// centered meadow-glass panel holding six empty rounded slots in a
+    /// 3x2 grid. Starts closed.
+    /// </summary>
+    void BuildInventory()
+    {
+        if (inventoryRoot != null || menuCanvasGO == null) return;
+        inventoryRoot = new GameObject("InventoryOverlay", typeof(RectTransform));
+        inventoryRoot.transform.SetParent(menuCanvasGO.transform, false);
+        var rootRt = inventoryRoot.GetComponent<RectTransform>();
+        rootRt.anchorMin = Vector2.zero;
+        rootRt.anchorMax = Vector2.one;
+        rootRt.offsetMin = Vector2.zero;
+        rootRt.offsetMax = Vector2.zero;
+        var cg = inventoryRoot.AddComponent<CanvasGroup>();
+        cg.alpha = 0f;
+
+        var frostGO = new GameObject("Frost", typeof(RectTransform), typeof(Image));
+        frostGO.transform.SetParent(inventoryRoot.transform, false);
+        var frostRt = frostGO.GetComponent<RectTransform>();
+        frostRt.anchorMin = Vector2.zero;
+        frostRt.anchorMax = Vector2.one;
+        frostRt.offsetMin = Vector2.zero;
+        frostRt.offsetMax = Vector2.zero;
+        frostGO.GetComponent<Image>().color = new Color(0.03f, 0.06f, 0.04f, 0.55f);
+
+        var panelGO = new GameObject("InventoryPanel", typeof(RectTransform), typeof(Image));
+        panelGO.transform.SetParent(inventoryRoot.transform, false);
+        inventoryPanelRt = panelGO.GetComponent<RectTransform>();
+        inventoryPanelRt.anchorMin = new Vector2(0.5f, 0.5f);
+        inventoryPanelRt.anchorMax = new Vector2(0.5f, 0.5f);
+        inventoryPanelRt.pivot = new Vector2(0.5f, 0.5f);
+        inventoryPanelRt.anchoredPosition = Vector2.zero;
+        inventoryPanelRt.sizeDelta = new Vector2(680f, 620f);
+        var panelImg = panelGO.GetComponent<Image>();
+        panelImg.sprite = MeadowGlassUI.MakeGlassPill(256, 100);
+        panelImg.type = Image.Type.Sliced;
+
+        // Six empty slots, 3 columns x 2 rows.
+        var slotSprite = MeadowGlassUI.MakeRoundedSquare(160, 30f);
+        for (int r = 0; r < 2; r++)
+        {
+            for (int c = 0; c < 3; c++)
+            {
+                var slotGO = new GameObject($"Slot_{r}_{c}",
+                    typeof(RectTransform), typeof(Image));
+                slotGO.transform.SetParent(panelGO.transform, false);
+                var srt = slotGO.GetComponent<RectTransform>();
+                srt.anchorMin = new Vector2(0.5f, 0.5f);
+                srt.anchorMax = new Vector2(0.5f, 0.5f);
+                srt.pivot = new Vector2(0.5f, 0.5f);
+                srt.anchoredPosition = new Vector2((c - 1) * 190f, (0.5f - r) * 190f);
+                srt.sizeDelta = new Vector2(150f, 150f);
+                var simg = slotGO.GetComponent<Image>();
+                simg.sprite = slotSprite;
+                simg.preserveAspect = true;
+            }
+        }
+
+        inventoryRoot.SetActive(false);
+        Debug.Log("TreeResetButton: inventory prototype built (6 empty slots).");
+    }
+
+    /// <summary>
+    /// v1.0.55: opens/closes the inventory prototype with a pop. While open
+    /// (or animating), MenuHitTest swallows every tap so the tree never
+    /// grows under the overlay.
+    /// </summary>
+    void SetInventoryOpen(bool open)
+    {
+        if (inventoryRoot == null) BuildInventory();
+        if (inventoryRoot == null) return;
+        if (open)
+        {
+            if (InventoryOpen && inventoryDir == 0f) return;
+            InventoryOpen = true;
+            inventoryRoot.SetActive(true);
+            inventoryPanelRt.localScale = new Vector3(0.001f, 0.001f, 1f);
+            inventoryT = 0f;
+            inventoryDir = 1f;
+        }
+        else
+        {
+            if (!InventoryOpen && inventoryDir == 0f) return;
+            InventoryOpen = false;
+            inventoryDir = -1f;
+        }
+    }
+
+    /// <summary>
+    /// v1.0.55: CI screenshot helper — snaps the inventory prototype open
+    /// instantly (edit mode runs no Update, so the pop animation never plays).
+    /// </summary>
+    public void SnapInventoryOpenForScreenshot()
+    {
+        if (!initialized) Initialize();
+        if (inventoryRoot == null) BuildInventory();
+        if (inventoryRoot == null) return;
+        InventoryOpen = true;
+        inventoryT = 1f;
+        inventoryDir = 0f;
+        inventoryRoot.SetActive(true);
+        inventoryPanelRt.localScale = Vector3.one;
+        var cg = inventoryRoot.GetComponent<CanvasGroup>();
+        if (cg != null) cg.alpha = 1f;
     }
 
     /// <summary>

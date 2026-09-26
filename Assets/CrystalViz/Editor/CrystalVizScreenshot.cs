@@ -5,8 +5,8 @@ using UnityEngine;
 
 /// <summary>
 /// CI visual verification for CrystalViz: opens the scene, runs the
-/// runtime bootstrap in edit mode (Awake never runs in edit mode), builds the
-/// slider UI, and renders the main camera to Screenshots/crystalviz.png.
+/// runtime bootstrap in edit mode (Awake never runs in edit mode), and
+/// renders the main camera to Screenshots/crystalviz.png.
 /// Invoked from GitHub Actions via:
 ///   -executeMethod CrystalVizScreenshot.Capture
 /// Must run WITHOUT -nographics (needs a GL context; the workflow wraps it
@@ -70,10 +70,9 @@ public static class CrystalVizScreenshot
         StageIndicatorUI.TestSafeAreaOverride = new Rect(0f, 0f, 720f, 1600f - 90f);
         bootstrap.BuildScene(); // edit-mode equivalent of Awake
 
-        // SunOrbitControl IS attached by the bootstrap (player light slider),
-        // and BuildScene() builds its UI explicitly in edit mode (Start
-        // never runs in edit mode) — so the slider renders in captures AND
-        // in player builds from the same code path.
+        // SunOrbitControl IS attached by the bootstrap (time-of-day
+        // engine), and BuildScene() resolves it explicitly in edit mode
+        // (Start never runs in edit mode).
 
         var cam = Camera.main;
         if (cam == null)
@@ -100,21 +99,12 @@ public static class CrystalVizScreenshot
         // Portrait, close to Tyler's phone aspect.
         const int w = 720;
         const int h = 1600;
-        // v1.0.50: the lighting slider panel starts HIDDEN (the corner
-        // menu's star button pops it in/out at runtime) — pop it in for the
-        // captures, and snap the corner menu open so the sun+moon star
-        // button shows. Both snap instantly in edit mode (no Update there).
-        // v1.0.49: the sun-slider screenshot pins to noon ("12:00 PM", full
-        // daylight) — render it, then flip the slider to night and render
-        // again, proving both lighting states on the clean solid slider.
-        // (v1.0.50: tick labels and the clock pill are gone. v1.0.51: the
-        // day/night button is gone and the slider is stepped — 13 hourly
-        // detents — so 0.8 snaps to 10 PM, still past the 7 PM hard switch.
-        // Bees only exist in play mode, so the night capture builds the
-        // firefly preview squad explicitly (glow bodies, halos, ground
-        // light pools) — that's the CI proof of the transformation.)
+        // v1.0.55: the lighting slider is GONE (player request — removed
+        // from the right edge entirely). The corner menu's day/night button
+        // is the only time control now; SetTimeOfDay drives the same engine.
+        // The menu snaps open so the sapling + day/night buttons show.
+        // The day/night capture pins to night via SetTimeOfDay(0.8f).
         var orbit = Object.FindFirstObjectByType<SunOrbitControl>();
-        if (orbit != null) orbit.SetSliderPanelVisible(true);
         var menu = Object.FindFirstObjectByType<TreeResetButton>();
         if (menu != null) menu.SnapExpandedForScreenshot();
         CaptureFrame(cam, w, h, Path.Combine("Screenshots", "crystalviz.png"));
@@ -124,7 +114,7 @@ public static class CrystalVizScreenshot
             Debug.Log("CrystalVizScreenshot: night-state frame at slider 0.8 (~9:36 PM).");
         }
         // v1.0.55: the day/night button's glyph is state-aware — re-sync it
-        // now that the slider is at night (edit mode runs no Update).
+        // now that the time is at night (edit mode runs no Update).
         var menu2 = Object.FindFirstObjectByType<TreeResetButton>();
         if (menu2 != null) menu2.SyncDayNightGlyphForScreenshot();
         // v1.0.51: the BeeController's Start never runs in edit mode — build
@@ -133,7 +123,12 @@ public static class CrystalVizScreenshot
         var beeCtl = Object.FindFirstObjectByType<BeeController>();
         if (beeCtl != null) beeCtl.BuildPreview();
         CaptureFrame(cam, w, h, Path.Combine("Screenshots", "crystalviz-night.png"));
-        Debug.Log("CrystalVizScreenshot: saved Screenshots/crystalviz.png + crystalviz-night.png");
+        // v1.0.55: inventory prototype proof — snap it open and capture the
+        // frosted overlay + six empty slots.
+        var menu3 = Object.FindFirstObjectByType<TreeResetButton>();
+        if (menu3 != null) menu3.SnapInventoryOpenForScreenshot();
+        CaptureFrame(cam, w, h, Path.Combine("Screenshots", "crystalviz-inventory.png"));
+        Debug.Log("CrystalVizScreenshot: saved Screenshots/crystalviz.png + crystalviz-night.png + crystalviz-inventory.png");
     }
 
     /// <summary>

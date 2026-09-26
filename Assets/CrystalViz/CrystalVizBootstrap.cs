@@ -69,11 +69,11 @@ public class CrystalVizBootstrap : MonoBehaviour
         BuildHorizonHills();
         BuildSun();
         BuildDiorama();
-        // Player light control: the right-edge sun slider is back by player
-        // request (Tyler missed the light adjustment bar). SunOrbitControl
-        // builds its UI in Start(), which never runs in the CI screenshot
-        // path (edit mode), so BuildForScreenshot() builds it explicitly —
-        // the timestamp label must be verifiable in captures.
+        // Time-of-day engine (v1.0.55: the right-edge slider is gone by player
+        // request — the corner menu's day/night button is the only time
+        // control now). SunOrbitControl builds no UI anymore; Start() never
+        // runs in the CI screenshot path (edit mode), so BuildForScreenshot()
+        // resolves it explicitly.
         var sunCtrl = gameObject.AddComponent<SunOrbitControl>();
         sunCtrl.bootstrap = this;
         sunCtrl.BuildForScreenshot();
@@ -664,7 +664,7 @@ public class CrystalVizBootstrap : MonoBehaviour
     /// OldTree. ParametricTree builds the geometry, TreeGrowthController owns
     /// tap input + persistence, StageIndicatorUI shows the stage avatar, and
     /// TreeResetButton adds the bottom-left corner menu (arrow + fan-out
-    /// buttons: light-bulb lighting-panel toggle, day/night slider snap,
+    /// buttons: sapling inventory prototype, day/night snap,
     /// placeholder) at the bottom-left.
     /// NOTE: the CI screenshot path builds the scene in edit mode, where
     /// AddComponent does NOT fire Awake() and Start()/Update() never run.

@@ -421,4 +421,113 @@ public static class MeadowGlassUI
         }
         return inside;
     }
+
+    /// <summary>
+    /// v1.0.55: sapling glyph — the inventory button's symbol. A young
+    /// sprout: a gently curving stem with two spring-green leaves and a
+    /// terminal bud. Procedural (no image assets).
+    /// </summary>
+    public static Texture2D MakeSaplingIcon(int size)
+    {
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        tex.filterMode = FilterMode.Bilinear;
+        var stemCol = new Color(0.45f, 0.60f, 0.32f);
+        var leafCol = new Color(0.38f, 0.78f, 0.36f);
+        var budCol = new Color(0.55f, 0.88f, 0.42f);
+        float S = size;
+        // Stem: two segments for a gentle S-curve, bottom (80,18) to top (82,98).
+        Vector2 s0 = new Vector2(S * 0.50f, S * 0.12f);
+        Vector2 s1 = new Vector2(S * 0.47f, S * 0.42f);
+        Vector2 s2 = new Vector2(S * 0.52f, S * 0.62f);
+        // Leaves: rotated ellipses.
+        Vector2 l1c = new Vector2(S * 0.34f, S * 0.60f);
+        Vector2 l2c = new Vector2(S * 0.68f, S * 0.68f);
+        Vector2 budC = new Vector2(S * 0.52f, S * 0.78f);
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                Vector2 p = new Vector2(x + 0.5f, y + 0.5f);
+                // Stem: distance to the two-segment curve, ~5px half-width.
+                float dStem = Mathf.Min(
+                    SegmentDist(p, s0, s1), SegmentDist(p, s1, s2));
+                float stemA = 1f - SStep(3.5f, 6.5f, dStem);
+                // Leaf 1: ellipse radii (30,14), rotated +32°.
+                float leafA = EllipseAlpha(p, l1c, S * 0.19f, S * 0.085f, 32f);
+                // Leaf 2: ellipse radii (30,14), rotated -30°.
+                leafA = Mathf.Max(leafA, EllipseAlpha(p, l2c, S * 0.19f, S * 0.085f, -30f));
+                // Terminal bud: small upright ellipse.
+                float budA = EllipseAlpha(p, budC, S * 0.06f, S * 0.11f, 0f);
+                float a = Mathf.Max(stemA, Mathf.Max(leafA, budA));
+                Color col = budA >= leafA && budA >= stemA ? budCol
+                    : leafA >= stemA ? leafCol : stemCol;
+                tex.SetPixel(x, y, new Color(col.r, col.g, col.b, a));
+            }
+        }
+        tex.Apply();
+        return tex;
+    }
+
+    static float SegmentDist(Vector2 p, Vector2 a, Vector2 b)
+    {
+        Vector2 ab = b - a;
+        float t = Mathf.Clamp01(Vector2.Dot(p - a, ab) / Mathf.Max(ab.sqrMagnitude, 1e-6f));
+        return Vector2.Distance(p, a + ab * t);
+    }
+
+    static float EllipseAlpha(Vector2 p, Vector2 c, float rx, float ry, float rotDeg)
+    {
+        float rad = rotDeg * Mathf.Deg2Rad;
+        float co = Mathf.Cos(rad), si = Mathf.Sin(rad);
+        Vector2 d = p - c;
+        // Rotate the point back by -rot, then test the axis-aligned ellipse.
+        float lx = d.x * co + d.y * si;
+        float ly = -d.x * si + d.y * co;
+        float e = (lx * lx) / (rx * rx) + (ly * ly) / (ry * ry);
+        return 1f - SStep(0.72f, 1.0f, e);
+    }
+
+    /// <summary>
+    /// v1.0.55: small rounded square — the empty inventory slot. A faint
+    /// sage hairline on a whisper of glass, so empty slots read as
+    /// waiting, not missing.
+    /// </summary>
+    public static Sprite MakeRoundedSquare(int size, float cornerR)
+    {
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        tex.filterMode = FilterMode.Bilinear;
+        float cx = size / 2f, cy = size / 2f;
+        float hx = size / 2f, hy = size / 2f; // half extents
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                // Rounded-rect SDF.
+                float qx = Mathf.Abs(x + 0.5f - cx) - hx + cornerR;
+                float qy = Mathf.Abs(y + 0.5f - cy) - hy + cornerR;
+                float ax = Mathf.Max(qx, 0f), ay = Mathf.Max(qy, 0f);
+                float d = Mathf.Min(Mathf.Max(qx, qy), 0f)
+                          + Mathf.Sqrt(ax * ax + ay * ay) - cornerR;
+                float edge = 1f - SStep(-1.5f, 1.5f, d);
+                float fill = 1f - SStep(-cornerR + 2f, -2f, d);
+                // Whisper of glass with a gentle top-light.
+                float dy = y - cy + 0.5f;
+                float light = 1f + 0.08f * Mathf.Clamp01(-dy / cy);
+                Color c = new Color(
+                    Mathf.Clamp01(GlassDeep.r * light),
+                    Mathf.Clamp01(GlassDeep.g * light),
+                    Mathf.Clamp01(GlassDeep.b * light),
+                    0.45f * fill);
+                // Faint sage hairline just inside the edge.
+                float ring = 1f - Mathf.Clamp01((Mathf.Abs(d + 3f) - 1.5f) / 1.5f);
+                c = Color.Lerp(c, new Color(Sage.r, Sage.g, Sage.b, 0.55f),
+                    ring * fill);
+                c.a = Mathf.Clamp01(c.a) * edge;
+                tex.SetPixel(x, y, c);
+            }
+        }
+        tex.Apply();
+        return Sprite.Create(tex, new Rect(0f, 0f, size, size),
+            new Vector2(0.5f, 0.5f), 100f, 0u, SpriteMeshType.FullRect);
+    }
 }

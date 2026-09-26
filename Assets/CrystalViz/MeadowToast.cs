@@ -4,10 +4,10 @@ using System.Collections.Generic;
 
 /// <summary>
 /// v1.0.47: the plain-language feedback voice of CrystalViz (research
-/// principles 5, 6, 12). A single bottom-center meadow-glass toast that
+/// principles 5, 6, 12). A single center-screen meadow-glass toast that
 /// confirms actions in short English — resets, placeholder taps, and two
-/// one-time first-run hints (corner menu + sun slider) shown after the boot
-/// wipe clears. Play-mode only: the CI edit-mode screenshot path never
+/// one-time first-run hints (corner menu + day/night star) shown after the
+/// boot wipe clears. Play-mode only: the CI edit-mode screenshot path never
 /// creates it, so captures stay deterministic.
 /// </summary>
 public class MeadowToast : MonoBehaviour
@@ -93,12 +93,12 @@ public class MeadowToast : MonoBehaviour
         var pillGO = new GameObject("ToastPill", typeof(RectTransform), typeof(Image));
         pillGO.transform.SetParent(canvasGO.transform, false);
         pillRt = pillGO.GetComponent<RectTransform>();
-        pillRt.anchorMin = new Vector2(0.5f, 0f);
-        pillRt.anchorMax = new Vector2(0.5f, 0f);
+        pillRt.anchorMin = new Vector2(0.5f, 0.5f);
+        pillRt.anchorMax = new Vector2(0.5f, 0.5f);
         pillRt.pivot = new Vector2(0.5f, 0.5f);
-        baseY = 210f;
+        baseY = 0f;
         pillRt.anchoredPosition = new Vector2(0f, baseY);
-        pillRt.sizeDelta = new Vector2(860f, 100f);
+        pillRt.sizeDelta = new Vector2(760f, 88f);
         var pillImg = pillGO.GetComponent<Image>();
         pillImg.sprite = MeadowGlassUI.MakeGlassPill(256, 100);
         pillImg.type = Image.Type.Sliced;
@@ -113,7 +113,7 @@ public class MeadowToast : MonoBehaviour
         trt.offsetMax = new Vector2(-36f, -8f);
         toastText = textGO.GetComponent<Text>();
         toastText.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        toastText.fontSize = 34;
+        toastText.fontSize = 28;
         toastText.alignment = TextAnchor.MiddleCenter;
         toastText.color = MeadowGlassUI.WarmWhite;
     }
@@ -140,7 +140,9 @@ public class MeadowToast : MonoBehaviour
             {
                 if (PlayerPrefs.GetInt("cv_hint_sun_seen", 0) == 0)
                 {
-                    Show("Drag the sun tab on the right edge to change the time.");
+                    // v1.0.55: the slider is gone — the star button is the
+                    // day/night control now.
+                    Show("Tap the star, bottom-left, for day and night.");
                     PlayerPrefs.SetInt("cv_hint_sun_seen", 1);
                     PlayerPrefs.Save();
                 }

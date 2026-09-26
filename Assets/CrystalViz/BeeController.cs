@@ -40,6 +40,7 @@ public class BeeController : MonoBehaviour
     List<Vector3> nearHeads = new List<Vector3>();
     List<BeeAgent> bees = new List<BeeAgent>();
     List<PopFX> pops = new List<PopFX>();
+    List<SparkFX> sparkFxs = new List<SparkFX>(); // v1.0.55: firefly spark showers
 
     // Swipe tracking (screen pixels) for the pop interaction.
     List<Vector2> swipePts = new List<Vector2>();
@@ -100,6 +101,28 @@ public class BeeController : MonoBehaviour
     {
         public GameObject root;
         public List<Petal> petals = new List<Petal>();
+        public float age;
+    }
+
+    // v1.0.55: one spark in a firefly's burst — a tiny warm mote with
+    // parametric physics. Sparks arc out, then gravity pulls them down;
+    // the ones that reach the meadow rest on the ground and fizzle out.
+    // (Parametric, like the petals — no rigidbodies, cheap on the phone.)
+    class Spark
+    {
+        public Transform t;
+        public Vector3 vel;
+        public float life;
+        public float age;
+        public Material mat;
+        public float size;
+        public bool grounded;
+    }
+
+    class SparkFX
+    {
+        public GameObject root;
+        public List<Spark> sparks = new List<Spark>();
         public float age;
     }
 
@@ -716,6 +739,12 @@ public class BeeController : MonoBehaviour
             Destroy(pops[i].root);
         }
         pops.Clear();
+        for (int i = sparkFxs.Count - 1; i >= 0; i--)
+        {
+            foreach (var s in sparkFxs[i].sparks) Destroy(s.mat);
+            Destroy(sparkFxs[i].root);
+        }
+        sparkFxs.Clear();
     }
 
     void Update()
@@ -725,6 +754,7 @@ public class BeeController : MonoBehaviour
             UpdateBee(bee, dt);
         UpdateSwipe();
         UpdatePops(dt);
+        UpdateSparks(dt);
         UpdateSpawnBursts(dt);
     }
 
@@ -972,9 +1002,9 @@ public class BeeController : MonoBehaviour
             swiping = true;
             swipePts.Clear();
             swipePts.Add(pos);
-            // A swipe that starts on UI (the sun slider, reset button) is a
-            // UI gesture, not a bee pop.
-            swipeBlockedByUI = IsPointerOverUI(pos);
+            // A swipe that starts on UI (the corner menu, the inventory
+            // prototype) is a UI gesture, not a bee pop.
+            swipeBlockedByUI = IsPointerOverUI(pos) || TreeResetButton.InventoryOpen;
             // Tap-to-pop: a press that lands right on a bee pops it at once.
             // This also covers super-fast flicks that never emit Moved events.
             if (!swipeBlockedByUI)
@@ -1107,7 +1137,10 @@ public class BeeController : MonoBehaviour
 
     void PopBee(BeeAgent bee)
     {
-        SpawnPopFX(bee.bodyT.position);
+        // v1.0.55: fireflies burst into a shower of sparks (some raining
+        // down to rest on the meadow); bees keep the rainbow confetti pop.
+        if (bee.isFirefly) SpawnSparkFX(bee.bodyT.position);
+        else SpawnPopFX(bee.bodyT.position);
         bee.root.SetActive(false);
         bee.alive = false;
         bee.state = State.Popped;
@@ -1155,7 +1188,8 @@ public class BeeController : MonoBehaviour
         var localRng = new System.Random((int)(Time.time * 1000f) + pos.GetHashCode());
 
         // Rainbow confetti petals — v1.0.34: 36 petals at 3x size, the whole show.
-        int petalCount = 36;
+        // v1.0.55: slightly smaller and slightly transparent (player request).
+        int petalCount = 28;
         for (int i = 0; i < petalCount; i++)
         {
             var petal = new Petal();
@@ -1163,7 +1197,7 @@ public class BeeController : MonoBehaviour
             DestroyImmediate(go.GetComponent<Collider>());
             go.transform.SetParent(root.transform, false);
             go.transform.position = pos;
-            float size = 0.090f + (float)localRng.NextDouble() * 0.075f;
+            float size = 0.072f + (float)localRng.NextDouble() * 0.060f;
             petal.size = size;
             go.transform.localScale = new Vector3(size, size * 0.7f, 1f);
             Color col = i % 6 == 5
@@ -1193,6 +1227,108 @@ public class BeeController : MonoBehaviour
 
         fx.age = 0f;
         pops.Add(fx);
+    }
+
+    // ------------------------------------------------------ firefly spark FX
+
+    // v1.0.55: the firefly pop — a small shower of warm sparks. Each spark
+    // arcs out with drag and gravity; sparks that reach the meadow rest on
+    // the ground (a soft landing, no bounce) and fizzle out there. Warm
+    // amber/gold/white motes, smaller than confetti petals.
+    const int SparkCount = 22;
+    const float SparkGravity = 4.2f;
+    const float SparkGroundY = 0.015f; // meadow surface rest height
+
+    void SpawnSparkFX(Vector3 pos)
+    {
+        if (popShader == null) return;
+        var fx = new SparkFX();
+        var root = new GameObject("FireflySparks");
+        root.transform.position = pos;
+        fx.root = root;
+        var localRng = new System.Random((int)(Time.time * 1000f) + pos.GetHashCode());
+
+        for (int i = 0; i < SparkCount; i++)
+        {
+            var spark = new Spark();
+            var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            DestroyImmediate(go.GetComponent<Collider>());
+            go.transform.SetParent(root.transform, false);
+            go.transform.position = pos;
+            float size = 0.030f + (float)localRng.NextDouble() * 0.030f;
+            spark.size = size;
+            go.transform.localScale = new Vector3(size, size, 1f);
+            // Warm spark palette: amber -> gold -> white-hot.
+            float huePick = (float)localRng.NextDouble();
+            Color col = huePick < 0.45f
+                ? Color.HSVToRGB(0.09f, 0.95f, 1f)   // amber
+                : huePick < 0.8f
+                    ? Color.HSVToRGB(0.13f, 0.75f, 1f) // gold
+                    : new Color(1f, 0.98f, 0.92f);    // white-hot
+            spark.mat = MakePopMaterial(col, popShader);
+            go.GetComponent<MeshRenderer>().material = spark.mat;
+            spark.t = go.transform;
+            if (mainCam != null) spark.t.rotation = mainCam.transform.rotation;
+            // Bias upward so the shower blooms before gravity takes over.
+            Vector3 dir = new Vector3(
+                (float)localRng.NextDouble() * 2f - 1f,
+                (float)localRng.NextDouble() * 1.6f + 0.5f,
+                (float)localRng.NextDouble() * 2f - 1f).normalized;
+            spark.vel = dir * (1.1f + (float)localRng.NextDouble() * 1.1f);
+            spark.life = 0.9f + (float)localRng.NextDouble() * 0.5f;
+            spark.age = 0f;
+            spark.grounded = false;
+            fx.sparks.Add(spark);
+        }
+
+        fx.age = 0f;
+        sparkFxs.Add(fx);
+    }
+
+    void UpdateSparks(float dt)
+    {
+        for (int i = sparkFxs.Count - 1; i >= 0; i--)
+        {
+            var fx = sparkFxs[i];
+            fx.age += dt;
+
+            foreach (var s in fx.sparks)
+            {
+                s.age += dt;
+                float k = Mathf.Clamp01(s.age / s.life);
+                if (!s.grounded)
+                {
+                    s.vel *= 1f / (1f + 1.6f * dt); // drag
+                    s.vel.y -= SparkGravity * dt;   // gravity
+                    s.t.position += s.vel * dt;
+                    // Ground collision: rest on the meadow, fizzle in place.
+                    if (s.t.position.y <= SparkGroundY)
+                    {
+                        var p = s.t.position;
+                        p.y = SparkGroundY;
+                        s.t.position = p;
+                        s.vel = Vector3.zero;
+                        s.grounded = true;
+                    }
+                }
+                // Billboard so every spark reads round from the camera.
+                if (mainCam != null) s.t.rotation = mainCam.transform.rotation;
+                float grow = Mathf.Clamp01(s.age / 0.08f);
+                float shrink = 1f - k * 0.5f;
+                float sz = s.size * grow * shrink;
+                s.t.localScale = new Vector3(sz, sz, 1f);
+                Color c = s.mat.color;
+                c.a = 1f - k * k;
+                s.mat.color = c;
+            }
+
+            if (fx.age > 1.5f)
+            {
+                foreach (var s in fx.sparks) Destroy(s.mat);
+                Destroy(fx.root);
+                sparkFxs.RemoveAt(i);
+            }
+        }
     }
 
     static Mesh quadMesh;
@@ -1387,7 +1523,7 @@ public class BeeController : MonoBehaviour
                 float s = p.size * grow * shrink;
                 p.t.localScale = new Vector3(s, s * 0.7f, 1f);
                 Color c = p.mat.color;
-                c.a = 1f - k;
+                c.a = 0.85f * (1f - k); // v1.0.55: slightly transparent
                 p.mat.color = c;
             }
 

@@ -2,7 +2,8 @@ name: Screenshot CrystalViz
 
 # Manual trigger only. Opens the project in the Unity editor, builds the
 # runtime-generated CrystalViz diorama in edit mode, renders its Main Camera
-# (plus the sun-orbit slider UI) to a PNG, and uploads it as an artifact.
+# (plus the corner-menu UI and the inventory prototype) to PNGs, and
+# uploads them as artifacts.
 # Requires UNITY_USERNAME and UNITY_PASSWORD repo secrets (Personal license).
 
 on:
