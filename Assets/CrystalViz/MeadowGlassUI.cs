@@ -518,10 +518,11 @@ public static class MeadowGlassUI
                     Mathf.Clamp01(GlassDeep.g * light),
                     Mathf.Clamp01(GlassDeep.b * light),
                     0.30f * fill);
-                // Faint sage hairline just inside the edge.
+                // Sage hairline just inside the edge — drawn at full strength
+                // (not scaled by fill) so the empty slot reads clearly.
                 float ring = 1f - Mathf.Clamp01((Mathf.Abs(d + 3f) - 1.5f) / 1.5f);
-                c = Color.Lerp(c, new Color(Sage.r, Sage.g, Sage.b, 0.55f),
-                    ring * fill);
+                c = Color.Lerp(c, new Color(Sage.r, Sage.g, Sage.b, 0.70f),
+                    ring);
                 c.a = Mathf.Clamp01(c.a) * edge;
                 tex.SetPixel(x, y, c);
             }
