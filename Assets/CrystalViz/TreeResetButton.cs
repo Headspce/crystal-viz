@@ -688,6 +688,12 @@ public class TreeResetButton : MonoBehaviour
         inventoryPanelRt.localScale = Vector3.one;
         var cg = inventoryRoot.GetComponent<CanvasGroup>();
         if (cg != null) cg.alpha = 1f;
+        // v1.0.55 diagnostics: prove the overlay is really live for the capture.
+        var prt = inventoryPanelRt;
+        Debug.Log($"TreeResetButton: inventory snap — root active={inventoryRoot.activeSelf}, " +
+            $"hierarchy={inventoryRoot.activeInHierarchy}, cgAlpha={(cg != null ? cg.alpha : -1f)}, " +
+            $"panelScale={prt.localScale}, panelRect={prt.rect}, " +
+            $"panelChildren={prt.childCount}, canvas={menuCanvasGO != null}");
     }
 
     /// <summary>
