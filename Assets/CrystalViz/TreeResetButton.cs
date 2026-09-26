@@ -11,13 +11,20 @@ using UnityEngine.UI;
 /// fanning icons, and flips back when collapsed. v1.0.47: every toggle fires
 /// a small feedback ceremony — a gold ring pulses out from the disc — and
 /// taps answer back in plain-English toasts. Tapping the arrow slides three
-/// buttons out from behind it toward the center — the infinity reset button
-/// (keeps its reset function: ResetToSprout), the lighting button (v1.0.50:
-/// a sun-and-moon paired glyph that toggles the right-side lighting slider
-/// panel with a pop in/out), and one placeholder (dots, no function yet) —
-/// and tapping the arrow again collapses everything back. The slide is
+/// buttons out from behind it toward the center — the light-bulb button
+/// (v1.0.55: toggles the right-side lighting slider panel with a pop
+/// in/out), the day/night button (v1.0.55: a sun-and-moon glyph on the star
+/// that snaps the stepped slider to 12 PM / 12 AM, flipping the lighting
+/// and the bee<->firefly transformation through the existing hour
+/// mechanism), and one placeholder (dots, no function yet) — and tapping
+/// the arrow again collapses everything back. The slide is
 /// staggered with an overshoot ease; the three buttons fan out on even 25°
 /// steps along a common radius so the gaps between them are uniform.
+///
+/// v1.0.55: the old infinity reset mark (ResetToSprout) is gone — button 0
+/// is now the lighting-panel toggle. The day/night glyph re-renders
+/// whenever the lighting state flips so the button always reads the
+/// current state (bright sun by day, bright moon by night).
 ///
 /// Raw Input is used (not uGUI Button + EventSystem) to match the tree's tap
 /// detection, which also reads Input directly. TreeGrowthController swallows
@@ -32,8 +39,9 @@ public class TreeResetButton : MonoBehaviour
 {
     public TreeGrowthController controller;
 
-    // The three slide-out buttons: 0 = infinity (reset), 1 = lighting
-    // (toggles the sun-slider panel), 2 = placeholder.
+    // The three slide-out buttons: 0 = light bulb (toggles the
+    // lighting slider panel), 1 = day/night (snaps the stepped slider to
+    // 12 PM / 12 AM), 2 = placeholder.
     class MenuButton
     {
         public RectTransform rt;
@@ -60,6 +68,14 @@ public class TreeResetButton : MonoBehaviour
     bool initialized;
     float arrowPunch;
     float arrowAngle = 180f; // v1.0.46: collapsed = SW (180°); expanded = NE (0°)
+
+    // v1.0.55: the day/night button's glyph re-renders on state flips so it
+    // always reads the current lighting (bright sun by day, bright moon by
+    // night). The Image + its live texture are cached here; the bool seeds
+    // from the slider at build time and refreshes in Update().
+    Image dayNightGlyphImg;
+    Texture2D dayNightGlyphTex;
+    bool dayNightIsNight;
 
     void Awake()
     {
@@ -126,9 +142,24 @@ public class TreeResetButton : MonoBehaviour
     }
 
     /// <summary>
-    /// v1.0.50: lazy handle on the sun slider — the star button toggles the
-    /// lighting panel through it. Resolved on first tap so menu/slider build
-    /// order never matters.
+    /// v1.0.55: CI screenshot helper — re-syncs the day/night glyph to the
+    /// slider's current lighting state. Edit mode runs no Update, so the
+    /// per-frame sync never fires there; the screenshot tool calls this
+    /// after flipping to night so the capture shows the moon-bright glyph.
+    /// </summary>
+    public void SyncDayNightGlyphForScreenshot()
+    {
+        var o = Orbit;
+        if (o == null) return;
+        dayNightIsNight = SunOrbitControl.NightFactor(o.CurrentSnappedValue) > 0.5f;
+        RefreshDayNightGlyph();
+    }
+
+    /// <summary>
+    /// v1.0.50: lazy handle on the sun slider — the corner menu drives the
+    /// lighting panel (v1.0.55: the light-bulb button) and the day/night
+    /// snap (v1.0.55: the star button) through it. Resolved on first tap so
+    /// menu/slider build order never matters.
     /// </summary>
     SunOrbitControl orbitRef;
     SunOrbitControl Orbit
@@ -137,6 +168,27 @@ public class TreeResetButton : MonoBehaviour
         {
             if (orbitRef == null) orbitRef = FindObjectOfType<SunOrbitControl>();
             return orbitRef;
+        }
+    }
+
+    /// <summary>
+    /// v1.0.55: rebuilds the day/night button's glyph for the current
+    /// lighting state (bright sun by day, bright moon by night) and swaps
+    /// it onto the button. The old texture is destroyed to avoid leaking
+    /// one 160px texture per flip.
+    /// </summary>
+    void RefreshDayNightGlyph()
+    {
+        if (dayNightGlyphImg == null) return;
+        var old = dayNightGlyphTex;
+        dayNightGlyphTex = MeadowGlassUI.MakeDayNightIcon(160, dayNightIsNight);
+        dayNightGlyphImg.sprite = Sprite.Create(dayNightGlyphTex,
+            new Rect(0f, 0f, dayNightGlyphTex.width, dayNightGlyphTex.height),
+            new Vector2(0.5f, 0.5f), 100f);
+        if (old != null)
+        {
+            if (Application.isPlaying) Destroy(old);
+            else DestroyImmediate(old);
         }
     }
 
@@ -170,16 +222,10 @@ public class TreeResetButton : MonoBehaviour
                     {
                         if (i == 0)
                         {
-                            if (controller != null) controller.ResetToSprout();
-                            // v1.0.47: plain-English confirmation of what just happened.
-                            MeadowToast.Show("Fresh sprout — tap the tree to grow it again.");
-                            ToggleMenu(); // reset done: collapse
-                        }
-                        else if (i == 1)
-                        {
-                            // v1.0.50: the star button is the lighting toggle —
-                            // it pops the right-side lighting slider panel
-                            // in/out (the panel starts hidden).
+                            // v1.0.55: the light-bulb button took over the
+                            // lighting-panel toggle — it pops the right-side
+                            // lighting slider panel in/out (the panel starts
+                            // hidden). The old infinity reset is gone.
                             b.punch = 1f;
                             var o = Orbit;
                             if (o != null)
@@ -193,7 +239,35 @@ public class TreeResetButton : MonoBehaviour
                             {
                                 MeadowToast.Show("Still growing — this one's coming soon.");
                             }
-                            Debug.Log("TreeResetButton: star button toggled the lighting slider panel.");
+                            Debug.Log("TreeResetButton: light-bulb button toggled the lighting slider panel.");
+                        }
+                        else if (i == 1)
+                        {
+                            // v1.0.55: the star button is now the day/night
+                            // toggle — it snaps the stepped slider to 12 PM
+                            // (day) or 12 AM (night) based on the current
+                            // lighting state, so the slider position, the
+                            // hard 7 PM / 6 AM lighting switch, and the
+                            // bee<->firefly transformation all stay
+                            // consistent through the existing hour mechanism.
+                            b.punch = 1f;
+                            var o = Orbit;
+                            if (o != null)
+                            {
+                                bool isNight = SunOrbitControl.NightFactor(
+                                    o.CurrentSnappedValue) > 0.5f;
+                                o.SetTimeOfDay(isNight ? 0f : 1f);
+                                dayNightIsNight = !isNight;
+                                RefreshDayNightGlyph();
+                                MeadowToast.Show(isNight
+                                    ? "Daybreak — the bees are back out."
+                                    : "Nightfall — the fireflies are out.");
+                            }
+                            else
+                            {
+                                MeadowToast.Show("Still growing — this one's coming soon.");
+                            }
+                            Debug.Log("TreeResetButton: day/night button snapped the slider.");
                         }
                         else
                         {
@@ -262,6 +336,21 @@ public class TreeResetButton : MonoBehaviour
             1f - Mathf.Exp(-10f * dt));
         if (glyphRt != null)
             glyphRt.localRotation = Quaternion.Euler(0f, 0f, arrowAngle);
+
+        // v1.0.55: keep the day/night glyph honest — the slider can also be
+        // dragged by hand, so re-render the button's icon whenever the
+        // lighting state flips outside the button's own tap path.
+        var orbit = Orbit;
+        if (orbit != null && dayNightGlyphImg != null)
+        {
+            bool isNight = SunOrbitControl.NightFactor(
+                orbit.CurrentSnappedValue) > 0.5f;
+            if (isNight != dayNightIsNight)
+            {
+                dayNightIsNight = isNight;
+                RefreshDayNightGlyph();
+            }
+        }
     }
 
     void ToggleMenu()
@@ -361,7 +450,7 @@ public class TreeResetButton : MonoBehaviour
         // v1.0.46: fan toward the screen center on EVEN spacing — equal 25°
         // steps (20/45/70) on a common 280px radius. Adjacent buttons sit
         // ~122px apart center-to-center, so the 100px discs keep a uniform
-        // ~22px gap instead of touching. Infinity still leads at 45°.
+        // ~22px gap instead of touching. The bulb leads at 45°.
         float[] angles = { 20f, 45f, 70f };
         float[] dists = { 280f, 280f, 280f };
         for (int i = 0; i < 3; i++)
@@ -389,8 +478,9 @@ public class TreeResetButton : MonoBehaviour
             bDiscRt.pivot = new Vector2(0.5f, 0.5f);
             bDiscRt.anchoredPosition = Vector2.zero;
             bDiscRt.sizeDelta = new Vector2(SubSize, SubSize);
-            // v1.0.50: the lighting toggle (i==1) is a STAR-shaped button
-            // (not a round disc) containing the sun-and-moon glyph.
+            // v1.0.50: the day/night toggle (i==1) is a STAR-shaped button
+            // (not a round disc). v1.0.55: the bulb (i==0) is a round disc
+            // again; the infinity reset mark is gone.
             bDisc.GetComponent<Image>().sprite = i == 1
                 ? MeadowGlassUI.MakeStarDisc(160)
                 : MeadowGlassUI.MakeGlassDisc(160);
@@ -404,15 +494,35 @@ public class TreeResetButton : MonoBehaviour
             bGlyphRt.anchoredPosition = Vector2.zero;
             bGlyphRt.sizeDelta = new Vector2(64f, 64f);
             var bImg = bGlyph.GetComponent<Image>();
-            // v1.0.50: the star button now wears the sun-and-moon paired
-            // glyph — it is the lighting toggle (same symbol as the day/night
-            // button atop the slider panel).
-            Texture2D glyphTex = i == 0 ? DrawInfinityTexture()
-                : i == 1 ? MeadowGlassUI.MakeSunMoonIcon(160) : DrawDotsTexture();
+            // v1.0.55: button 0 wears the light-bulb glyph (lighting-panel
+            // toggle); button 1 wears the state-aware day/night glyph —
+            // its icon is cached and re-rendered on every lighting flip.
+            Texture2D glyphTex;
+            if (i == 0)
+            {
+                glyphTex = MeadowGlassUI.MakeLightBulbIcon(160);
+            }
+            else if (i == 1)
+            {
+                // Seed the state from the slider when it's already built;
+                // at menu build time it usually isn't yet (the bootstrap
+                // adds the slider after the tree), so this defaults to day
+                // and Update() corrects it on the first frame. The CI
+                // screenshot path pins the slider to noon = day anyway.
+                var o0 = Orbit;
+                dayNightIsNight = o0 != null &&
+                    SunOrbitControl.NightFactor(o0.CurrentSnappedValue) > 0.5f;
+                glyphTex = MeadowGlassUI.MakeDayNightIcon(160, dayNightIsNight);
+                dayNightGlyphTex = glyphTex;
+            }
+            else
+            {
+                glyphTex = DrawDotsTexture();
+            }
             bImg.sprite = Sprite.Create(glyphTex,
                 new Rect(0f, 0f, glyphTex.width, glyphTex.height),
                 new Vector2(0.5f, 0.5f), 100f);
-            if (i == 0) bImg.color = new Color(1f, 1f, 1f, 0.75f); // infinity: 25% lighter, as before
+            if (i == 1) dayNightGlyphImg = bImg;
 
             subButtons[i] = b;
         }
@@ -470,37 +580,6 @@ public class TreeResetButton : MonoBehaviour
     static float Sign(Vector2 p1, Vector2 p2, Vector2 p3)
     {
         return (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y);
-    }
-
-    /// <summary>White infinity mark on transparency (the reset glyph, as before).</summary>
-    static Texture2D DrawInfinityTexture()
-    {
-        const int S = 160;
-        var tex = new Texture2D(S, S, TextureFormat.RGBA32, false);
-        tex.filterMode = FilterMode.Bilinear;
-        // Lemniscate of Bernoulli, scaled into the canvas.
-        for (int y = 0; y < S; y++)
-        {
-            for (int x = 0; x < S; x++)
-            {
-                Vector2 p = new Vector2((x + 0.5f - S / 2f) / (S * 0.32f),
-                                        (y + 0.5f - S / 2f) / (S * 0.32f));
-                // Distance to the lemniscate curve, approximated by sampling.
-                float best = float.MaxValue;
-                for (int s = 0; s <= 64; s++)
-                {
-                    float t = s / 64f * Mathf.PI * 2f;
-                    float denom = 1f + Mathf.Sin(t) * Mathf.Sin(t);
-                    Vector2 q = new Vector2(Mathf.Cos(t) / denom, Mathf.Sin(t) * Mathf.Cos(t) / denom);
-                    float d = Vector2.Distance(p, q);
-                    if (d < best) best = d;
-                }
-                float a = Mathf.Clamp01((0.16f - best) / 0.06f);
-                tex.SetPixel(x, y, new Color(1f, 1f, 1f, a));
-            }
-        }
-        tex.Apply();
-        return tex;
     }
 
     /// <summary>Three white dots (placeholder glyph — "more to come").</summary>

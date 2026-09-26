@@ -123,6 +123,10 @@ public static class CrystalVizScreenshot
             orbit.SetTimeOfDay(0.8f); // ~9:36 PM -> hard night switch
             Debug.Log("CrystalVizScreenshot: night-state frame at slider 0.8 (~9:36 PM).");
         }
+        // v1.0.55: the day/night button's glyph is state-aware — re-sync it
+        // now that the slider is at night (edit mode runs no Update).
+        var menu2 = Object.FindFirstObjectByType<TreeResetButton>();
+        if (menu2 != null) menu2.SyncDayNightGlyphForScreenshot();
         // v1.0.51: the BeeController's Start never runs in edit mode — build
         // the firefly preview squad so the night capture shows the
         // bee->firefly transformation (glowing orbs + ground light pools).

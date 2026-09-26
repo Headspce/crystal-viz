@@ -177,6 +177,128 @@ public static class MeadowGlassUI
     }
 
     /// <summary>
+    /// v1.0.55: warm-white light-bulb glyph — the new lighting-panel toggle
+    /// symbol for the corner menu (replaces the old infinity reset mark).
+    /// Round glass bulb + short rays + a small screw base, all in the
+    /// menu's warm-white ink. Procedural (no image assets).
+    /// </summary>
+    public static Texture2D MakeLightBulbIcon(int size)
+    {
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        tex.filterMode = FilterMode.Bilinear;
+        var ink = new Color(0.96f, 0.94f, 0.86f);
+        float S = size;
+        Vector2 bulbC = new Vector2(S * 0.50f, S * 0.44f);
+        float bulbR = S * 0.26f;
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                Vector2 p = new Vector2(x + 0.5f, y + 0.5f);
+                // Bulb glass: soft-edged disc.
+                float dBulb = Vector2.Distance(p, bulbC);
+                float bulbA = 1f - SStep(bulbR - 1.5f, bulbR + 1.5f, dBulb);
+                // Rays: 6 blades fanning around the upper bulb (the base
+                // occupies the bottom, so rays skip that sector).
+                float rayA = 0f;
+                Vector2 rel = p - bulbC;
+                float rd = rel.magnitude;
+                if (rd > bulbR + 2f && rd < bulbR + S * 0.13f)
+                {
+                    float ang = Mathf.Atan2(rel.y, rel.x); // -pi..pi
+                    // Skip the bottom ~100° sector where the base sits.
+                    if (ang > -Mathf.PI * 0.72f && ang < -Mathf.PI * 0.28f)
+                    {
+                        float sector = Mathf.PI / 3f; // fold into one 60° sector
+                        float aIn = Mathf.Abs(Mathf.Repeat(ang + sector / 2f, sector) - sector / 2f);
+                        float halfW = 0.09f + 0.05f * ((rd - bulbR) / (S * 0.13f));
+                        float inRay = 1f - SStep(halfW - 0.03f, halfW + 0.03f, aIn);
+                        float band = SStep(bulbR + 1f, bulbR + 5f, rd) *
+                                     (1f - SStep(bulbR + S * 0.11f, bulbR + S * 0.13f, rd));
+                        rayA = inRay * band;
+                    }
+                }
+                // Screw base: rounded trapezoid tucked under the bulb.
+                // (Texture space is y-up: the base sits BELOW the bulb.)
+                float baseA = 0f;
+                float by0 = S * 0.04f, by1 = S * 0.19f;
+                if (p.y > by0 - 2f && p.y < by1 + 2f)
+                {
+                    float t = (p.y - by0) / (by1 - by0); // 0 bottom -> 1 top
+                    float halfW = S * (0.10f + 0.03f * t);
+                    float dx = Mathf.Abs(p.x - S * 0.50f);
+                    float edge = 1f - SStep(halfW - 1.5f, halfW + 1.5f, dx);
+                    float cap = SStep(by0 - 2f, by0 + 3f, p.y) *
+                                (1f - SStep(by1 - 3f, by1 + 2f, p.y));
+                    baseA = edge * cap;
+                }
+                float a = Mathf.Max(Mathf.Max(bulbA, rayA), baseA);
+                tex.SetPixel(x, y, new Color(ink.r, ink.g, ink.b, a));
+            }
+        }
+        tex.Apply();
+        return tex;
+    }
+
+    /// <summary>
+    /// v1.0.55: state-aware day/night glyph — the same sun + crescent-moon
+    /// pairing as MakeSunMoonIcon, but the ACTIVE half renders full-strength
+    /// while the inactive half drops to a dim ghost, so the corner menu's
+    /// day/night button always reads the current lighting state.
+    /// </summary>
+    public static Texture2D MakeDayNightIcon(int size, bool nightMode)
+    {
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        tex.filterMode = FilterMode.Bilinear;
+        var sunGold = new Color(1.00f, 0.80f, 0.16f);
+        var moonSilver = new Color(0.86f, 0.91f, 0.98f);
+        float sunK = nightMode ? 0.28f : 1f;
+        float moonK = nightMode ? 1f : 0.28f;
+        float S = size;
+        Vector2 sunC = new Vector2(S * 0.34f, S * 0.5f);
+        float sunR = S * 0.15f;
+        Vector2 moonC = new Vector2(S * 0.70f, S * 0.5f);
+        float moonR = S * 0.18f;
+        Vector2 cutC = new Vector2(S * 0.79f, S * 0.5f);
+        float cutR = S * 0.155f;
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                Vector2 p = new Vector2(x + 0.5f, y + 0.5f);
+                float leftClip = 1f - SStep(S * 0.50f, S * 0.54f, p.x);
+                float rightClip = SStep(S * 0.46f, S * 0.50f, p.x);
+                float dSun = Vector2.Distance(p, sunC);
+                float sunA = (1f - SStep(sunR - 1.5f, sunR + 1.5f, dSun)) * leftClip * sunK;
+                float rayA = 0f;
+                Vector2 rel = p - sunC;
+                float rd = rel.magnitude;
+                if (rd > sunR + 2f && rd < sunR + S * 0.12f)
+                {
+                    float ang = Mathf.Atan2(rel.y, rel.x);
+                    float sector = Mathf.PI / 4f;
+                    float aIn = Mathf.Abs(Mathf.Repeat(ang + sector / 2f, sector) - sector / 2f);
+                    float halfW = 0.10f + 0.06f * ((rd - sunR) / (S * 0.12f));
+                    float inRay = 1f - SStep(halfW - 0.03f, halfW + 0.03f, aIn);
+                    float band = SStep(sunR + 1f, sunR + 5f, rd) *
+                                 (1f - SStep(sunR + S * 0.10f, sunR + S * 0.12f, rd));
+                    rayA = inRay * band * leftClip * sunK;
+                }
+                float dMoon = Vector2.Distance(p, moonC);
+                float moonDisc = 1f - SStep(moonR - 1.5f, moonR + 1.5f, dMoon);
+                float dCut = Vector2.Distance(p, cutC);
+                float cut = 1f - SStep(cutR - 1.5f, cutR + 1.5f, dCut);
+                float moonA = moonDisc * (1f - cut) * rightClip * moonK;
+                float a = Mathf.Max(Mathf.Max(sunA, rayA), moonA);
+                Color col = (moonA >= sunA && moonA >= rayA) ? moonSilver : sunGold;
+                tex.SetPixel(x, y, new Color(col.r, col.g, col.b, a));
+            }
+        }
+        tex.Apply();
+        return tex;
+    }
+
+    /// <summary>
     /// Transparent sprite carrying only a gold ring band — for halos and
     /// feedback pulses (sun-thumb sundial ring, menu tap pulse).
     /// </summary>

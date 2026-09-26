@@ -663,8 +663,9 @@ public class CrystalVizBootstrap : MonoBehaviour
     /// growing tree is the centerpiece at origin; it replaces the old static
     /// OldTree. ParametricTree builds the geometry, TreeGrowthController owns
     /// tap input + persistence, StageIndicatorUI shows the stage avatar, and
-    /// TreeResetButton adds the glowing infinity reset mark at the
-    /// bottom-left (true sprout at zero taps, re-tappable to mature).
+    /// TreeResetButton adds the bottom-left corner menu (arrow + fan-out
+    /// buttons: light-bulb lighting-panel toggle, day/night slider snap,
+    /// placeholder) at the bottom-left.
     /// NOTE: the CI screenshot path builds the scene in edit mode, where
     /// AddComponent does NOT fire Awake() and Start()/Update() never run.
     /// Each component exposes an idempotent Initialize() that is called
@@ -685,10 +686,9 @@ public class CrystalVizBootstrap : MonoBehaviour
         // accepted tap (anime surprise-line feedback).
         treeGO.AddComponent<TreeGrowthBurstLines>().Initialize();
         treeGO.AddComponent<StageIndicatorUI>().Initialize();
-        // Test-loop reset mark (glowing infinity, bottom-left): pressing it
-        // snaps the tree back to the true zero-tap sprout for repeated
-        // growth playtesting. Explicit Initialize() for the edit-mode
-        // screenshot path, same as the components above.
+        // v1.0.55: bottom-left corner menu (arrow + fan-out buttons).
+        // Explicit Initialize() for the edit-mode screenshot path, same
+        // as the components above.
         treeGO.AddComponent<TreeResetButton>().Initialize();
         Debug.Log("CrystalViz: growing tree planted at origin.");
     }
