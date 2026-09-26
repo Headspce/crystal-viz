@@ -177,63 +177,70 @@ public static class MeadowGlassUI
     }
 
     /// <summary>
-    /// v1.0.55: warm-white light-bulb glyph — the new lighting-panel toggle
+    /// v1.0.55: lit light-bulb glyph — the new lighting-panel toggle
     /// symbol for the corner menu (replaces the old infinity reset mark).
-    /// Round glass bulb + short rays + a small screw base, all in the
-    /// menu's warm-white ink. Procedural (no image assets).
+    /// Amber "lit" bulb (glowing fill + halo + rays) with a bronze screw
+    /// base, so it reads at a glance against the frosted glass button
+    /// disc. Procedural (no image assets).
     /// </summary>
     public static Texture2D MakeLightBulbIcon(int size)
     {
         var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
         tex.filterMode = FilterMode.Bilinear;
-        var ink = new Color(0.96f, 0.94f, 0.86f);
+        var amber = new Color(1.00f, 0.70f, 0.20f);  // lit-bulb fill + rays
+        var bronze = new Color(0.72f, 0.46f, 0.16f); // screw base
         float S = size;
         Vector2 bulbC = new Vector2(S * 0.50f, S * 0.44f);
-        float bulbR = S * 0.26f;
+        float bulbR = S * 0.24f;
         for (int y = 0; y < size; y++)
         {
             for (int x = 0; x < size; x++)
             {
                 Vector2 p = new Vector2(x + 0.5f, y + 0.5f);
-                // Bulb glass: soft-edged disc.
+                // Bulb glass: soft-edged amber disc (the "lit" fill).
                 float dBulb = Vector2.Distance(p, bulbC);
                 float bulbA = 1f - SStep(bulbR - 1.5f, bulbR + 1.5f, dBulb);
-                // Rays: 6 blades fanning around the upper bulb (the base
+                // Halo: faint amber glow hugging the bulb.
+                float haloR = bulbR + S * 0.10f;
+                float haloA = (1f - SStep(bulbR, haloR, dBulb)) * 0.35f;
+                // Rays: 8 blades fanning around the bulb (the base
                 // occupies the bottom, so rays skip that sector).
                 float rayA = 0f;
                 Vector2 rel = p - bulbC;
                 float rd = rel.magnitude;
-                if (rd > bulbR + 2f && rd < bulbR + S * 0.13f)
+                if (rd > bulbR + 2f && rd < bulbR + S * 0.16f)
                 {
-                    float ang = Mathf.Atan2(rel.y, rel.x); // -pi..pi
-                    // Skip the bottom ~100° sector where the base sits.
+                    float ang = Mathf.Atan2(rel.y, rel.x); // -pi..pi, y-up
+                    // Skip the bottom ~80° sector where the base sits.
                     if (ang > -Mathf.PI * 0.72f && ang < -Mathf.PI * 0.28f)
                     {
-                        float sector = Mathf.PI / 3f; // fold into one 60° sector
+                        float sector = Mathf.PI / 4f; // fold into one 45° sector
                         float aIn = Mathf.Abs(Mathf.Repeat(ang + sector / 2f, sector) - sector / 2f);
-                        float halfW = 0.09f + 0.05f * ((rd - bulbR) / (S * 0.13f));
+                        float halfW = 0.10f + 0.05f * ((rd - bulbR) / (S * 0.16f));
                         float inRay = 1f - SStep(halfW - 0.03f, halfW + 0.03f, aIn);
                         float band = SStep(bulbR + 1f, bulbR + 5f, rd) *
-                                     (1f - SStep(bulbR + S * 0.11f, bulbR + S * 0.13f, rd));
+                                     (1f - SStep(bulbR + S * 0.13f, bulbR + S * 0.16f, rd));
                         rayA = inRay * band;
                     }
                 }
-                // Screw base: rounded trapezoid tucked under the bulb.
+                // Screw base: rounded bronze trapezoid tucked under the bulb.
                 // (Texture space is y-up: the base sits BELOW the bulb.)
                 float baseA = 0f;
-                float by0 = S * 0.04f, by1 = S * 0.19f;
+                float by0 = S * 0.05f, by1 = S * 0.20f;
                 if (p.y > by0 - 2f && p.y < by1 + 2f)
                 {
                     float t = (p.y - by0) / (by1 - by0); // 0 bottom -> 1 top
-                    float halfW = S * (0.10f + 0.03f * t);
+                    float halfW = S * (0.095f + 0.03f * t);
                     float dx = Mathf.Abs(p.x - S * 0.50f);
                     float edge = 1f - SStep(halfW - 1.5f, halfW + 1.5f, dx);
                     float cap = SStep(by0 - 2f, by0 + 3f, p.y) *
                                 (1f - SStep(by1 - 3f, by1 + 2f, p.y));
                     baseA = edge * cap;
                 }
-                float a = Mathf.Max(Mathf.Max(bulbA, rayA), baseA);
-                tex.SetPixel(x, y, new Color(ink.r, ink.g, ink.b, a));
+                // Composite: halo under everything, then bulb, rays, base.
+                float a = Mathf.Max(Mathf.Max(Mathf.Max(bulbA, haloA), rayA), baseA);
+                Color col = baseA >= bulbA && baseA >= rayA && baseA >= haloA ? bronze : amber;
+                tex.SetPixel(x, y, new Color(col.r, col.g, col.b, a));
             }
         }
         tex.Apply();
