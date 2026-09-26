@@ -27,7 +27,6 @@ public static class MeadowGlassUI
         const float ringPx = 4f;
         var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
         tex.filterMode = FilterMode.Bilinear;
-        var pixels = new Color[size * size];
         float r = size / 2f;
         float midR = r - 2f - ringPx / 2f;
         for (int y = 0; y < size; y++)
@@ -38,7 +37,7 @@ public static class MeadowGlassUI
                 float dy = y - r + 0.5f;
                 float d = Mathf.Sqrt(dx * dx + dy * dy);
                 // Soft outer edge.
-                float edge = 1f - Mathf.SmoothStep(r - 2.5f, r - 0.5f, d);
+                float edge = 1f - SStep(r - 2.5f, r - 0.5f, d);
                 // Gentle top-light: the glass feels lit from the sky.
                 float light = 1f + 0.10f * Mathf.Clamp01(-dy / r);
                 Color c = new Color(
@@ -50,10 +49,9 @@ public static class MeadowGlassUI
                 float ring = 1f - Mathf.Clamp01((Mathf.Abs(d - midR) - ringPx / 2f) / 1.5f);
                 c = Color.Lerp(c, new Color(Gold.r, Gold.g, Gold.b, 0.95f), ring);
                 c.a *= edge;
-                pixels[y * size + x] = c;
+                tex.SetPixel(x, y, c);
             }
         }
-        tex.SetPixels(pixels);
         tex.Apply();
         // v1.0.55: FullRect mesh (like MakeGlassPill) — the default Tight
         // mesh silently dropped this sprite in renders, leaving the menu's
