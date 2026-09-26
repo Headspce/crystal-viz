@@ -55,8 +55,11 @@ public static class MeadowGlassUI
         }
         tex.SetPixels(pixels);
         tex.Apply();
+        // v1.0.55: FullRect mesh (like MakeGlassPill) — the default Tight
+        // mesh silently dropped this sprite in renders, leaving the menu's
+        // buttons disc-less.
         return Sprite.Create(tex, new Rect(0f, 0f, size, size),
-            new Vector2(0.5f, 0.5f), 100f);
+            new Vector2(0.5f, 0.5f), 100f, 0u, SpriteMeshType.FullRect);
     }
 
     /// <summary>
