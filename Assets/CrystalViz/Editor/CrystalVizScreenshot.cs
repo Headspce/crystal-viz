@@ -127,6 +127,10 @@ public static class CrystalVizScreenshot
         // frosted overlay + six empty slots.
         var menu3 = Object.FindFirstObjectByType<TreeResetButton>();
         if (menu3 != null) menu3.SnapInventoryOpenForScreenshot();
+        // v1.0.55: force the canvas to rebuild after the late activation —
+        // edit mode runs no per-frame CanvasUpdate, so newly enabled
+        // CanvasRenderers can miss the render without this.
+        Canvas.ForceUpdateCanvases();
         CaptureFrame(cam, w, h, Path.Combine("Screenshots", "crystalviz-inventory.png"));
         Debug.Log("CrystalVizScreenshot: saved Screenshots/crystalviz.png + crystalviz-night.png + crystalviz-inventory.png");
     }
