@@ -373,8 +373,7 @@ public class TreeResetButton : MonoBehaviour
             if (inventoryT <= 0f)
             {
                 inventoryDir = 0f;
-                if (icg != null) icg.alpha = 0f;
-                inventoryRoot.SetActive(false);
+                if (icg != null) { icg.alpha = 0f; icg.blocksRaycasts = false; }
             }
             else if (inventoryT >= 1f)
             {
@@ -642,7 +641,11 @@ public class TreeResetButton : MonoBehaviour
             }
         }
 
-        inventoryRoot.SetActive(false);
+        inventoryRoot.SetActive(true);
+        // v1.0.55: parked hidden via scale-0 + alpha-0 (never deactivated —
+        // the sub-buttons prove always-active UI renders reliably).
+        inventoryPanelRt.localScale = new Vector3(0.001f, 0.001f, 1f);
+        cg.blocksRaycasts = false;
         Debug.Log("TreeResetButton: inventory prototype built (6 empty slots).");
     }
 
@@ -659,7 +662,8 @@ public class TreeResetButton : MonoBehaviour
         {
             if (InventoryOpen && inventoryDir == 0f) return;
             InventoryOpen = true;
-            inventoryRoot.SetActive(true);
+            var ocg = inventoryRoot.GetComponent<CanvasGroup>();
+            if (ocg != null) { ocg.blocksRaycasts = true; }
             inventoryPanelRt.localScale = new Vector3(0.001f, 0.001f, 1f);
             inventoryT = 0f;
             inventoryDir = 1f;
@@ -684,10 +688,9 @@ public class TreeResetButton : MonoBehaviour
         InventoryOpen = true;
         inventoryT = 1f;
         inventoryDir = 0f;
-        inventoryRoot.SetActive(true);
         inventoryPanelRt.localScale = Vector3.one;
         var cg = inventoryRoot.GetComponent<CanvasGroup>();
-        if (cg != null) cg.alpha = 1f;
+        if (cg != null) { cg.alpha = 1f; cg.blocksRaycasts = true; }
         // v1.0.55 diagnostics: prove the overlay is really live for the capture.
         var prt = inventoryPanelRt;
         Debug.Log($"TreeResetButton: inventory snap — root active={inventoryRoot.activeSelf}, " +
