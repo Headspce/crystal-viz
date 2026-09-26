@@ -4,17 +4,26 @@ using System.Collections.Generic;
 
 /// <summary>
 /// v1.0.47: the plain-language feedback voice of CrystalViz (research
-/// principles 5, 6, 12). A single bottom-center meadow-glass toast that
-/// confirms actions in short English — resets, placeholder taps, and two
-/// one-time first-run hints (corner menu + sun slider) shown after the boot
-/// wipe clears. Play-mode only: the CI edit-mode screenshot path never
-/// creates it, so captures stay deterministic.
+/// principles 5, 6, 12). A single meadow-glass toast — bottom-center by
+/// default, screen-center when asked (v1.0.52) — that confirms actions in
+/// short English: resets, placeholder taps, and two one-time first-run
+/// hints (corner menu + sun slider) shown after the boot wipe clears.
+/// Play-mode only: the CI edit-mode screenshot path never creates it, so
+/// captures stay deterministic.
 /// </summary>
 public class MeadowToast : MonoBehaviour
 {
     static MeadowToast instance;
 
-    readonly Queue<string> queue = new Queue<string>();
+    // v1.0.52: toasts can ride bottom-center (default) or screen-center.
+    // The queue carries the placement with the message so a centered toast
+    // never leaks its position onto the next queued one.
+    struct ToastMsg
+    {
+        public string text;
+        public bool centered;
+    }
+    readonly Queue<ToastMsg> queue = new Queue<ToastMsg>();
 
     Text toastText;
     CanvasGroup group;
@@ -45,12 +54,17 @@ public class MeadowToast : MonoBehaviour
         return instance;
     }
 
-    /// <summary>Queues a short plain-English confirmation. Safe to call anytime.</summary>
-    public static void Show(string message)
+    /// <summary>
+    /// Queues a short plain-English confirmation. Safe to call anytime.
+    /// v1.0.52: centered=true pins the toast to the middle of the screen
+    /// instead of the bottom edge — used by the one-time lighting-slider
+    /// hint, which the expanded corner menu used to overlap.
+    /// </summary>
+    public static void Show(string message, bool centered = false)
     {
         var t = Ensure();
         if (t == null || string.IsNullOrEmpty(message)) return;
-        t.queue.Enqueue(message);
+        t.queue.Enqueue(new ToastMsg { text = message, centered = centered });
     }
 
     /// <summary>
@@ -151,7 +165,13 @@ public class MeadowToast : MonoBehaviour
         // Queue pump.
         if (state == 0 && queue.Count > 0)
         {
-            toastText.text = queue.Dequeue();
+            var msg = queue.Dequeue();
+            toastText.text = msg.text;
+            // v1.0.52: centered toasts pin to mid-screen (clear of the
+            // expanded corner menu); everything else stays bottom-center.
+            pillRt.anchorMin = new Vector2(0.5f, msg.centered ? 0.5f : 0f);
+            pillRt.anchorMax = new Vector2(0.5f, msg.centered ? 0.5f : 0f);
+            baseY = msg.centered ? 0f : 210f;
             state = 1;
             stateT = 0f;
         }

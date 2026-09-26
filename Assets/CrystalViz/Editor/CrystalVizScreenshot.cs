@@ -107,12 +107,14 @@ public static class CrystalVizScreenshot
         // v1.0.49: the sun-slider screenshot pins to noon ("12:00 PM", full
         // daylight) — render it, then flip the slider to night and render
         // again, proving both lighting states on the clean solid slider.
-        // (v1.0.50: tick labels and the clock pill are gone. v1.0.51: the
-        // day/night button is gone and the slider is stepped — 13 hourly
-        // detents — so 0.8 snaps to 10 PM, still past the 7 PM hard switch.
-        // Bees only exist in play mode, so the night capture builds the
-        // firefly preview squad explicitly (glow bodies, halos, ground
-        // light pools) — that's the CI proof of the transformation.)
+        // (v1.0.50: tick labels and the clock pill are gone. v1.0.52: the
+        // slider is a full 24-hour day with 24 hourly detents — 0.4 is
+        // 9:36 PM, past the 7 PM hard switch, so it snaps to the 10 PM
+        // detent and flips the night lighting. Bees only exist in play
+        // mode, so the night capture builds the firefly preview squad
+        // explicitly (firefly bodies, halos, ground light pools) — that's
+        // the CI proof of the transformation — and pushes the diagonal
+        // firefly counter, since Update() never runs in edit mode.)
         var orbit = Object.FindFirstObjectByType<SunOrbitControl>();
         if (orbit != null) orbit.SetSliderPanelVisible(true);
         var menu = Object.FindFirstObjectByType<TreeResetButton>();
@@ -120,14 +122,18 @@ public static class CrystalVizScreenshot
         CaptureFrame(cam, w, h, Path.Combine("Screenshots", "crystalviz.png"));
         if (orbit != null)
         {
-            orbit.SetTimeOfDay(0.8f); // ~9:36 PM -> hard night switch
-            Debug.Log("CrystalVizScreenshot: night-state frame at slider 0.8 (~9:36 PM).");
+            orbit.SetTimeOfDay(0.4f); // ~9:36 PM -> hard night switch
+            Debug.Log("CrystalVizScreenshot: night-state frame at slider 0.4 (~9:36 PM).");
         }
         // v1.0.51: the BeeController's Start never runs in edit mode — build
         // the firefly preview squad so the night capture shows the
-        // bee->firefly transformation (glowing orbs + ground light pools).
+        // bee->firefly transformation. v1.0.52: also refresh the HUD
+        // counter so it shows the three firefly icons (lit) instead of the
+        // day B's.
         var beeCtl = Object.FindFirstObjectByType<BeeController>();
         if (beeCtl != null) beeCtl.BuildPreview();
+        var stageUI = Object.FindFirstObjectByType<StageIndicatorUI>();
+        if (stageUI != null) stageUI.RefreshCounter();
         CaptureFrame(cam, w, h, Path.Combine("Screenshots", "crystalviz-night.png"));
         Debug.Log("CrystalVizScreenshot: saved Screenshots/crystalviz.png + crystalviz-night.png");
     }

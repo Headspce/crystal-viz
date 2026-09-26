@@ -26,10 +26,16 @@ public class StageIndicatorUI : MonoBehaviour
     readonly Sprite[] stageSprites = new Sprite[4];
     Image stageImage;
     Text tapText;
-    Text beeText;
-    Image beeIconImg;
     BeeController beeController;
     int lastBeeCount = -1;
+    int lastNight = -1;
+    // v1.0.52: the live-bee counter is two diagonal stacks (top-left ->
+    // bottom-right) — three "B" letters by day, three firefly images by
+    // night — with lit/grayed states per flying bee.
+    GameObject beeStackGO;
+    GameObject fireflyStackGO;
+    readonly Text[] beeLetters = new Text[3];
+    readonly Image[] fireflyIcons = new Image[3];
     RectTransform popRect;
     RectTransform beePillRect;
     Coroutine popRoutine;
@@ -108,42 +114,57 @@ public class StageIndicatorUI : MonoBehaviour
                 ? $"{controller.currentTaps} / {controller.totalTaps} (+{credits})"
                 : $"{controller.currentTaps} / {controller.totalTaps}";
         }
-        // Live-bee counter: 3 -> 0 as bees pop, refilling on respawn.
-        // Cached so the text (and icon dim) only updates on change.
-        // Lazy-resolve: BuildDiorama() builds the tree (and this UI) BEFORE
-        // the BeeController GameObject exists, so the Initialize()-time
-        // lookup always missed and the counter was stuck. Resolving here
-        // self-heals regardless of build order.
-        if (beeController == null) beeController = FindObjectOfType<BeeController>();
-        if (beeController != null && beeText != null)
-        {
-            int n = beeController.FlyingBeeCount;
-            if (n != lastBeeCount)
-            {
-                lastBeeCount = n;
-                beeText.text = n.ToString();
-                LayoutBeeIcon(n);
-                if (beeIconImg != null)
-                    beeIconImg.color = n > 0
-                        ? Color.white
-                        : new Color(0.45f, 0.45f, 0.45f, 0.55f);
-            }
-        }
+        // v1.0.52: the diagonal bee/firefly counter — RefreshCounter()
+        // no-ops unless the live-bee count or the day/night mode changed.
+        // Lazy self-heal: BuildDiorama() builds the tree (and this UI)
+        // BEFORE the BeeController GameObject exists, so the
+        // Initialize()-time lookup always missed and the counter was stuck.
+        // Resolving inside RefreshCounter() fixes that regardless of build
+        // order.
+        RefreshCounter();
     }
 
     /// <summary>
-    /// v1.0.39: hug the bee icon to the number — a single digit pulls the bee
-    /// in tight, double digits push it back out to make room for the second
-    /// digit.
+    /// v1.0.52: drives the diagonal bee/firefly counter stacks. Day: three
+    /// "B"s, top-left -> bottom-right; night: three firefly images in the
+    /// same diagonal slot. The first n glyphs light up (n = flying unpopped
+    /// bees: 3 -> 0 as bees pop, refilling on respawn), the rest gray out.
+    /// Public so the CI screenshot tool can push the night state in edit
+    /// mode (Update never runs there).
     /// </summary>
-    void LayoutBeeIcon(int n)
+    public void RefreshCounter()
     {
-        if (beeIconImg == null) return;
-        var rt = beeIconImg.rectTransform;
-        var p = rt.anchoredPosition;
-        p.x = n < 10 ? 22f : 6f;
-        rt.anchoredPosition = p;
+        if (beeController == null) beeController = FindObjectOfType<BeeController>();
+        if (beeController == null) return;
+        int n = Mathf.Clamp(beeController.FlyingBeeCount, 0, 3);
+        bool night = beeController.IsNightMode;
+        int nightFlag = night ? 1 : 0;
+        if (n == lastBeeCount && nightFlag == lastNight) return;
+        lastBeeCount = n;
+        lastNight = nightFlag;
+        ApplyCounterState(n, night);
     }
+
+    void ApplyCounterState(int n, bool night)
+    {
+        if (beeStackGO != null) beeStackGO.SetActive(!night);
+        if (fireflyStackGO != null) fireflyStackGO.SetActive(night);
+        for (int i = 0; i < 3; i++)
+        {
+            bool lit = i < n;
+            if (beeLetters[i] != null)
+                beeLetters[i].color = lit
+                    ? MeadowGlassUI.WarmWhite
+                    : new Color(0.42f, 0.44f, 0.47f, 0.55f);
+            if (fireflyIcons[i] != null)
+                fireflyIcons[i].color = lit
+                    ? Color.white
+                    : new Color(0.30f, 0.32f, 0.36f, 0.50f);
+        }
+    }
+
+    // (v1.0.52: LayoutBeeIcon removed with the old "3 + bee icon" pill —
+    // the diagonal B/firefly stacks need no per-count layout.)
 
     void OnStageChanged(int stage)
     {
@@ -300,10 +321,12 @@ public class StageIndicatorUI : MonoBehaviour
         stageImage = stageGO.AddComponent<Image>();
         stageImage.preserveAspect = true;
 
-        // HUD row under the avatar: live-bee counter pill on the left, tap
-        // counter pill on the right. The bee pill shows the game's bee sprite
-        // plus how many bees are currently flying unpopped (3 -> 0 as they
-        // pop, refilling on respawn). The tap pill keeps the "12 / 50"
+        // Live-bee counter (left): v1.0.52 replaces the "3 + bee icon" pill
+        // with THREE B's stacked diagonally (top-left -> bottom-right) —
+        // one per bee. Each B lights up while its bee is flying unpopped
+        // and grays out when popped (3 -> 0 as bees pop, refilling on
+        // respawn). At night the B's swap for three firefly images with
+        // the same lit/grayed behavior. The tap pill keeps the "12 / 50"
         // fractional readout — it shows progress toward the goal at a glance,
         // where a bare number would make the player remember the target.
         var rowGO = NewRect("HudRow", root.transform);
@@ -322,55 +345,78 @@ public class StageIndicatorUI : MonoBehaviour
         if (hudFont == null)
             Debug.LogWarning("StageIndicatorUI: built-in LegacyRuntime font not found; HUD counters may not render.");
 
-        // Bee counter pill (left).
-        var beePillGO = NewRect("BeePill", rowGO.transform);
-        var beePillRt = beePillGO.GetComponent<RectTransform>();
-        beePillRt.anchorMin = new Vector2(0f, 0.5f);
-        beePillRt.anchorMax = new Vector2(0f, 0.5f);
-        beePillRt.pivot = new Vector2(0f, 0.5f);
-        beePillRt.anchoredPosition = new Vector2(0f, 0f);
-        beePillRt.sizeDelta = new Vector2(168f, 58f);
-        beePillRect = beePillRt;
-        var beePillImg = beePillGO.AddComponent<Image>();
-        beePillImg.sprite = pill;
-        beePillImg.type = Image.Type.Sliced;
-        beePillImg.color = Color.white; // glass + gold colors are baked in
-
-        var iconGO = NewRect("BeeIcon", beePillGO.transform);
-        var iconRt = iconGO.GetComponent<RectTransform>();
-        iconRt.anchorMin = new Vector2(0f, 0.5f);
-        iconRt.anchorMax = new Vector2(0f, 0.5f);
-        iconRt.pivot = new Vector2(0f, 0.5f);
-        // Seed tight: the pill opens showing "3" (single digit), and
-        // Update() calls LayoutBeeIcon() on every count change after that.
-        iconRt.anchoredPosition = new Vector2(22f, 0f);
-        iconRt.sizeDelta = new Vector2(50f, 50f);
-        beeIconImg = iconGO.AddComponent<Image>();
-        var beeTex = BeeController.BeeIconTexture;
-        if (beeTex != null)
-        {
-            beeIconImg.sprite = Sprite.Create(beeTex,
-                new Rect(0f, 0f, beeTex.width, beeTex.height),
+        // v1.0.52: the diagonal bee counter — no pill, no number. Two
+        // stacks share one diagonal slot (top-left -> bottom-right): three
+        // "B" letters by day, three firefly images by night. RefreshCounter()
+        // drives lit/grayed states from the live-bee count.
+        var fireflyTex = Resources.Load<Texture2D>("firefly");
+        Sprite fireflySprite = null;
+        if (fireflyTex != null)
+            fireflySprite = Sprite.Create(fireflyTex,
+                new Rect(0f, 0f, fireflyTex.width, fireflyTex.height),
                 new Vector2(0.5f, 0.5f), 100f);
-            beeIconImg.preserveAspect = true;
-        }
 
-        var beeTextGO = NewRect("BeeCounter", beePillGO.transform);
-        var beeTextRt = beeTextGO.GetComponent<RectTransform>();
-        beeTextRt.anchorMin = new Vector2(0f, 0.5f);
-        beeTextRt.anchorMax = new Vector2(1f, 0.5f);
-        beeTextRt.pivot = new Vector2(0.5f, 0.5f);
-        beeTextRt.anchoredPosition = new Vector2(28f, 0f);
-        beeTextRt.sizeDelta = new Vector2(112f, 58f);
-        beeText = beeTextGO.AddComponent<Text>();
-        beeText.font = hudFont;
-        beeText.fontSize = 40;
-        beeText.alignment = TextAnchor.MiddleCenter;
-        beeText.color = Color.white;
-        var beeOutline = beeTextGO.AddComponent<Outline>();
-        beeOutline.effectColor = new Color(0.04f, 0.08f, 0.18f, 0.95f);
-        beeOutline.effectDistance = new Vector2(2.5f, -2.5f);
-        beeText.text = "3";
+        beeStackGO = NewRect("BeeStack", rowGO.transform);
+        var beeStackRt = beeStackGO.GetComponent<RectTransform>();
+        beeStackRt.anchorMin = new Vector2(0f, 0.5f);
+        beeStackRt.anchorMax = new Vector2(0f, 0.5f);
+        beeStackRt.pivot = new Vector2(0f, 1f);
+        beeStackRt.anchoredPosition = new Vector2(6f, 44f);
+        beeStackRt.sizeDelta = new Vector2(140f, 140f);
+        beePillRect = beeStackRt; // the reject-punch target (was the old pill)
+
+        fireflyStackGO = NewRect("FireflyStack", rowGO.transform);
+        var fireflyStackRt = fireflyStackGO.GetComponent<RectTransform>();
+        fireflyStackRt.anchorMin = new Vector2(0f, 0.5f);
+        fireflyStackRt.anchorMax = new Vector2(0f, 0.5f);
+        fireflyStackRt.pivot = new Vector2(0f, 1f);
+        fireflyStackRt.anchoredPosition = new Vector2(6f, 44f);
+        fireflyStackRt.sizeDelta = new Vector2(140f, 140f);
+
+        // Diagonal offsets: glyph 0 top-left, glyph 2 bottom-right.
+        var diag = new[]
+        {
+            new Vector2(0f, 0f),
+            new Vector2(38f, -38f),
+            new Vector2(76f, -76f),
+        };
+        for (int i = 0; i < 3; i++)
+        {
+            var bGO = NewRect($"BeeB{i}", beeStackGO.transform);
+            var bRt = bGO.GetComponent<RectTransform>();
+            bRt.anchorMin = new Vector2(0f, 1f);
+            bRt.anchorMax = new Vector2(0f, 1f);
+            bRt.pivot = new Vector2(0.5f, 0.5f);
+            bRt.anchoredPosition = diag[i];
+            bRt.sizeDelta = new Vector2(56f, 56f);
+            var bt = bGO.AddComponent<Text>();
+            bt.font = hudFont;
+            bt.fontSize = 42;
+            bt.alignment = TextAnchor.MiddleCenter;
+            bt.text = "B";
+            var bOut = bGO.AddComponent<Outline>();
+            bOut.effectColor = new Color(0.04f, 0.08f, 0.18f, 0.95f);
+            bOut.effectDistance = new Vector2(2.5f, -2.5f);
+            beeLetters[i] = bt;
+
+            var fGO = NewRect($"FireflyIcon{i}", fireflyStackGO.transform);
+            var fRt = fGO.GetComponent<RectTransform>();
+            fRt.anchorMin = new Vector2(0f, 1f);
+            fRt.anchorMax = new Vector2(0f, 1f);
+            fRt.pivot = new Vector2(0.5f, 0.5f);
+            fRt.anchoredPosition = diag[i];
+            fRt.sizeDelta = new Vector2(60f, 60f);
+            var fi = fGO.AddComponent<Image>();
+            fi.sprite = fireflySprite;
+            fi.preserveAspect = true;
+            fireflyIcons[i] = fi;
+        }
+        fireflyStackGO.SetActive(false);
+        // Seed: day, three lit B's. Update() corrects within a frame in
+        // play mode; edit-mode captures stay deterministic.
+        lastBeeCount = 3;
+        lastNight = 0;
+        ApplyCounterState(3, false);
 
         // Tap counter pill (right): white text on a dark translucent
         // pill so the numbers stay readable against the bright sky, plus a

@@ -185,9 +185,27 @@ public class TreeResetButton : MonoBehaviour
                             if (o != null)
                             {
                                 o.ToggleSliderPanel();
-                                MeadowToast.Show(o.IsSliderPanelVisible
-                                    ? "Lighting slider popped in — drag to change the light."
-                                    : "Lighting slider tucked away.");
+                                // v1.0.52: the "popped in" hint shows ONCE per
+                                // install (player request — it was nagging on
+                                // every toggle) and rides screen-center so the
+                                // expanded corner menu can't overlap it. The
+                                // "tucked away" confirmation still shows
+                                // every time, bottom-center as before.
+                                if (o.IsSliderPanelVisible)
+                                {
+                                    if (PlayerPrefs.GetInt("cv_toast_slider_seen", 0) == 0)
+                                    {
+                                        MeadowToast.Show(
+                                            "Lighting slider popped in — drag to change the light.",
+                                            centered: true);
+                                        PlayerPrefs.SetInt("cv_toast_slider_seen", 1);
+                                        PlayerPrefs.Save();
+                                    }
+                                }
+                                else
+                                {
+                                    MeadowToast.Show("Lighting slider tucked away.");
+                                }
                             }
                             else
                             {

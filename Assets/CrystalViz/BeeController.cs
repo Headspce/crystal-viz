@@ -544,7 +544,10 @@ public class BeeController : MonoBehaviour
             var light = lg.AddComponent<Light>();
             light.type = LightType.Point;
             light.color = new Color(0.72f, 1.0f, 0.38f);
-            light.range = 1.4f;
+            // v1.0.52: fireflies are 50% smaller — the light pool shrinks
+            // slightly less than the body (1.4 -> 1.0) so the warm glow
+            // still reads on the ground.
+            light.range = 1.0f;
             light.intensity = 1.6f;
             light.shadows = LightShadows.None;
             bee.fireflyLight = light;
@@ -558,7 +561,9 @@ public class BeeController : MonoBehaviour
             g.name = "FireflyGlow";
             g.transform.SetParent(bee.bodyT, false);
             g.transform.localPosition = new Vector3(0f, 0f, -0.02f);
-            g.transform.localScale = new Vector3(0.42f, 0.42f, 1f);
+            // v1.0.52: 50% smaller fireflies — the glow halo shrinks with
+            // the body (0.42 -> 0.21).
+            g.transform.localScale = new Vector3(0.21f, 0.21f, 1f);
             var mat = new Material(spriteShader);
             mat.mainTexture = fireflyTex;
             var c = mat.color; c.a = 0.55f; mat.color = c;
@@ -825,19 +830,33 @@ public class BeeController : MonoBehaviour
             // Turning is an illusion — a horizontal paper flip (scale.x
             // sweeping through edge-on) driven by camera-space motion, plus
             // a slight paper tilt with vertical movement.
+            // v1.0.52: fireflies keep the camera billboard but their facing
+            // is LOCKED — no paper flip, no banking tilt — so they keep
+            // the illusion of facing one way only (player request). Bees
+            // keep the existing flip/tilt behavior.
             if (mainCam != null)
             {
                 bee.bodyT.rotation = mainCam.transform.rotation;
-                Vector3 velW = (bee.bodyT.position - bee.lastPos) / Mathf.Max(dt, 0.0001f);
-                bee.lastPos = bee.bodyT.position;
-                Vector3 velC = mainCam.transform.InverseTransformDirection(velW);
-                if (Mathf.Abs(velC.x) > 0.2f) bee.flipTarget = velC.x > 0f ? 1f : -1f;
-                bee.flipX = Mathf.MoveTowards(bee.flipX, bee.flipTarget, dt * 9f);
-                float bank = Mathf.Clamp(-velC.y * 5f, -12f, 12f);
-                bee.bodyT.Rotate(0f, 0f, bank);
+                if (bee.isFirefly)
+                {
+                    bee.flipX = Mathf.MoveTowards(bee.flipX, 1f, dt * 9f);
+                    bee.lastPos = bee.bodyT.position;
+                }
+                else
+                {
+                    Vector3 velW = (bee.bodyT.position - bee.lastPos) / Mathf.Max(dt, 0.0001f);
+                    bee.lastPos = bee.bodyT.position;
+                    Vector3 velC = mainCam.transform.InverseTransformDirection(velW);
+                    if (Mathf.Abs(velC.x) > 0.2f) bee.flipTarget = velC.x > 0f ? 1f : -1f;
+                    bee.flipX = Mathf.MoveTowards(bee.flipX, bee.flipTarget, dt * 9f);
+                    float bank = Mathf.Clamp(-velC.y * 5f, -12f, 12f);
+                    bee.bodyT.Rotate(0f, 0f, bank);
+                }
             }
-            // v1.0.51: fireflies render slightly larger so the glow reads.
-            float formS = bee.isFirefly ? 1.6f : 1f;
+            // v1.0.52: fireflies are 50% smaller than bees (player request)
+            // — the glow reads better small, and the new artwork has real
+            // detail to show. (v1.0.51 rendered them 1.6x for the glow orb.)
+            float formS = bee.isFirefly ? 0.8f : 1f;
             bee.bodyT.localScale = new Vector3(SpriteSize * bee.flipX * spawnS * formS,
                 SpriteSize * spawnS * formS, 1f);
 
@@ -875,7 +894,10 @@ public class BeeController : MonoBehaviour
                     bee.lightPool.SetActive(true);
                     Vector3 bp2 = bee.bodyT.position;
                     bee.lightPool.transform.position = new Vector3(bp2.x, 0.016f, bp2.z);
-                    float ps = 0.70f + 0.30f * flicker;
+                    // v1.0.52: smaller fireflies, smaller pool (shrinks a
+                    // touch less than the body so the warm ground glow
+                    // still reads).
+                    float ps = 0.45f + 0.20f * flicker;
                     bee.lightPool.transform.localScale = new Vector3(ps, ps, 1f);
                     var pc = bee.lightPoolMat.color;
                     pc.a = 0.42f * flicker;

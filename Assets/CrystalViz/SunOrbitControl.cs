@@ -10,8 +10,12 @@ using UnityEngine.EventSystems;
 /// tick labels and the clock pill are gone (one clean solid slider again);
 /// the panel starts HIDDEN and pops in/out via the corner menu's star button.
 /// v1.0.51: the day/night button is GONE (accidental taps); the slider is
-/// STEPPED — 13 hourly detents that "click into place" with a haptic tick —
+/// STEPPED — 24 hourly detents that "click into place" with a haptic tick —
 /// and the hard 7 PM / 6 AM switch now also flips bees into fireflies.
+/// v1.0.52: the slider is a FULL 24-HOUR day — 24 one-hour sections (12 PM
+/// at the bottom, wrapping to 12 PM at the top), 24 snap detents, and 24
+/// discrete tree-shadow positions circling the tree (one per hour) as the
+/// sun does one full 360° orbit over the day.
 /// The whole UI is built in code (no prefabs) so the scene file stays tiny
 /// and everything is version-controlled as C#.
 /// </summary>
@@ -35,11 +39,14 @@ public class SunOrbitControl : MonoBehaviour
     float panelDir; // +1 popping in, -1 popping out, 0 idle
     const float PanelPopDur = 0.28f;
 
-    // v1.0.51: the slider is STEPPED — 13 hourly detents (12 PM .. 12 AM),
+    // v1.0.52: the slider is a FULL 24-HOUR day — 24 hourly detents, one
+    // per hour section (12 PM at v=0, wrapping around to 12 PM at v=1),
     // each hour "clicking into place" as the finger drags (player request).
+    // The sun does one full 360° orbit over the day, so the tree's shadow
+    // snaps through 24 discrete positions circling the tree — one per hour.
     // Every time-of-day path funnels through SetTimeOfDay, which snaps to
     // the nearest hour; SliderTouchZone adds a haptic tick per detent.
-    public const int HourSteps = 12; // 12 one-hour steps -> 13 detents
+    public const int HourSteps = 24; // 24 one-hour sections -> 24 detents
 
     // v1.0.51: the bee<->firefly swap rides the hard day/night switch — when
     // the night factor flips, the BeeController transforms the squad.
@@ -83,9 +90,10 @@ public class SunOrbitControl : MonoBehaviour
     }
 
     /// <summary>
-    /// v1.0.51: snaps a slider value to the nearest hourly detent (13 stops:
-    /// 12 PM at v=0 through 12 AM at v=1) — the stepped "click into place"
-    /// feel Tyler asked for.
+    /// v1.0.52: snaps a slider value to the nearest hourly detent (24
+    /// stops: 12 PM at v=0, wrapping to 12 PM at v=1) — the stepped
+    /// "click into place" feel Tyler asked for. Each detent is one hour
+    /// section of the 24-hour day, with its own tree-shadow position.
     /// </summary>
     public static float SnapHour(float v)
     {
@@ -125,29 +133,28 @@ public class SunOrbitControl : MonoBehaviour
 
     /// <summary>
     /// v1.0.46: maps the device's real local time onto the slider (player
-    /// request). v1.0.49: the slider runs noon (BOTTOM, v=0) to midnight
-    /// (TOP, v=1) — the direction Tyler asked for. Morning hours clamp to
-    /// noon — daylight, which is the honest answer for 9 AM on a 12-hour
-    /// afternoon/evening scale.
+    /// request). v1.0.52: the slider is a full 24-hour day — noon sits at
+    /// the bottom (v=0), midnight at the middle (v=0.5), and the day wraps
+    /// back to noon at the top (v=1); every real hour lands on its own
+    /// hourly detent.
     /// </summary>
     static float DeviceTimeSliderValue()
     {
         var now = System.DateTime.Now;
         float hour = now.Hour + now.Minute / 60f + now.Second / 3600f;
-        if (hour < 12f) return 0f;
-        return Mathf.Clamp01((hour - 12f) / 12f);
+        return ((hour - 12f + 24f) % 24f) / 24f;
     }
 
     /// <summary>
     /// v1.0.49: HARD day/night switch (player request — no gradual fade).
-    /// v=0 is 12:00 PM (noon, bottom), v=1 is 12:00 AM (midnight, top).
-    /// Daylight runs noon until 7:00 PM; dark runs 7:00 PM until midnight.
-    /// Stated generally: dark when hour >= 19 OR hour < 6, daylight
-    /// otherwise — so a 6:00 AM sunrise holds if the range ever extends.
+    /// v1.0.52: the slider is a full 24-hour day — v=0 is 12:00 PM (noon,
+    /// bottom), v=0.5 is 12:00 AM (midnight, middle), v=1 wraps back to
+    /// 12:00 PM (noon, top). Dark when hour >= 19 OR hour < 6, daylight
+    /// otherwise — 7:00 PM through 6:00 AM is night.
     /// </summary>
     public static float NightFactor(float v)
     {
-        float hour24 = 12f + v * 12f; // 12 (noon) .. 24 (midnight)
+        float hour24 = (12f + v * 24f) % 24f; // 12 (noon) .. wraps to 12 (noon)
         return (hour24 >= 19f || hour24 < 6f) ? 1f : 0f;
     }
 
