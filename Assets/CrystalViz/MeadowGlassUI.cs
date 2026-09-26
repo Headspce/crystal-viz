@@ -580,4 +580,139 @@ public static class MeadowGlassUI
         return Sprite.Create(tex, new Rect(0f, 0f, w, h),
             new Vector2(0.5f, 0.5f), 100f, 0u, SpriteMeshType.FullRect);
     }
+
+    /// <summary>
+    /// v1.0.56: inventory tree-type placeholders — six procedural tree
+    /// glyphs (oak, pine, birch, willow, cherry, palm) in the same flat
+    /// vector style as the sapling icon. type wraps mod 6.
+    /// </summary>
+    public static Sprite MakeTreeIcon(int size, int type)
+    {
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        tex.filterMode = FilterMode.Bilinear;
+        // Work in 0..1 space so the shapes read the same at any size.
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                Vector2 p = new Vector2((x + 0.5f) / size, (y + 0.5f) / size);
+                float trunkA = 0f, canopyA = 0f, accentA = 0f;
+                Color trunkC = Color.clear, canopyC = Color.clear, accentC = Color.clear;
+                switch (((type % 6) + 6) % 6)
+                {
+                    case 0: // Oak: stout trunk, broad round canopy.
+                        trunkC = new Color(0.40f, 0.29f, 0.19f);
+                        trunkA = TrunkAlpha(p, new Vector2(0.5f, 0.10f), new Vector2(0.5f, 0.44f), 0.035f);
+                        canopyC = new Color(0.32f, 0.60f, 0.30f);
+                        canopyA = Mathf.Max(canopyA, EllipseAlpha(p, new Vector2(0.5f, 0.62f), 0.20f, 0.20f, 0f));
+                        canopyA = Mathf.Max(canopyA, EllipseAlpha(p, new Vector2(0.37f, 0.54f), 0.15f, 0.15f, 0f));
+                        canopyA = Mathf.Max(canopyA, EllipseAlpha(p, new Vector2(0.63f, 0.54f), 0.15f, 0.15f, 0f));
+                        break;
+                    case 1: // Pine: stacked conifer triangles.
+                        trunkC = new Color(0.40f, 0.29f, 0.19f);
+                        trunkA = TrunkAlpha(p, new Vector2(0.5f, 0.08f), new Vector2(0.5f, 0.24f), 0.030f);
+                        canopyC = new Color(0.15f, 0.42f, 0.22f);
+                        canopyA = Mathf.Max(canopyA, TriAlpha(p, new Vector2(0.24f, 0.28f), new Vector2(0.76f, 0.28f), new Vector2(0.5f, 0.54f)));
+                        canopyA = Mathf.Max(canopyA, TriAlpha(p, new Vector2(0.28f, 0.44f), new Vector2(0.72f, 0.44f), new Vector2(0.5f, 0.70f)));
+                        canopyA = Mathf.Max(canopyA, TriAlpha(p, new Vector2(0.33f, 0.60f), new Vector2(0.67f, 0.60f), new Vector2(0.5f, 0.86f)));
+                        break;
+                    case 2: // Birch: white trunk with dark dashes, light canopy.
+                        trunkC = new Color(0.90f, 0.89f, 0.85f);
+                        trunkA = TrunkAlpha(p, new Vector2(0.5f, 0.10f), new Vector2(0.5f, 0.50f), 0.040f);
+                        accentC = new Color(0.20f, 0.18f, 0.16f);
+                        for (int di = 0; di < 4; di++)
+                        {
+                            float dy = 0.18f + di * 0.10f;
+                            accentA = Mathf.Max(accentA, TrunkAlpha(p,
+                                new Vector2(0.462f, dy), new Vector2(0.538f, dy), 0.010f));
+                        }
+                        canopyC = new Color(0.48f, 0.74f, 0.36f);
+                        canopyA = Mathf.Max(canopyA, EllipseAlpha(p, new Vector2(0.5f, 0.64f), 0.19f, 0.19f, 0f));
+                        canopyA = Mathf.Max(canopyA, EllipseAlpha(p, new Vector2(0.38f, 0.56f), 0.14f, 0.14f, 0f));
+                        canopyA = Mathf.Max(canopyA, EllipseAlpha(p, new Vector2(0.62f, 0.56f), 0.14f, 0.14f, 0f));
+                        break;
+                    case 3: // Willow: wide drooping canopy with hanging strands.
+                        trunkC = new Color(0.40f, 0.29f, 0.19f);
+                        trunkA = TrunkAlpha(p, new Vector2(0.5f, 0.10f), new Vector2(0.47f, 0.40f), 0.030f);
+                        canopyC = new Color(0.52f, 0.70f, 0.32f);
+                        canopyA = EllipseAlpha(p, new Vector2(0.5f, 0.60f), 0.30f, 0.15f, 0f);
+                        accentC = new Color(0.42f, 0.62f, 0.28f);
+                        for (int si = 0; si < 5; si++)
+                        {
+                            float sx = 0.30f + si * 0.10f;
+                            accentA = Mathf.Max(accentA, TrunkAlpha(p,
+                                new Vector2(sx, 0.54f), new Vector2(sx, 0.30f), 0.008f));
+                        }
+                        break;
+                    case 4: // Cherry: dark trunk, pink blossom canopy.
+                        trunkC = new Color(0.32f, 0.22f, 0.18f);
+                        trunkA = TrunkAlpha(p, new Vector2(0.5f, 0.10f), new Vector2(0.5f, 0.44f), 0.032f);
+                        canopyC = new Color(0.94f, 0.60f, 0.68f);
+                        canopyA = Mathf.Max(canopyA, EllipseAlpha(p, new Vector2(0.5f, 0.62f), 0.20f, 0.20f, 0f));
+                        canopyA = Mathf.Max(canopyA, EllipseAlpha(p, new Vector2(0.36f, 0.54f), 0.15f, 0.15f, 0f));
+                        canopyA = Mathf.Max(canopyA, EllipseAlpha(p, new Vector2(0.64f, 0.54f), 0.15f, 0.15f, 0f));
+                        break;
+                    default: // Palm: curved trunk, radiating fronds, coconuts.
+                        trunkC = new Color(0.55f, 0.42f, 0.28f);
+                        trunkA = Mathf.Max(
+                            TrunkAlpha(p, new Vector2(0.48f, 0.10f), new Vector2(0.52f, 0.32f), 0.030f),
+                            TrunkAlpha(p, new Vector2(0.52f, 0.32f), new Vector2(0.60f, 0.52f), 0.030f));
+                        canopyC = new Color(0.30f, 0.64f, 0.30f);
+                        Vector2 crown = new Vector2(0.60f, 0.55f);
+                        for (int fi = 0; fi < 6; fi++)
+                        {
+                            float ang = -75f + fi * 30f;
+                            float rad = ang * Mathf.Deg2Rad;
+                            Vector2 fdir = new Vector2(Mathf.Sin(rad), Mathf.Cos(rad));
+                            Vector2 fc = crown + fdir * 0.13f;
+                            canopyA = Mathf.Max(canopyA,
+                                EllipseAlpha(p, fc, 0.16f, 0.045f, -ang));
+                        }
+                        accentC = new Color(0.45f, 0.32f, 0.20f);
+                        accentA = Mathf.Max(accentA, EllipseAlpha(p, new Vector2(0.565f, 0.52f), 0.030f, 0.030f, 0f));
+                        accentA = Mathf.Max(accentA, EllipseAlpha(p, new Vector2(0.635f, 0.52f), 0.030f, 0.030f, 0f));
+                        break;
+                }
+                // Later layers win ties: accent over canopy over trunk.
+                float a = 0f;
+                Color col = Color.clear;
+                if (trunkA > a) { a = trunkA; col = trunkC; }
+                if (canopyA >= a && canopyA > 0f) { a = canopyA; col = canopyC; }
+                if (accentA >= a && accentA > 0f) { a = accentA; col = accentC; }
+                tex.SetPixel(x, y, new Color(col.r, col.g, col.b, Mathf.Clamp01(a)));
+            }
+        }
+        tex.Apply();
+        return Sprite.Create(tex, new Rect(0f, 0f, size, size),
+            new Vector2(0.5f, 0.5f), 100f, 0u, SpriteMeshType.FullRect);
+    }
+
+    /// <summary>
+    /// v1.0.56: soft alpha for a trunk/strand segment, in 0..1 space.
+    /// </summary>
+    static float TrunkAlpha(Vector2 p, Vector2 a, Vector2 b, float halfWidth)
+    {
+        float d = SegmentDist(p, a, b);
+        return 1f - SStep(halfWidth * 0.7f, halfWidth * 1.3f, d);
+    }
+
+    /// <summary>
+    /// v1.0.56: soft point-in-triangle alpha via barycentric coordinates.
+    /// </summary>
+    static float TriAlpha(Vector2 p, Vector2 a, Vector2 b, Vector2 c)
+    {
+        Vector2 v0 = c - a, v1 = b - a, v2 = p - a;
+        float d00 = Vector2.Dot(v0, v0);
+        float d01 = Vector2.Dot(v0, v1);
+        float d11 = Vector2.Dot(v1, v1);
+        float d20 = Vector2.Dot(v2, v0);
+        float d21 = Vector2.Dot(v2, v1);
+        float den = d00 * d11 - d01 * d01;
+        if (Mathf.Abs(den) < 1e-9f) return 0f;
+        float v = (d11 * d20 - d01 * d21) / den;
+        float w = (d00 * d21 - d01 * d20) / den;
+        float u = 1f - v - w;
+        float m = Mathf.Min(u, Mathf.Min(v, w));
+        return SStep(-0.05f, 0.03f, m);
+    }
 }

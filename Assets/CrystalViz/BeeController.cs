@@ -40,7 +40,7 @@ public class BeeController : MonoBehaviour
     List<Vector3> nearHeads = new List<Vector3>();
     List<BeeAgent> bees = new List<BeeAgent>();
     List<PopFX> pops = new List<PopFX>();
-    List<SparkFX> sparkFxs = new List<SparkFX>(); // v1.0.55: firefly spark showers
+    List<EmberFX> emberFxs = new List<EmberFX>(); // v1.0.56: firefly glow-confetti
 
     // Swipe tracking (screen pixels) for the pop interaction.
     List<Vector2> swipePts = new List<Vector2>();
@@ -104,11 +104,12 @@ public class BeeController : MonoBehaviour
         public float age;
     }
 
-    // v1.0.55: one spark in a firefly's burst — a tiny warm mote with
-    // parametric physics. Sparks arc out, then gravity pulls them down;
-    // the ones that reach the meadow rest on the ground and fizzle out.
+    // v1.0.56: one ember in a firefly's burst — a glowing confetti mote.
+    // It blooms out like a mini firework, then the burst decays into a
+    // gentle firefly drift (sine wander + soft hover) while the glow
+    // pulses the way real fireflies do, fizzling out mid-air.
     // (Parametric, like the petals — no rigidbodies, cheap on the phone.)
-    class Spark
+    class Ember
     {
         public Transform t;
         public Vector3 vel;
@@ -116,13 +117,14 @@ public class BeeController : MonoBehaviour
         public float age;
         public Material mat;
         public float size;
-        public bool grounded;
+        public float phase;      // per-ember wander/pulse offset
+        public float pulseSpeed; // glow pulse rate (rad/s)
     }
 
-    class SparkFX
+    class EmberFX
     {
         public GameObject root;
-        public List<Spark> sparks = new List<Spark>();
+        public List<Ember> embers = new List<Ember>();
         public float age;
     }
 
@@ -739,12 +741,12 @@ public class BeeController : MonoBehaviour
             Destroy(pops[i].root);
         }
         pops.Clear();
-        for (int i = sparkFxs.Count - 1; i >= 0; i--)
+        for (int i = emberFxs.Count - 1; i >= 0; i--)
         {
-            foreach (var s in sparkFxs[i].sparks) Destroy(s.mat);
-            Destroy(sparkFxs[i].root);
+            foreach (var s in emberFxs[i].embers) Destroy(s.mat);
+            Destroy(emberFxs[i].root);
         }
-        sparkFxs.Clear();
+        emberFxs.Clear();
     }
 
     void Update()
@@ -754,7 +756,7 @@ public class BeeController : MonoBehaviour
             UpdateBee(bee, dt);
         UpdateSwipe();
         UpdatePops(dt);
-        UpdateSparks(dt);
+        UpdateEmbers(dt);
         UpdateSpawnBursts(dt);
     }
 
@@ -1137,9 +1139,10 @@ public class BeeController : MonoBehaviour
 
     void PopBee(BeeAgent bee)
     {
-        // v1.0.55: fireflies burst into a shower of sparks (some raining
-        // down to rest on the meadow); bees keep the rainbow confetti pop.
-        if (bee.isFirefly) SpawnSparkFX(bee.bodyT.position);
+        // v1.0.56: fireflies burst into glowing confetti — like the bees'
+        // pop, but lit like the fireflies themselves (a mini firework);
+        // bees keep the rainbow confetti pop.
+        if (bee.isFirefly) SpawnEmberFX(bee.bodyT.position);
         else SpawnPopFX(bee.bodyT.position);
         bee.root.SetActive(false);
         bee.alive = false;
@@ -1229,104 +1232,116 @@ public class BeeController : MonoBehaviour
         pops.Add(fx);
     }
 
-    // ------------------------------------------------------ firefly spark FX
+    // ------------------------------------------------------ firefly ember FX
 
-    // v1.0.55: the firefly pop — a small shower of warm sparks. Each spark
-    // arcs out with drag and gravity; sparks that reach the meadow rest on
-    // the ground (a soft landing, no bounce) and fizzle out there. Warm
-    // amber/gold/white motes, smaller than confetti petals.
-    const int SparkCount = 22;
-    const float SparkGravity = 4.2f;
-    const float SparkGroundY = 0.015f; // meadow surface rest height
+    // v1.0.56: the firefly pop — glowing confetti. Each ember wears the
+    // firefly glow texture (hot core + soft halo) tinted through the warm
+    // yellow-green firefly palette, so the burst reads like the fireflies
+    // themselves: a mini firework that blooms, then drifts and pulses
+    // before fizzling out mid-air.
+    const int EmberCount = 26;
+    const float EmberFxLife = 1.7f; // root lifetime (outlives the longest ember)
 
-    void SpawnSparkFX(Vector3 pos)
+    void SpawnEmberFX(Vector3 pos)
     {
-        if (popShader == null) return;
-        var fx = new SparkFX();
-        var root = new GameObject("FireflySparks");
+        // The glow recipe is proven in the player build — the firefly
+        // billboards already wear spriteShader + the firefly texture on
+        // device. If either is missing, skip the FX entirely: the firefly
+        // still pops (hides + respawns); only the confetti is lost.
+        EnsureFireflyTexture();
+        if (spriteShader == null || fireflyTex == null) return;
+        var fx = new EmberFX();
+        var root = new GameObject("FireflyEmbers");
         root.transform.position = pos;
         fx.root = root;
         var localRng = new System.Random((int)(Time.time * 1000f) + pos.GetHashCode());
 
-        for (int i = 0; i < SparkCount; i++)
+        for (int i = 0; i < EmberCount; i++)
         {
-            var spark = new Spark();
+            var ember = new Ember();
             var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
             DestroyImmediate(go.GetComponent<Collider>());
             go.transform.SetParent(root.transform, false);
             go.transform.position = pos;
-            float size = 0.030f + (float)localRng.NextDouble() * 0.030f;
-            spark.size = size;
-            go.transform.localScale = new Vector3(size, size, 1f);
-            // Warm spark palette: amber -> gold -> white-hot.
+            // Confetti-sized, like the bees' petals.
+            float size = 0.070f + (float)localRng.NextDouble() * 0.060f;
+            ember.size = size;
+            go.transform.localScale = new Vector3(size, size * 0.85f, 1f);
+            // Firefly palette: warm yellow-green, golden, white-hot.
             float huePick = (float)localRng.NextDouble();
-            Color col = huePick < 0.45f
-                ? Color.HSVToRGB(0.09f, 0.95f, 1f)   // amber
+            Color tint = huePick < 0.5f
+                ? new Color(0.72f, 1.0f, 0.38f)   // classic firefly green-gold
                 : huePick < 0.8f
-                    ? Color.HSVToRGB(0.13f, 0.75f, 1f) // gold
-                    : new Color(1f, 0.98f, 0.92f);    // white-hot
-            spark.mat = MakePopMaterial(col, popShader);
-            go.GetComponent<MeshRenderer>().material = spark.mat;
-            spark.t = go.transform;
-            if (mainCam != null) spark.t.rotation = mainCam.transform.rotation;
-            // Bias upward so the shower blooms before gravity takes over.
+                    ? new Color(0.95f, 0.88f, 0.35f) // golden
+                    : new Color(1f, 1f, 0.92f);      // white-hot core
+            var mat = new Material(spriteShader);
+            mat.mainTexture = fireflyTex;
+            var mc = tint; mc.a = 0.95f;
+            mat.color = mc;
+            var mr = go.GetComponent<MeshRenderer>();
+            mr.material = mat;
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            mr.receiveShadows = false;
+            ember.mat = mat;
+            ember.t = go.transform;
+            if (mainCam != null) ember.t.rotation = mainCam.transform.rotation;
+            // Mini-firework bloom: radial burst, biased upward.
             Vector3 dir = new Vector3(
                 (float)localRng.NextDouble() * 2f - 1f,
-                (float)localRng.NextDouble() * 1.6f + 0.5f,
+                (float)localRng.NextDouble() * 1.6f + 0.6f,
                 (float)localRng.NextDouble() * 2f - 1f).normalized;
-            spark.vel = dir * (1.1f + (float)localRng.NextDouble() * 1.1f);
-            spark.life = 0.9f + (float)localRng.NextDouble() * 0.5f;
-            spark.age = 0f;
-            spark.grounded = false;
-            fx.sparks.Add(spark);
+            ember.vel = dir * (1.6f + (float)localRng.NextDouble() * 1.4f);
+            ember.life = 1.1f + (float)localRng.NextDouble() * 0.5f;
+            ember.age = 0f;
+            ember.phase = (float)localRng.NextDouble() * Mathf.PI * 2f;
+            ember.pulseSpeed = 6f + (float)localRng.NextDouble() * 4f;
+            fx.embers.Add(ember);
         }
 
         fx.age = 0f;
-        sparkFxs.Add(fx);
+        emberFxs.Add(fx);
     }
 
-    void UpdateSparks(float dt)
+    void UpdateEmbers(float dt)
     {
-        for (int i = sparkFxs.Count - 1; i >= 0; i--)
+        for (int i = emberFxs.Count - 1; i >= 0; i--)
         {
-            var fx = sparkFxs[i];
+            var fx = emberFxs[i];
             fx.age += dt;
 
-            foreach (var s in fx.sparks)
+            foreach (var e in fx.embers)
             {
-                s.age += dt;
-                float k = Mathf.Clamp01(s.age / s.life);
-                if (!s.grounded)
-                {
-                    s.vel *= 1f / (1f + 1.6f * dt); // drag
-                    s.vel.y -= SparkGravity * dt;   // gravity
-                    s.t.position += s.vel * dt;
-                    // Ground collision: rest on the meadow, fizzle in place.
-                    if (s.t.position.y <= SparkGroundY)
-                    {
-                        var p = s.t.position;
-                        p.y = SparkGroundY;
-                        s.t.position = p;
-                        s.vel = Vector3.zero;
-                        s.grounded = true;
-                    }
-                }
-                // Billboard so every spark reads round from the camera.
-                if (mainCam != null) s.t.rotation = mainCam.transform.rotation;
-                float grow = Mathf.Clamp01(s.age / 0.08f);
-                float shrink = 1f - k * 0.5f;
-                float sz = s.size * grow * shrink;
-                s.t.localScale = new Vector3(sz, sz, 1f);
-                Color c = s.mat.color;
-                c.a = 1f - k * k;
-                s.mat.color = c;
+                e.age += dt;
+                float k = Mathf.Clamp01(e.age / e.life);
+                // The burst decays fast (drag); then the firefly flow takes
+                // over - a gentle sine wander plus a soft hover, so embers
+                // drift like the fireflies themselves instead of raining.
+                e.vel *= 1f / (1f + 2.6f * dt);
+                e.vel.y -= 0.35f * dt; // embers sink gently, like firework fallout
+                float flow = Mathf.Clamp01((e.age - 0.25f) / 0.45f);
+                Vector3 wander = new Vector3(
+                    Mathf.Sin(e.age * 3.1f + e.phase) * 0.35f,
+                    0.12f + 0.10f * Mathf.Sin(e.age * 2.3f + e.phase * 1.7f),
+                    Mathf.Cos(e.age * 2.7f + e.phase) * 0.35f) * flow;
+                e.t.position += (e.vel + wander) * dt;
+                // Billboarded glow (radially symmetric - no tumble needed).
+                if (mainCam != null) e.t.rotation = mainCam.transform.rotation;
+                float grow = Mathf.Clamp01(e.age / 0.10f);
+                float shrink = 1f - k * 0.45f;
+                float sz = e.size * grow * shrink;
+                e.t.localScale = new Vector3(sz, sz * 0.85f, 1f);
+                // Firefly pulse: the glow breathes while it drifts.
+                float pulse = 0.72f + 0.28f * Mathf.Sin(e.age * e.pulseSpeed + e.phase);
+                Color c = e.mat.color;
+                c.a = 0.95f * (1f - k * k) * pulse;
+                e.mat.color = c;
             }
 
-            if (fx.age > 1.5f)
+            if (fx.age > EmberFxLife)
             {
-                foreach (var s in fx.sparks) Destroy(s.mat);
+                foreach (var e in fx.embers) Destroy(e.mat);
                 Destroy(fx.root);
-                sparkFxs.RemoveAt(i);
+                emberFxs.RemoveAt(i);
             }
         }
     }

@@ -13,7 +13,7 @@ using UnityEngine.UI;
 /// taps answer back in plain-English toasts. Tapping the arrow slides three
 /// buttons out from behind it toward the center — the sapling button
 /// (v1.0.55: opens the inventory prototype — a frosted overlay with six
-/// empty rounded slots), the day/night button (v1.0.55: a sun-and-moon
+/// slots, v1.0.56: each holding a tree-type placeholder), the day/night button (v1.0.55: a sun-and-moon
 /// glyph on the star that snaps the time engine to 12 PM / 12 AM, flipping
 /// the lighting and the bee<->firefly transformation through the existing
 /// hour mechanism), and one placeholder (dots, no function yet) — and
@@ -257,7 +257,7 @@ public class TreeResetButton : MonoBehaviour
                             // panel to close it.
                             b.punch = 1f;
                             SetInventoryOpen(true);
-                            MeadowToast.Show("Inventory sprouted — six empty slots, for now.");
+                            MeadowToast.Show("Inventory sprouted — six tree types.");
                             Debug.Log("TreeResetButton: sapling button opened the inventory prototype.");
                         }
                         else if (i == 1)
@@ -641,7 +641,8 @@ public class TreeResetButton : MonoBehaviour
         panelImg.sprite = MeadowGlassUI.MakeGlassPanel(680, 620, 64f);
         panelImg.color = Color.white;
 
-        // Six empty slots, 3 columns x 2 rows.
+        // Six slots, 3 columns x 2 rows — v1.0.56: each holds a tree-type
+        // placeholder glyph (oak, pine, birch, willow, cherry, palm).
         var slotSprite = MeadowGlassUI.MakeRoundedSquare(160, 30f);
         for (int r = 0; r < 2; r++)
         {
@@ -659,6 +660,19 @@ public class TreeResetButton : MonoBehaviour
                 var simg = slotGO.GetComponent<Image>();
                 simg.sprite = slotSprite;
                 simg.preserveAspect = true;
+                // v1.0.56: tree-type placeholder inside the slot.
+                var iconGO = new GameObject($"TreeIcon_{r}_{c}",
+                    typeof(RectTransform), typeof(Image));
+                iconGO.transform.SetParent(slotGO.transform, false);
+                var irt = iconGO.GetComponent<RectTransform>();
+                irt.anchorMin = new Vector2(0.5f, 0.5f);
+                irt.anchorMax = new Vector2(0.5f, 0.5f);
+                irt.pivot = new Vector2(0.5f, 0.5f);
+                irt.anchoredPosition = Vector2.zero;
+                irt.sizeDelta = new Vector2(104f, 104f);
+                var iimg = iconGO.GetComponent<Image>();
+                iimg.sprite = MeadowGlassUI.MakeTreeIcon(120, r * 3 + c);
+                iimg.preserveAspect = true;
             }
         }
 
@@ -667,7 +681,7 @@ public class TreeResetButton : MonoBehaviour
         // deactivated — the sub-buttons prove always-active UI renders
         // reliably).
         inventoryPanelRt.localScale = new Vector3(0.001f, 0.001f, 1f);
-        Debug.Log("TreeResetButton: inventory prototype built (6 empty slots).");
+        Debug.Log("TreeResetButton: inventory prototype built (6 tree-type placeholders).");
     }
 
     /// <summary>

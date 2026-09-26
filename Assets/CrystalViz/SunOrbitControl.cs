@@ -5,6 +5,10 @@ using UnityEngine;
 /// drives the sun azimuth, the hard 7 PM / 6 AM day/night lighting switch,
 /// and the bee<->firefly transformation through one funnel (SetTimeOfDay).
 ///
+/// v1.0.56: the engine now also runs a continuous DAY/NIGHT CYCLE — time
+/// flows on its own, ping-ponging noon<->midnight, so the sun physically
+/// orbits and shadows sweep around the tree (player request).
+///
 /// v1.0.55: the lighting SLIDER is gone — player request, removed from the
 /// right edge entirely. The corner menu's day/night button is now the only
 /// time control (it snaps between 12 PM and 12 AM through SetTimeOfDay).
@@ -23,6 +27,20 @@ public class SunOrbitControl : MonoBehaviour
 
     // v1.0.51: the time runs on 13 hourly detents (12 PM .. 12 AM).
     public const int HourSteps = 12; // 12 one-hour steps -> 13 detents
+
+    // v1.0.56: DAY/NIGHT CYCLE (player request). The time engine now flows
+    // on its own: timeValue advances continuously, ping-ponging
+    // noon -> midnight -> noon, so the sun physically orbits and its
+    // shadows sweep around the tree in world space. One one-way leg (12
+    // game-hours, a 360° sun orbit) takes CycleLegSeconds of real time.
+    // The hourly snap still applies to SetTimeOfDay (day/night button,
+    // screenshot pin, init) — the cycle itself runs continuous so the
+    // motion is smooth, and the hard 7 PM / 6 AM lighting switch plus the
+    // bee<->firefly transformation ride along through the same
+    // ApplyTimeOfDay funnel. Edit-mode safe: the cycle only advances while
+    // the game is actually playing, so CI captures stay pinned to noon.
+    public const float CycleLegSeconds = 120f;
+    float cycleDir = 1f; // +1 toward midnight, -1 back toward noon
 
     // v1.0.51: the bee<->firefly swap rides the hard day/night switch — when
     // the night factor flips, the BeeController transforms the squad.
@@ -148,6 +166,18 @@ public class SunOrbitControl : MonoBehaviour
     void Update()
     {
         if (bootstrap == null || bootstrap.sun == null) return;
+        // v1.0.56: the day/night cycle — time flows continuously here (not
+        // through the snapped SetTimeOfDay), ping-ponging noon<->midnight.
+        // Gated on isPlaying so the edit-mode CI screenshot path never
+        // drifts off its pinned noon.
+        if (Application.isPlaying)
+        {
+            timeValue += cycleDir * Time.deltaTime / CycleLegSeconds;
+            if (timeValue >= 1f) { timeValue = 1f; cycleDir = -1f; }
+            else if (timeValue <= 0f) { timeValue = 0f; cycleDir = 1f; }
+            targetAzimuth = timeValue * 360f;
+            ApplyTimeOfDay(timeValue);
+        }
         // Smooth-damped follow so the sun glides instead of snapping.
         currentAzimuth = Mathf.LerpAngle(currentAzimuth, targetAzimuth,
             1f - Mathf.Exp(-8f * Time.deltaTime));
