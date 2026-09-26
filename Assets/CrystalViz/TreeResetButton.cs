@@ -86,6 +86,7 @@ public class TreeResetButton : MonoBehaviour
     public static bool InventoryOpen { get; private set; }
     GameObject inventoryRoot;
     RectTransform inventoryPanelRt;
+    Image inventoryFrostImg;
     float inventoryT;   // 0 = closed, 1 = open
     float inventoryDir; // +1 opening, -1 closing, 0 idle
     const float InventoryPopDur = 0.26f;
@@ -368,19 +369,34 @@ public class TreeResetButton : MonoBehaviour
             float s = Mathf.Max(0.001f, ie);
             if (inventoryPanelRt != null)
                 inventoryPanelRt.localScale = new Vector3(s, s, 1f);
-            var icg = inventoryRoot.GetComponent<CanvasGroup>();
-            if (icg != null) icg.alpha = Mathf.Clamp01(inventoryT);
+            if (inventoryFrostImg != null)
+            {
+                var fc = inventoryFrostImg.color;
+                fc.a = 0.55f * Mathf.Clamp01(inventoryT);
+                inventoryFrostImg.color = fc;
+            }
             if (inventoryT <= 0f)
             {
                 inventoryDir = 0f;
-                if (icg != null) { icg.alpha = 0f; icg.blocksRaycasts = false; }
+                if (inventoryFrostImg != null)
+                {
+                    var fc = inventoryFrostImg.color;
+                    fc.a = 0f;
+                    inventoryFrostImg.color = fc;
+                    inventoryFrostImg.raycastTarget = false;
+                }
             }
             else if (inventoryT >= 1f)
             {
                 inventoryDir = 0f;
                 if (inventoryPanelRt != null)
                     inventoryPanelRt.localScale = Vector3.one;
-                if (icg != null) icg.alpha = 1f;
+                if (inventoryFrostImg != null)
+                {
+                    var fc = inventoryFrostImg.color;
+                    fc.a = 0.55f;
+                    inventoryFrostImg.color = fc;
+                }
             }
         }
 
@@ -596,8 +612,8 @@ public class TreeResetButton : MonoBehaviour
         rootRt.anchorMax = Vector2.one;
         rootRt.offsetMin = Vector2.zero;
         rootRt.offsetMax = Vector2.zero;
-        var cg = inventoryRoot.AddComponent<CanvasGroup>();
-        cg.alpha = 0f;
+        // v1.0.55: no CanvasGroup — visibility is driven directly (panel
+        // scale + frost alpha + frost raycastTarget). Always active.
 
         var frostGO = new GameObject("Frost", typeof(RectTransform), typeof(Image));
         frostGO.transform.SetParent(inventoryRoot.transform, false);
@@ -606,7 +622,9 @@ public class TreeResetButton : MonoBehaviour
         frostRt.anchorMax = Vector2.one;
         frostRt.offsetMin = Vector2.zero;
         frostRt.offsetMax = Vector2.zero;
-        frostGO.GetComponent<Image>().color = new Color(0.03f, 0.06f, 0.04f, 0.55f);
+        inventoryFrostImg = frostGO.GetComponent<Image>();
+        inventoryFrostImg.color = new Color(0.03f, 0.06f, 0.04f, 0f);
+        inventoryFrostImg.raycastTarget = false;
 
         var panelGO = new GameObject("InventoryPanel", typeof(RectTransform), typeof(Image));
         panelGO.transform.SetParent(inventoryRoot.transform, false);
@@ -642,10 +660,10 @@ public class TreeResetButton : MonoBehaviour
         }
 
         inventoryRoot.SetActive(true);
-        // v1.0.55: parked hidden via scale-0 + alpha-0 (never deactivated —
-        // the sub-buttons prove always-active UI renders reliably).
+        // v1.0.55: parked hidden via scale-0 + frost alpha-0 (never
+        // deactivated — the sub-buttons prove always-active UI renders
+        // reliably).
         inventoryPanelRt.localScale = new Vector3(0.001f, 0.001f, 1f);
-        cg.blocksRaycasts = false;
         Debug.Log("TreeResetButton: inventory prototype built (6 empty slots).");
     }
 
@@ -662,8 +680,7 @@ public class TreeResetButton : MonoBehaviour
         {
             if (InventoryOpen && inventoryDir == 0f) return;
             InventoryOpen = true;
-            var ocg = inventoryRoot.GetComponent<CanvasGroup>();
-            if (ocg != null) { ocg.blocksRaycasts = true; }
+            if (inventoryFrostImg != null) inventoryFrostImg.raycastTarget = true;
             inventoryPanelRt.localScale = new Vector3(0.001f, 0.001f, 1f);
             inventoryT = 0f;
             inventoryDir = 1f;
@@ -689,14 +706,22 @@ public class TreeResetButton : MonoBehaviour
         inventoryT = 1f;
         inventoryDir = 0f;
         inventoryPanelRt.localScale = Vector3.one;
-        var cg = inventoryRoot.GetComponent<CanvasGroup>();
-        if (cg != null) { cg.alpha = 1f; cg.blocksRaycasts = true; }
+        if (inventoryFrostImg != null)
+        {
+            var fc = inventoryFrostImg.color;
+            fc.a = 0.55f;
+            inventoryFrostImg.color = fc;
+            inventoryFrostImg.raycastTarget = true;
+        }
         // v1.0.55 diagnostics: prove the overlay is really live for the capture.
         var prt = inventoryPanelRt;
+        var pimg = prt.GetComponent<Image>();
         Debug.Log($"TreeResetButton: inventory snap — root active={inventoryRoot.activeSelf}, " +
-            $"hierarchy={inventoryRoot.activeInHierarchy}, cgAlpha={(cg != null ? cg.alpha : -1f)}, " +
+            $"hierarchy={inventoryRoot.activeInHierarchy}, " +
             $"panelScale={prt.localScale}, panelRect={prt.rect}, " +
-            $"panelChildren={prt.childCount}, canvas={menuCanvasGO != null}");
+            $"panelChildren={prt.childCount}, panelSprite={(pimg != null && pimg.sprite != null)}, " +
+            $"frostAlpha={(inventoryFrostImg != null ? inventoryFrostImg.color.a : -1f)}, " +
+            $"canvas={menuCanvasGO != null}");
     }
 
     /// <summary>
