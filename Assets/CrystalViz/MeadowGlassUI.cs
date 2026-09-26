@@ -517,7 +517,7 @@ public static class MeadowGlassUI
                     Mathf.Clamp01(GlassDeep.r * light),
                     Mathf.Clamp01(GlassDeep.g * light),
                     Mathf.Clamp01(GlassDeep.b * light),
-                    0.45f * fill);
+                    0.30f * fill);
                 // Faint sage hairline just inside the edge.
                 float ring = 1f - Mathf.Clamp01((Mathf.Abs(d + 3f) - 1.5f) / 1.5f);
                 c = Color.Lerp(c, new Color(Sage.r, Sage.g, Sage.b, 0.55f),
@@ -528,6 +528,55 @@ public static class MeadowGlassUI
         }
         tex.Apply();
         return Sprite.Create(tex, new Rect(0f, 0f, size, size),
+            new Vector2(0.5f, 0.5f), 100f, 0u, SpriteMeshType.FullRect);
+    }
+
+    /// <summary>
+    /// v1.0.55: large rounded-rectangle meadow-glass panel backing, baked at
+    /// full display size. Deep glass fill with a gentle top-light and a gold
+    /// hairline following the rounded edge — the pill look, but as a plain
+    /// (non-sliced) sprite. A 9-sliced MakeGlassPill proved unreliable here:
+    /// its borders sum to exactly the texture height, which collapses the
+    /// sliced mesh and silently drops the whole panel subtree.
+    /// </summary>
+    public static Sprite MakeGlassPanel(int w, int h, float cornerR)
+    {
+        const float ringPx = 3f;
+        var tex = new Texture2D(w, h, TextureFormat.RGBA32, false);
+        tex.filterMode = FilterMode.Bilinear;
+        var pixels = new Color[w * h];
+        float cx = w / 2f, cy = h / 2f;
+        float hx = w / 2f, hy = h / 2f;
+        for (int y = 0; y < h; y++)
+        {
+            for (int x = 0; x < w; x++)
+            {
+                // Rounded-rect SDF.
+                float qx = Mathf.Abs(x + 0.5f - cx) - hx + cornerR;
+                float qy = Mathf.Abs(y + 0.5f - cy) - hy + cornerR;
+                float ax = Mathf.Max(qx, 0f), ay = Mathf.Max(qy, 0f);
+                float d = Mathf.Min(Mathf.Max(qx, qy), 0f)
+                          + Mathf.Sqrt(ax * ax + ay * ay) - cornerR;
+                float edge = 1f - SStep(-1.5f, 1.5f, d);
+                // Deep glass with a gentle top-light, like the pill.
+                float dy = y - cy + 0.5f;
+                float light = 1f + 0.08f * Mathf.Clamp01(-dy / cy);
+                Color c = new Color(
+                    Mathf.Clamp01(GlassDeep.r * light),
+                    Mathf.Clamp01(GlassDeep.g * light),
+                    Mathf.Clamp01(GlassDeep.b * light),
+                    0.94f);
+                // Gold hairline just inside the rounded edge.
+                float ring = 1f - Mathf.Clamp01(
+                    (Mathf.Abs(d + 2f + ringPx / 2f) - ringPx / 2f) / 1.5f);
+                c = Color.Lerp(c, new Color(Gold.r, Gold.g, Gold.b, 0.90f), ring);
+                c.a = Mathf.Clamp01(c.a) * edge;
+                pixels[y * w + x] = c;
+            }
+        }
+        tex.SetPixels(pixels);
+        tex.Apply();
+        return Sprite.Create(tex, new Rect(0f, 0f, w, h),
             new Vector2(0.5f, 0.5f), 100f, 0u, SpriteMeshType.FullRect);
     }
 }

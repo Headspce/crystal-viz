@@ -635,8 +635,11 @@ public class TreeResetButton : MonoBehaviour
         inventoryPanelRt.anchoredPosition = Vector2.zero;
         inventoryPanelRt.sizeDelta = new Vector2(680f, 620f);
         var panelImg = panelGO.GetComponent<Image>();
-        // v1.0.55 diagnostic: plain color (no sprite) to isolate render issue.
-        panelImg.color = new Color(0.9f, 0.2f, 0.2f, 0.9f);
+        // v1.0.55: baked full-size rounded panel sprite (plain, non-sliced).
+        // A 9-sliced MakeGlassPill collapsed here — its borders sum to exactly
+        // the texture height, which silently drops the panel subtree.
+        panelImg.sprite = MeadowGlassUI.MakeGlassPanel(680, 620, 64f);
+        panelImg.color = Color.white;
 
         // Six empty slots, 3 columns x 2 rows.
         var slotSprite = MeadowGlassUI.MakeRoundedSquare(160, 30f);
@@ -713,15 +716,6 @@ public class TreeResetButton : MonoBehaviour
             inventoryFrostImg.color = fc;
             inventoryFrostImg.raycastTarget = true;
         }
-        // v1.0.55 diagnostics: prove the overlay is really live for the capture.
-        var prt = inventoryPanelRt;
-        var pimg = prt.GetComponent<Image>();
-        Debug.Log($"TreeResetButton: inventory snap — root active={inventoryRoot.activeSelf}, " +
-            $"hierarchy={inventoryRoot.activeInHierarchy}, " +
-            $"panelScale={prt.localScale}, panelRect={prt.rect}, " +
-            $"panelChildren={prt.childCount}, panelSprite={(pimg != null && pimg.sprite != null)}, " +
-            $"frostAlpha={(inventoryFrostImg != null ? inventoryFrostImg.color.a : -1f)}, " +
-            $"canvas={menuCanvasGO != null}");
     }
 
     /// <summary>
