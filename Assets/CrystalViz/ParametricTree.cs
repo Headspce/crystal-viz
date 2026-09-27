@@ -304,10 +304,12 @@ public class ParametricTree : MonoBehaviour
     }
 
     /// <summary>
-    /// v1.0.57: a single pine needle — a thin vertical sliver with a
-    /// lighter center ridge, transparent background for the same
-    /// alpha-test cutout the broad leaf uses. At needle quad sizes it
-    /// reads as conifer foliage rather than a shrunken leaf.
+    /// v1.0.57: a tuft of pine needles — vertical streaks across the
+    /// FULL quad (no transparency). The first version used a thin sliver
+    /// on a transparent background, but at needle-quad render sizes the
+    /// sliver went sub-pixel and the shader's alpha test discarded it,
+    /// leaving bare branches in the proof shot. A full-quad tuft survives
+    /// filtering at any distance and still reads as needles.
     /// NOTE: kept BRIGHT on purpose — the leaf shader multiplies the
     /// texture by the per-leaf vertex color (the broadleaf PNG follows
     /// the same convention), so a dark texture here would render
@@ -320,25 +322,24 @@ public class ParametricTree : MonoBehaviour
         var tex = new Texture2D(S, S, TextureFormat.RGBA32, false);
         tex.wrapMode = TextureWrapMode.Clamp;
         tex.filterMode = FilterMode.Bilinear;
-        Color needleBright = new Color(0.72f, 0.95f, 0.70f);
         for (int y = 0; y < S; y++)
         {
             for (int x = 0; x < S; x++)
             {
                 float u = (float)x / (S - 1);
                 float v = (float)y / (S - 1); // 0 base .. 1 tip
-                // Thin sliver: narrow at the base, tapering to the tip.
-                float w = 0.055f * (1f - v * 0.55f);
-                float d = Mathf.Abs(u - 0.5f);
-                if (d >= w)
-                {
-                    tex.SetPixel(x, y, new Color(0f, 0f, 0f, 0f));
-                    continue;
-                }
-                float ridge = 1f - Mathf.SmoothStep(0f, w * 0.6f, d);
-                Color c = needleBright * (1f - 0.20f * (d / w))
-                        + new Color(0.12f, 0.14f, 0.08f) * ridge;
-                tex.SetPixel(x, y, new Color(c.r, c.g, c.b, 1f));
+                // Five vertical needle streaks across the quad.
+                float streak = 0.5f + 0.5f * Mathf.Sin(u * Mathf.PI * 5f + 1.3f);
+                float shade = 0.82f + 0.18f * streak;
+                // Slight taper: tips a touch lighter, like sunlit needles.
+                float tipLight = 0.92f + 0.08f * v;
+                // Soft vertical edge fade so quads don't show hard borders.
+                float edge = Mathf.SmoothStep(0f, 0.08f, u)
+                           * Mathf.SmoothStep(1f, 0.92f, u);
+                float a = 0.55f + 0.45f * edge;
+                Vector3 c = new Vector3(0.72f, 0.95f, 0.70f)
+                          * shade * tipLight;
+                tex.SetPixel(x, y, new Color(c.x, c.y, c.z, a));
             }
         }
         tex.Apply();
@@ -563,9 +564,13 @@ public class ParametricTree : MonoBehaviour
         float r0 = Mathf.Max(0.015f, trunkRad * 0.35f * (length / 2.3f + 0.3f));
         AppendTube(pts, r0, r0 * 0.3f, BranchTint(rng), false, false);
 
-        tips.Add(SampleCurve(ctrl, 0.30f));
-        tips.Add(SampleCurve(ctrl, 0.55f));
-        tips.Add(SampleCurve(ctrl, 0.80f));
+        // v1.0.57: needle anchors clothe the whole limb — six puffs per
+        // branch so the tiers read dense, not bare.
+        tips.Add(SampleCurve(ctrl, 0.20f));
+        tips.Add(SampleCurve(ctrl, 0.38f));
+        tips.Add(SampleCurve(ctrl, 0.56f));
+        tips.Add(SampleCurve(ctrl, 0.74f));
+        tips.Add(SampleCurve(ctrl, 0.90f));
         tips.Add(p3);
     }
 
@@ -787,7 +792,7 @@ public class ParametricTree : MonoBehaviour
     void AppendLeaf(Vector3 tip, System.Random rng, bool pine)
     {
         // v1.0.57: needles cluster tighter and run smaller than broad leaves.
-        Vector3 center = tip + RandomInSphere(rng, pine ? 0.42f : 0.5f);
+        Vector3 center = tip + RandomInSphere(rng, pine ? 0.50f : 0.5f);
         float s = pine ? 0.028f + (float)rng.NextDouble() * 0.024f
                        : 0.04f + (float)rng.NextDouble() * 0.043f;
         Quaternion q = RandomQuat(rng);
