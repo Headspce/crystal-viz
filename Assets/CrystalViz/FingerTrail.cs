@@ -78,6 +78,16 @@ public class FingerTrail : MonoBehaviour
 
     void Update()
     {
+        // v1.0.58: while the inventory is open the menu owns the screen —
+        // freeze the trail so taps on the slot buttons don't feel like the
+        // game is tracking a swipe. (Tree taps and bee pops were already
+        // gated on InventoryOpen; the trail was the only leak.)
+        if (TreeResetButton.InventoryOpen)
+        {
+            sampleCount = 0;
+            if (ribbon != null && ribbon.pointCount > 0) ribbon.Clear();
+            return;
+        }
         // Touch input: a sample on touch-down, then one per ~8px of travel.
         for (int i = 0; i < Input.touchCount; i++)
         {
