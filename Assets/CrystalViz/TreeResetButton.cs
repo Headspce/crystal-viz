@@ -460,6 +460,13 @@ public class TreeResetButton : MonoBehaviour
         scaler.referenceResolution = new Vector2(1080f, 1920f);
         scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
         scaler.matchWidthOrHeight = 0.5f;
+        // v1.0.59: GraphicRaycaster — the inventory slots are real uGUI
+        // Buttons (v1.0.57) and the EventSystem can only reach them through
+        // a raycaster on this canvas. That's why slot taps did nothing in
+        // v1.0.58: the corner menu had always been raw-input only, so this
+        // canvas never got one. The arrow and sub-buttons keep their raw
+        // input paths, so nothing else changes.
+        canvasGO.AddComponent<GraphicRaycaster>();
 
         // Arrow button: bottom-left, warm-white arrow on the meadow-glass
         // dewdrop disc (v1.0.47: deep green glass + gold hairline ring). The
