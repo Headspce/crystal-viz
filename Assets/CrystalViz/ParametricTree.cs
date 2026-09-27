@@ -22,6 +22,14 @@ using System.Collections.Generic;
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
 public class ParametricTree : MonoBehaviour
 {
+    /// <summary>
+    /// v1.0.57: selectable tree species. Broadleaf is the original
+    /// oak-style tree; Pine is a procedural conifer (straight trunk,
+    /// whorled tier branches, needle foliage) grown by the same engine.
+    /// </summary>
+    public enum TreeSpecies { Broadleaf = 0, Pine = 1 }
+    public TreeSpecies species = TreeSpecies.Broadleaf;
+
     const int Seed = 12345;
     const int RadialSegments = 7;   // vertices per tube ring
     const float RebuildEpsilon = 0.004f; // skip rebuilds for tiny g changes
@@ -34,7 +42,14 @@ public class ParametricTree : MonoBehaviour
     Mesh trunkMesh;
     Mesh leafMesh;
 
+    // v1.0.57: both foliage textures are built once; SetSpecies swaps the
+    // leaf material's _BaseMap between the broadleaf and the needle.
+    Material leafMat;
+    Texture2D broadleafTex;
+    Texture2D needleTex;
+
     float lastBuiltG = -1f;
+    float currentG; // last growth value fed to SetGrowth (for species rebuilds)
 
     // Scratch buffers reused across rebuilds to avoid GC churn.
     readonly List<Vector3> vList = new List<Vector3>();
@@ -184,8 +199,13 @@ public class ParametricTree : MonoBehaviour
             // per-leaf green vertex colors grade it exactly as before.
             // Wind uniforms mirror the meadow grass so the canopy
             // shivers and catches the same traveling gust fronts.
-            var leafTex = Resources.Load<Texture2D>("Textures/foliage_47_leaf");
-            leafMat.SetTexture("_BaseMap", leafTex != null ? leafTex : MakeLeafTexture());
+            // v1.0.57: keep both foliage textures; the pine species swaps
+            // in the procedural needle (thin silhouette, deep blue-green).
+            broadleafTex = Resources.Load<Texture2D>("Textures/foliage_47_leaf");
+            if (broadleafTex == null) broadleafTex = MakeLeafTexture();
+            needleTex = MakeNeedleTexture();
+            this.leafMat = leafMat;
+            SyncLeafTexture();
             leafMat.SetFloat("_WindStrength", 0.025f);
             leafMat.SetFloat("_WindSpeed", 1.7f);
             leafMat.SetFloat("_GustStrength", 0.06f);
@@ -208,6 +228,31 @@ public class ParametricTree : MonoBehaviour
         leafMesh = new Mesh { name = "ParametricLeaves" };
         leafMesh.MarkDynamic();
         leafFilter.mesh = leafMesh;
+    }
+
+    /// <summary>
+    /// v1.0.57: points the leaf material at the species' foliage texture.
+    /// No-op until Initialize has built the material (species set earlier
+    /// is still honored — Initialize calls this at the end).
+    /// </summary>
+    void SyncLeafTexture()
+    {
+        if (leafMat == null) return;
+        leafMat.SetTexture("_BaseMap",
+            species == TreeSpecies.Pine ? needleTex : broadleafTex);
+    }
+
+    /// <summary>
+    /// v1.0.57: switches the grown species and rebuilds the tree at the
+    /// current growth value. Safe to call before Initialize (the species
+    /// field is read when the meshes build).
+    /// </summary>
+    public void SetSpecies(TreeSpecies s)
+    {
+        species = s;
+        SyncLeafTexture();
+        lastBuiltG = -1f; // force a rebuild even at the same g
+        if (trunkMesh != null) SetGrowth(currentG);
     }
 
     // ------------------------------------------------------- bark texture
@@ -252,6 +297,43 @@ public class ParametricTree : MonoBehaviour
                 // Crevices sink darker for extra depth.
                 float crevice = Mathf.Lerp(0.55f, 1f, Mathf.SmoothStep(0f, 0.55f, h));
                 tex.SetPixel(x, y, (Color.Lerp(valley, ridge, h) * crevice));
+            }
+        }
+        tex.Apply();
+        return tex;
+    }
+
+    /// <summary>
+    /// v1.0.57: a single pine needle — a thin vertical sliver with a
+    /// lighter center ridge, deep blue-green, transparent background for
+    /// the same alpha-test cutout the broad leaf uses. At needle quad
+    /// sizes it reads as conifer foliage rather than a shrunken leaf.
+    /// </summary>
+    static Texture2D MakeNeedleTexture()
+    {
+        const int S = 64;
+        var tex = new Texture2D(S, S, TextureFormat.RGBA32, false);
+        tex.wrapMode = TextureWrapMode.Clamp;
+        tex.filterMode = FilterMode.Bilinear;
+        Color needleGreen = new Color(0.13f, 0.34f, 0.20f);
+        for (int y = 0; y < S; y++)
+        {
+            for (int x = 0; x < S; x++)
+            {
+                float u = (float)x / (S - 1);
+                float v = (float)y / (S - 1); // 0 base .. 1 tip
+                // Thin sliver: narrow at the base, tapering to the tip.
+                float w = 0.055f * (1f - v * 0.55f);
+                float d = Mathf.Abs(u - 0.5f);
+                if (d >= w)
+                {
+                    tex.SetPixel(x, y, new Color(0f, 0f, 0f, 0f));
+                    continue;
+                }
+                float ridge = 1f - Mathf.SmoothStep(0f, w * 0.6f, d);
+                Color c = needleGreen * (1f - 0.25f * (d / w))
+                        + new Color(0.08f, 0.10f, 0.04f) * ridge;
+                tex.SetPixel(x, y, new Color(c.r, c.g, c.b, 1f));
             }
         }
         tex.Apply();
@@ -371,6 +453,7 @@ public class ParametricTree : MonoBehaviour
     public void SetGrowth(float g)
     {
         g = Mathf.Clamp01(g);
+        currentG = g;
         if (trunkMesh == null)
         {
             Debug.LogWarning("ParametricTree.SetGrowth: trunkMesh is null — Awake did not complete; cannot build tree.");
@@ -379,17 +462,106 @@ public class ParametricTree : MonoBehaviour
         if (Mathf.Abs(g - lastBuiltG) < RebuildEpsilon) return;
         lastBuiltG = g;
 
+        var rng = new System.Random(Seed);
+        if (species == TreeSpecies.Pine)
+        {
+            // v1.0.57: conifer path — straight trunk, whorled tiers,
+            // needle foliage. Same engine, different recipe.
+            float pineLen = Mathf.Lerp(0.3f, 5.2f, g);
+            float pineRad = Mathf.Lerp(0.03f, 0.22f, g);
+            BuildPineMeshes(pineLen, pineRad, g, rng);
+            return;
+        }
+
         float trunkLen = Mathf.Lerp(0.3f, 4.6f, g);
         float trunkRad = Mathf.Lerp(0.03f, 0.28f, g);
         int maxLevel = Mathf.FloorToInt(g * 3.99f); // 0..3 tiers of branches above the trunk
 
-        var rng = new System.Random(Seed);
         Vector3 lean = new Vector3(
             ((float)rng.NextDouble() - 0.5f) * 0.12f, 1f,
             ((float)rng.NextDouble() - 0.5f) * 0.12f).normalized;
 
         BuildTrunkMesh(trunkLen, trunkRad, maxLevel, g, lean, rng);
         BuildLeafMesh(g, new System.Random(Seed + 1));
+    }
+
+    // ------------------------------------------------------------ pine mesh
+
+    /// <summary>
+    /// v1.0.57: builds the conifer — a straight trunk with whorled tiers
+    /// of branches. Lower tiers are longer and carry more branches, so the
+    /// silhouette reads as a classic pine cone. Needle anchors run along
+    /// each branch (not just the tips) so the foliage clothes the limbs.
+    /// </summary>
+    void BuildPineMeshes(float trunkLen, float trunkRad, float g, System.Random rng)
+    {
+        vList.Clear(); nList.Clear(); uvList.Clear(); cList.Clear(); tList.Clear();
+        bvList.Clear(); bnList.Clear(); buvList.Clear(); bcList.Clear(); btList.Clear();
+        tips.Clear();
+
+        // Trunk: straight up, near-zero wobble (conifers don't lean).
+        Vector3 top = new Vector3(0f, trunkLen, 0f);
+        Vector3[] tctrl =
+        {
+            Vector3.zero, Vector3.zero,
+            new Vector3(0.02f, trunkLen * 0.33f, -0.015f),
+            new Vector3(-0.015f, trunkLen * 0.66f, 0.02f),
+            top, top
+        };
+        int rings = Mathf.Max(6, Mathf.RoundToInt(trunkLen * 5f));
+        Vector3[] tpts = new Vector3[rings];
+        for (int i = 0; i < rings; i++)
+            tpts[i] = SampleCurve(tctrl, (float)i / (rings - 1));
+        AppendTube(tpts, trunkRad, trunkRad * 0.25f, BranchTint(rng), true, true);
+
+        // Whorled tiers: 3 at sprout, up to 9 at full growth.
+        int tiers = 3 + Mathf.FloorToInt(g * 6.99f);
+        float azimBase = (float)rng.NextDouble() * Mathf.PI * 2f;
+        for (int i = 0; i < tiers; i++)
+        {
+            float hFrac = tiers == 1 ? 0.6f : 0.30f + 0.62f * ((float)i / (tiers - 1));
+            Vector3 tierOrigin = new Vector3(0f, trunkLen * hFrac, 0f);
+            float tierLen = 2.3f * (1f - hFrac * 0.78f) * (0.2f + 0.8f * g);
+            if (tierLen < 0.15f) continue;
+            int count = Mathf.Max(3, 6 - (i * 4) / tiers);
+            for (int b = 0; b < count; b++)
+            {
+                float az = azimBase + i * 0.7f + b * GoldenAngle;
+                Vector3 dir = new Vector3(Mathf.Cos(az), 0f, Mathf.Sin(az));
+                GrowPineBranch(tierOrigin, dir, tierLen, trunkRad, rng);
+            }
+        }
+        AssignTrunkMesh();
+        BuildLeafMesh(g, new System.Random(Seed + 1));
+    }
+
+    /// <summary>
+    /// One pine limb: outward with a slight droop, tip sweeping skyward
+    /// like a real conifer branch. Needle anchors clothe the whole limb.
+    /// </summary>
+    void GrowPineBranch(Vector3 origin, Vector3 dir, float length,
+                        float trunkRad, System.Random rng)
+    {
+        dir.Normalize();
+        Vector3 up = Vector3.up;
+        Vector3 p0 = origin;
+        Vector3 p1 = origin + dir * (length * 0.45f) - up * (length * 0.07f);
+        Vector3 p2 = origin + dir * (length * 0.80f) - up * (length * 0.02f);
+        Vector3 p3 = origin + dir * length + up * (length * 0.20f);
+        Vector3[] ctrl = { p0, p0, p1, p2, p3, p3 };
+
+        int n = Mathf.Max(4, Mathf.RoundToInt(length * 6f));
+        Vector3[] pts = new Vector3[n];
+        for (int i = 0; i < n; i++)
+            pts[i] = SampleCurve(ctrl, (float)i / (n - 1));
+
+        float r0 = Mathf.Max(0.015f, trunkRad * 0.35f * (length / 2.3f + 0.3f));
+        AppendTube(pts, r0, r0 * 0.3f, BranchTint(rng), false, false);
+
+        tips.Add(SampleCurve(ctrl, 0.30f));
+        tips.Add(SampleCurve(ctrl, 0.55f));
+        tips.Add(SampleCurve(ctrl, 0.80f));
+        tips.Add(p3);
     }
 
     // ------------------------------------------------------------ trunk mesh
@@ -589,8 +761,10 @@ public class ParametricTree : MonoBehaviour
         // 12,000 at full growth (15x the old 800 — the same jump the grass
         // field made from 10k to 150k tufts), each leaf a third of its old
         // size, so the canopy reads as one dense lush mass.
+        // v1.0.57: pines get 14,000 smaller needles in deep blue-green.
+        bool pine = species == TreeSpecies.Pine;
         float f = Smooth01((g - 0.25f) / 0.75f);
-        int total = Mathf.RoundToInt(12000f * f);
+        int total = Mathf.RoundToInt((pine ? 14000f : 12000f) * f);
         if (total > 0 && tips.Count > 0)
         {
             int per = total / tips.Count;
@@ -599,17 +773,18 @@ public class ParametricTree : MonoBehaviour
             {
                 int count = per + (i < rem ? 1 : 0);
                 for (int k = 0; k < count; k++)
-                    AppendLeaf(tips[i], rng);
+                    AppendLeaf(tips[i], rng, pine);
             }
         }
         AssignMesh(leafMesh, vList, nList, uvList, cList, tList);
     }
 
-    void AppendLeaf(Vector3 tip, System.Random rng)
+    void AppendLeaf(Vector3 tip, System.Random rng, bool pine)
     {
-        Vector3 center = tip + RandomInSphere(rng, 0.5f);
-        // A third of the old 0.12-0.25 size: small leaves, many of them.
-        float s = 0.04f + (float)rng.NextDouble() * 0.043f;
+        // v1.0.57: needles cluster tighter and run smaller than broad leaves.
+        Vector3 center = tip + RandomInSphere(rng, pine ? 0.38f : 0.5f);
+        float s = pine ? 0.022f + (float)rng.NextDouble() * 0.020f
+                       : 0.04f + (float)rng.NextDouble() * 0.043f;
         Quaternion q = RandomQuat(rng);
         Vector3 n = q * Vector3.forward;
         Vector3[] corners =
@@ -626,7 +801,10 @@ public class ParametricTree : MonoBehaviour
         uvList.Add(new Vector2(0f, 0f)); uvList.Add(new Vector2(1f, 0f));
         uvList.Add(new Vector2(1f, 1f)); uvList.Add(new Vector2(0f, 1f));
         float v = 0.8f + (float)rng.NextDouble() * 0.5f; // per-leaf green variation
-        Color gc = new Color(0.16f * v, 0.42f * v, 0.12f * v, 1f);
+        // v1.0.57: pine needles grade deep blue-green; broad leaves keep
+        // the original green.
+        Color gc = pine ? new Color(0.10f * v, 0.30f * v, 0.17f * v, 1f)
+                        : new Color(0.16f * v, 0.42f * v, 0.12f * v, 1f);
         for (int i = 0; i < 4; i++) cList.Add(gc);
         tList.Add(b); tList.Add(b + 1); tList.Add(b + 2);
         tList.Add(b); tList.Add(b + 2); tList.Add(b + 3);

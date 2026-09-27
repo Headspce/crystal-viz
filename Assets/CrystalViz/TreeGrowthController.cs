@@ -61,6 +61,8 @@ public class TreeGrowthController : MonoBehaviour
     const string SaplingStartKey = "CrystalViz_TreeTaps_SaplingStart";
     /// <summary>PlayerPrefs key for banked bee-pop tap credits.</summary>
     const string CreditsKey = "CrystalViz_TapCredits";
+    /// <summary>v1.0.57: PlayerPrefs key for the selected tree species.</summary>
+    public const string SpeciesKey = "CrystalViz_TreeSpecies";
     const float AnimDuration = 0.5f;
     /// <summary>Growth value where the sapling stage begins (11 taps / 50).</summary>
     const float SaplingGrowth = 11f / 50f;
@@ -125,6 +127,9 @@ public class TreeGrowthController : MonoBehaviour
         currentTaps = Mathf.Clamp(PlayerPrefs.GetInt(PrefsKey, 0), 0, totalTaps);
         tapCredits = Mathf.Max(0, PlayerPrefs.GetInt(CreditsKey, 0));
         saplingStart = PlayerPrefs.GetInt(SaplingStartKey, 0) == 1;
+        // v1.0.57: restore the player's chosen species before the first build.
+        if (tree != null)
+            tree.SetSpecies((ParametricTree.TreeSpecies)Mathf.Clamp(PlayerPrefs.GetInt(SpeciesKey, 0), 0, 1));
         displayedG = GrowthTarget;
         // Build the mesh here, not just in Start(): CI screenshot captures run
         // in edit mode, where Start()/Update() never execute, leaving the
@@ -311,6 +316,37 @@ public class TreeGrowthController : MonoBehaviour
     /// </summary>
     public void ApplyGrowth()
     {
+        if (tree != null) tree.SetGrowth(displayedG);
+        lastStage = CurrentStage;
+    }
+
+    /// <summary>
+    /// v1.0.57: switches the grown species (from the inventory), persists
+    /// the choice, and restarts the tree as a sprout so the player watches
+    /// the new species grow. Safe to call from UI buttons.
+    /// </summary>
+    public void SetSpecies(ParametricTree.TreeSpecies s)
+    {
+        if (tree != null) tree.SetSpecies(s);
+        PlayerPrefs.SetInt(SpeciesKey, (int)s);
+        PlayerPrefs.Save();
+        ResetToSprout();
+        MeadowToast.Show(s == ParametricTree.TreeSpecies.Pine
+            ? "Pine selected — pop bees, then tap to grow it."
+            : "Oak selected — pop bees, then tap to grow it.");
+    }
+
+    /// <summary>
+    /// v1.0.57: CI screenshot helper — snaps the tree to full maturity at
+    /// the current species (edit mode runs no Update, so taps can't grow it).
+    /// </summary>
+    public void SnapToMatureForScreenshot()
+    {
+        currentTaps = totalTaps;
+        PlayerPrefs.SetInt(PrefsKey, currentTaps);
+        PlayerPrefs.Save();
+        displayedG = GrowthTarget;
+        animT = 1f; // snap, don't animate
         if (tree != null) tree.SetGrowth(displayedG);
         lastStage = CurrentStage;
     }

@@ -132,7 +132,24 @@ public static class CrystalVizScreenshot
         // CanvasRenderers can miss the render without this.
         Canvas.ForceUpdateCanvases();
         CaptureFrame(cam, w, h, Path.Combine("Screenshots", "crystalviz-inventory.png"));
-        Debug.Log("CrystalVizScreenshot: saved Screenshots/crystalviz.png + crystalviz-night.png + crystalviz-inventory.png");
+        // v1.0.57: pine proof — switch to the pine species, snap it to full
+        // maturity, close the inventory, restore noon, and capture the
+        // procedural conifer.
+        var growth = Object.FindFirstObjectByType<TreeGrowthController>();
+        if (growth != null)
+        {
+            growth.SetSpecies(ParametricTree.TreeSpecies.Pine);
+            growth.SnapToMatureForScreenshot();
+            Debug.Log("CrystalVizScreenshot: pine species at full maturity.");
+        }
+        var menu4 = Object.FindFirstObjectByType<TreeResetButton>();
+        if (menu4 != null) menu4.SnapInventoryClosedForScreenshot();
+        if (orbit != null) orbit.SetTimeOfDay(0f); // back to noon
+        var menu5 = Object.FindFirstObjectByType<TreeResetButton>();
+        if (menu5 != null) menu5.SyncDayNightGlyphForScreenshot();
+        Canvas.ForceUpdateCanvases();
+        CaptureFrame(cam, w, h, Path.Combine("Screenshots", "crystalviz-pine.png"));
+        Debug.Log("CrystalVizScreenshot: saved Screenshots/crystalviz.png + crystalviz-night.png + crystalviz-inventory.png + crystalviz-pine.png");
     }
 
     /// <summary>

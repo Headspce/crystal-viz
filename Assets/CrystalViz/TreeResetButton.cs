@@ -89,6 +89,11 @@ public class TreeResetButton : MonoBehaviour
     Image inventoryFrostImg;
     float inventoryT;   // 0 = closed, 1 = open
     float inventoryDir; // +1 opening, -1 closing, 0 idle
+    // v1.0.57: the six tree-type slots are tappable — oak and pine switch
+    // the grown species, the rest are coming soon.
+    Image[] slotImages = new Image[6];
+    int selectedTreeIndex = -1;
+    TreeGrowthController growthCtl;
     const float InventoryPopDur = 0.26f;
 
     void Awake()
@@ -673,8 +678,19 @@ public class TreeResetButton : MonoBehaviour
                 var iimg = iconGO.GetComponent<Image>();
                 iimg.sprite = MeadowGlassUI.MakeTreeIcon(120, r * 3 + c);
                 iimg.preserveAspect = true;
+                // v1.0.57: slots are tappable — oak/pine switch species.
+                int slotIdx = r * 3 + c;
+                slotImages[slotIdx] = simg;
+                var slotBtn = slotGO.AddComponent<Button>();
+                slotBtn.onClick.AddListener(() => OnTreeSlotTapped(slotIdx));
             }
         }
+
+        // v1.0.57: reflect the persisted species on the slots.
+        if (growthCtl == null) growthCtl = FindObjectOfType<TreeGrowthController>();
+        selectedTreeIndex = (growthCtl != null && growthCtl.tree != null &&
+            growthCtl.tree.species == ParametricTree.TreeSpecies.Pine) ? 1 : 0;
+        RefreshSlotSelection();
 
         inventoryRoot.SetActive(true);
         // v1.0.55: parked hidden via scale-0 + frost alpha-0 (never
@@ -729,6 +745,70 @@ public class TreeResetButton : MonoBehaviour
             fc.a = 0.55f;
             inventoryFrostImg.color = fc;
             inventoryFrostImg.raycastTarget = true;
+        }
+    }
+
+    /// <summary>
+    /// v1.0.57: CI screenshot helper — snaps the inventory prototype shut
+    /// instantly (edit mode runs no Update, so the close animation never
+    /// plays). Mirror of SnapInventoryOpenForScreenshot.
+    /// </summary>
+    public void SnapInventoryClosedForScreenshot()
+    {
+        if (!initialized) Initialize();
+        if (inventoryRoot == null) BuildInventory();
+        if (inventoryRoot == null) return;
+        InventoryOpen = false;
+        inventoryT = 0f;
+        inventoryDir = 0f;
+        inventoryPanelRt.localScale = new Vector3(0.001f, 0.001f, 1f);
+        if (inventoryFrostImg != null)
+        {
+            var fc = inventoryFrostImg.color;
+            fc.a = 0f;
+            inventoryFrostImg.color = fc;
+            inventoryFrostImg.raycastTarget = false;
+        }
+    }
+
+    /// <summary>
+    /// v1.0.57: highlights the selected tree-type slot; the rest dim.
+    /// </summary>
+    void RefreshSlotSelection()
+    {
+        if (slotImages == null) return;
+        for (int i = 0; i < slotImages.Length; i++)
+        {
+            if (slotImages[i] == null) continue;
+            slotImages[i].color = (i == selectedTreeIndex)
+                ? Color.white
+                : new Color(0.55f, 0.58f, 0.55f, 1f);
+        }
+    }
+
+    /// <summary>
+    /// v1.0.57: inventory slot tap — oak and pine switch the grown species
+    /// (the tree restarts as a sprout); the other four tree types aren't
+    /// modeled yet.
+    /// </summary>
+    void OnTreeSlotTapped(int idx)
+    {
+        if (growthCtl == null) growthCtl = FindObjectOfType<TreeGrowthController>();
+        if (idx == 0 || idx == 1)
+        {
+            selectedTreeIndex = idx;
+            RefreshSlotSelection();
+            if (growthCtl != null)
+                growthCtl.SetSpecies(idx == 1
+                    ? ParametricTree.TreeSpecies.Pine
+                    : ParametricTree.TreeSpecies.Broadleaf);
+            // Close the inventory so the player watches the new sprout.
+            SetInventoryOpen(false);
+        }
+        else
+        {
+            string[] names = { "Oak", "Pine", "Birch", "Willow", "Cherry", "Palm" };
+            MeadowToast.Show(names[idx] + " trees are coming in a future update.");
         }
     }
 
