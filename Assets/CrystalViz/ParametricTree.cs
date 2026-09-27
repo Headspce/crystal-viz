@@ -305,9 +305,14 @@ public class ParametricTree : MonoBehaviour
 
     /// <summary>
     /// v1.0.57: a single pine needle — a thin vertical sliver with a
-    /// lighter center ridge, deep blue-green, transparent background for
-    /// the same alpha-test cutout the broad leaf uses. At needle quad
-    /// sizes it reads as conifer foliage rather than a shrunken leaf.
+    /// lighter center ridge, transparent background for the same
+    /// alpha-test cutout the broad leaf uses. At needle quad sizes it
+    /// reads as conifer foliage rather than a shrunken leaf.
+    /// NOTE: kept BRIGHT on purpose — the leaf shader multiplies the
+    /// texture by the per-leaf vertex color (the broadleaf PNG follows
+    /// the same convention), so a dark texture here would render
+    /// nearly black. The vertex color grades this down to the intended
+    /// deep blue-green.
     /// </summary>
     static Texture2D MakeNeedleTexture()
     {
@@ -315,7 +320,7 @@ public class ParametricTree : MonoBehaviour
         var tex = new Texture2D(S, S, TextureFormat.RGBA32, false);
         tex.wrapMode = TextureWrapMode.Clamp;
         tex.filterMode = FilterMode.Bilinear;
-        Color needleGreen = new Color(0.13f, 0.34f, 0.20f);
+        Color needleBright = new Color(0.72f, 0.95f, 0.70f);
         for (int y = 0; y < S; y++)
         {
             for (int x = 0; x < S; x++)
@@ -331,8 +336,8 @@ public class ParametricTree : MonoBehaviour
                     continue;
                 }
                 float ridge = 1f - Mathf.SmoothStep(0f, w * 0.6f, d);
-                Color c = needleGreen * (1f - 0.25f * (d / w))
-                        + new Color(0.08f, 0.10f, 0.04f) * ridge;
+                Color c = needleBright * (1f - 0.20f * (d / w))
+                        + new Color(0.12f, 0.14f, 0.08f) * ridge;
                 tex.SetPixel(x, y, new Color(c.r, c.g, c.b, 1f));
             }
         }
@@ -782,8 +787,8 @@ public class ParametricTree : MonoBehaviour
     void AppendLeaf(Vector3 tip, System.Random rng, bool pine)
     {
         // v1.0.57: needles cluster tighter and run smaller than broad leaves.
-        Vector3 center = tip + RandomInSphere(rng, pine ? 0.38f : 0.5f);
-        float s = pine ? 0.022f + (float)rng.NextDouble() * 0.020f
+        Vector3 center = tip + RandomInSphere(rng, pine ? 0.42f : 0.5f);
+        float s = pine ? 0.028f + (float)rng.NextDouble() * 0.024f
                        : 0.04f + (float)rng.NextDouble() * 0.043f;
         Quaternion q = RandomQuat(rng);
         Vector3 n = q * Vector3.forward;
