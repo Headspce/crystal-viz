@@ -91,7 +91,11 @@ public class TreeResetButton : MonoBehaviour
     float inventoryDir; // +1 opening, -1 closing, 0 idle
     // v1.0.57: the six tree-type slots are tappable — oak and pine switch
     // the grown species, the rest are coming soon.
-    Image[] slotImages = new Image[6];
+    // v1.0.60: the slots became a vertical text-button list (GameFoundation
+    // Starter pattern) — slotRows are the row backgrounds, slotLabels the
+    // tree names; the selected row highlights in warm gold.
+    Image[] slotRows = new Image[6];
+    Text[] slotLabels = new Text[6];
     int selectedTreeIndex = -1;
     TreeGrowthController growthCtl;
     const float InventoryPopDur = 0.26f;
@@ -613,6 +617,10 @@ public class TreeResetButton : MonoBehaviour
     /// full-screen veil (prototype stand-in for a real blur) with a small
     /// centered meadow-glass panel holding six empty rounded slots in a
     /// 3x2 grid. Starts closed.
+    /// v1.0.60: the slot grid became a vertical list of text buttons
+    /// (GameFoundation Starter pattern) under a "Choose your tree" title —
+    /// selected species highlights in warm gold, coming-soon rows dim but
+    /// stay tappable. Same overlay behavior otherwise.
     /// </summary>
     void BuildInventory()
     {
@@ -645,52 +653,86 @@ public class TreeResetButton : MonoBehaviour
         inventoryPanelRt.anchorMax = new Vector2(0.5f, 0.5f);
         inventoryPanelRt.pivot = new Vector2(0.5f, 0.5f);
         inventoryPanelRt.anchoredPosition = Vector2.zero;
-        inventoryPanelRt.sizeDelta = new Vector2(680f, 620f);
+        inventoryPanelRt.sizeDelta = new Vector2(580f, 800f);
         var panelImg = panelGO.GetComponent<Image>();
         // v1.0.55: baked full-size rounded panel sprite (plain, non-sliced).
         // A 9-sliced MakeGlassPill collapsed here — its borders sum to exactly
         // the texture height, which silently drops the panel subtree.
-        panelImg.sprite = MeadowGlassUI.MakeGlassPanel(680, 620, 64f);
+        // v1.0.60: taller panel for the vertical tree list.
+        panelImg.sprite = MeadowGlassUI.MakeGlassPanel(580, 800, 56f);
         panelImg.color = Color.white;
 
-        // Six slots, 3 columns x 2 rows — v1.0.56: each holds a tree-type
-        // placeholder glyph (oak, pine, birch, willow, cherry, palm).
-        var slotSprite = MeadowGlassUI.MakeRoundedSquare(160, 30f);
-        for (int r = 0; r < 2; r++)
+        // v1.0.60: the six tree types are a vertical list of text buttons
+        // (GameFoundation Starter pattern) — the selected species renders
+        // highlighted in warm gold, available-but-unselected rows stay
+        // neutral meadow glass, and coming-soon rows are dimmed while still
+        // tappable for their toast. Text uses the same LegacyRuntime font
+        // as the toast (proven on device and in CI captures); TMP is not in
+        // the project, so legacy Text keeps the menu identical in both.
+        var titleGO = new GameObject("MenuTitle", typeof(RectTransform), typeof(Text));
+        titleGO.transform.SetParent(panelGO.transform, false);
+        var titleRt = titleGO.GetComponent<RectTransform>();
+        titleRt.anchorMin = new Vector2(0.5f, 1f);
+        titleRt.anchorMax = new Vector2(0.5f, 1f);
+        titleRt.pivot = new Vector2(0.5f, 1f);
+        titleRt.anchoredPosition = new Vector2(0f, -48f);
+        titleRt.sizeDelta = new Vector2(500f, 64f);
+        var titleTxt = titleGO.GetComponent<Text>();
+        titleTxt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        titleTxt.fontSize = 42;
+        titleTxt.alignment = TextAnchor.MiddleCenter;
+        titleTxt.color = MeadowGlassUI.WarmWhite;
+        titleTxt.text = "Choose your tree";
+
+        string[] treeNames = { "Oak", "Pine", "Birch", "Willow", "Cherry", "Palm" };
+        // One baked row sprite shared by all six rows (exact row size, so
+        // the corners never stretch).
+        var rowSprite = MeadowGlassUI.MakeGlassPanel(480, 88, 28f);
+        for (int i = 0; i < 6; i++)
         {
-            for (int c = 0; c < 3; c++)
-            {
-                var slotGO = new GameObject($"Slot_{r}_{c}",
-                    typeof(RectTransform), typeof(Image));
-                slotGO.transform.SetParent(panelGO.transform, false);
-                var srt = slotGO.GetComponent<RectTransform>();
-                srt.anchorMin = new Vector2(0.5f, 0.5f);
-                srt.anchorMax = new Vector2(0.5f, 0.5f);
-                srt.pivot = new Vector2(0.5f, 0.5f);
-                srt.anchoredPosition = new Vector2((c - 1) * 190f, (0.5f - r) * 190f);
-                srt.sizeDelta = new Vector2(150f, 150f);
-                var simg = slotGO.GetComponent<Image>();
-                simg.sprite = slotSprite;
-                simg.preserveAspect = true;
-                // v1.0.56: tree-type placeholder inside the slot.
-                var iconGO = new GameObject($"TreeIcon_{r}_{c}",
-                    typeof(RectTransform), typeof(Image));
-                iconGO.transform.SetParent(slotGO.transform, false);
-                var irt = iconGO.GetComponent<RectTransform>();
-                irt.anchorMin = new Vector2(0.5f, 0.5f);
-                irt.anchorMax = new Vector2(0.5f, 0.5f);
-                irt.pivot = new Vector2(0.5f, 0.5f);
-                irt.anchoredPosition = Vector2.zero;
-                irt.sizeDelta = new Vector2(104f, 104f);
-                var iimg = iconGO.GetComponent<Image>();
-                iimg.sprite = MeadowGlassUI.MakeTreeIcon(120, r * 3 + c);
-                iimg.preserveAspect = true;
-                // v1.0.57: slots are tappable — oak/pine switch species.
-                int slotIdx = r * 3 + c;
-                slotImages[slotIdx] = simg;
-                var slotBtn = slotGO.AddComponent<Button>();
-                slotBtn.onClick.AddListener(() => OnTreeSlotTapped(slotIdx));
-            }
+            int slotIdx = i; // captured for the click listener
+            var rowGO = new GameObject($"TreeRow_{treeNames[i]}",
+                typeof(RectTransform), typeof(Image));
+            rowGO.transform.SetParent(panelGO.transform, false);
+            var rrt = rowGO.GetComponent<RectTransform>();
+            rrt.anchorMin = new Vector2(0.5f, 0.5f);
+            rrt.anchorMax = new Vector2(0.5f, 0.5f);
+            rrt.pivot = new Vector2(0.5f, 0.5f);
+            rrt.anchoredPosition = new Vector2(0f, 244f - i * 106f);
+            rrt.sizeDelta = new Vector2(480f, 88f);
+            var rimg = rowGO.GetComponent<Image>();
+            rimg.sprite = rowSprite;
+            slotRows[i] = rimg;
+
+            var labelGO = new GameObject("Label", typeof(RectTransform), typeof(Text));
+            labelGO.transform.SetParent(rowGO.transform, false);
+            var lrt = labelGO.GetComponent<RectTransform>();
+            lrt.anchorMin = Vector2.zero;
+            lrt.anchorMax = Vector2.one;
+            lrt.offsetMin = new Vector2(36f, 0f);
+            lrt.offsetMax = new Vector2(-24f, 0f);
+            var ltxt = labelGO.GetComponent<Text>();
+            ltxt.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            ltxt.fontSize = 34;
+            ltxt.alignment = TextAnchor.MiddleLeft;
+            ltxt.text = treeNames[i];
+            slotLabels[i] = ltxt;
+
+            // Standard uGUI Button — the tap path v1.0.59 repaired
+            // (GraphicRaycaster on this canvas + the runtime EventSystem).
+            // ColorTint only flashes the press; the selected highlight is
+            // driven manually by RefreshSlotSelection, like the asset's
+            // focused-item pattern.
+            var rowBtn = rowGO.AddComponent<Button>();
+            var cb = rowBtn.colors;
+            cb.normalColor = Color.white;
+            cb.highlightedColor = Color.white;
+            cb.pressedColor = new Color(0.80f, 0.80f, 0.80f, 1f);
+            cb.selectedColor = Color.white;
+            cb.disabledColor = Color.white;
+            cb.fadeDuration = 0.08f;
+            rowBtn.colors = cb;
+            rowBtn.onClick.AddListener(() => OnTreeSlotTapped(slotIdx));
         }
 
         // v1.0.57: reflect the persisted species on the slots.
@@ -779,17 +821,36 @@ public class TreeResetButton : MonoBehaviour
     }
 
     /// <summary>
-    /// v1.0.57: highlights the selected tree-type slot; the rest dim.
+    /// v1.0.60: GameFoundation Starter pattern — the selected species row
+    /// renders highlighted in warm gold with dark text; the other
+    /// available species stay neutral meadow glass with warm-white text;
+    /// coming-soon rows dim to grey while remaining tappable for toasts.
     /// </summary>
     void RefreshSlotSelection()
     {
-        if (slotImages == null) return;
-        for (int i = 0; i < slotImages.Length; i++)
+        if (slotRows == null || slotLabels == null) return;
+        var darkInk = new Color(0.10f, 0.20f, 0.12f, 1f);
+        var dimmed = new Color(0.62f, 0.62f, 0.62f, 1f);
+        var dimText = new Color(0.62f, 0.64f, 0.60f, 1f);
+        for (int i = 0; i < 6; i++)
         {
-            if (slotImages[i] == null) continue;
-            slotImages[i].color = (i == selectedTreeIndex)
-                ? Color.white
-                : new Color(0.55f, 0.58f, 0.55f, 1f);
+            if (slotRows[i] == null || slotLabels[i] == null) continue;
+            bool available = (i == 0 || i == 1);
+            if (i == selectedTreeIndex)
+            {
+                slotRows[i].color = MeadowGlassUI.Gold;
+                slotLabels[i].color = darkInk;
+            }
+            else if (available)
+            {
+                slotRows[i].color = Color.white;
+                slotLabels[i].color = MeadowGlassUI.WarmWhite;
+            }
+            else
+            {
+                slotRows[i].color = dimmed;
+                slotLabels[i].color = dimText;
+            }
         }
     }
 
