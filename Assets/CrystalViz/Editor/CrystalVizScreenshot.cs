@@ -132,24 +132,40 @@ public static class CrystalVizScreenshot
         // CanvasRenderers can miss the render without this.
         Canvas.ForceUpdateCanvases();
         CaptureFrame(cam, w, h, Path.Combine("Screenshots", "crystalviz-inventory.png"));
-        // v1.0.57: pine proof — switch to the pine species, snap it to full
-        // maturity, close the inventory, restore noon, and capture the
-        // procedural conifer.
-        var growth = Object.FindFirstObjectByType<TreeGrowthController>();
-        if (growth != null)
-        {
-            growth.SetSpecies(ParametricTree.TreeSpecies.Pine);
-            growth.SnapToMatureForScreenshot();
-            Debug.Log("CrystalVizScreenshot: pine species at full maturity.");
-        }
+        // v1.0.61: all-species proof — the inventory now offers six live
+        // species, so capture each one at full maturity. Same framing as
+        // the old v1.0.57 pine proof: inventory closed, noon light. The
+        // bee/firefly preview squad is parked for these shots — it hovers
+        // "in front of the tree on the camera side" and would photobomb
+        // the tree geometry we're verifying.
         var menu4 = Object.FindFirstObjectByType<TreeResetButton>();
         if (menu4 != null) menu4.SnapInventoryClosedForScreenshot();
         if (orbit != null) orbit.SetTimeOfDay(0f); // back to noon
         var menu5 = Object.FindFirstObjectByType<TreeResetButton>();
         if (menu5 != null) menu5.SyncDayNightGlyphForScreenshot();
-        Canvas.ForceUpdateCanvases();
-        CaptureFrame(cam, w, h, Path.Combine("Screenshots", "crystalviz-pine.png"));
-        Debug.Log("CrystalVizScreenshot: saved Screenshots/crystalviz.png + crystalviz-night.png + crystalviz-inventory.png + crystalviz-pine.png");
+        if (beeCtl != null) beeCtl.gameObject.SetActive(false);
+        var growth = Object.FindFirstObjectByType<TreeGrowthController>();
+        var speciesShots = new (ParametricTree.TreeSpecies s, string name)[]
+        {
+            (ParametricTree.TreeSpecies.Broadleaf, "oak"),
+            (ParametricTree.TreeSpecies.Pine, "pine"),
+            (ParametricTree.TreeSpecies.Birch, "birch"),
+            (ParametricTree.TreeSpecies.Willow, "willow"),
+            (ParametricTree.TreeSpecies.Cherry, "cherry"),
+            (ParametricTree.TreeSpecies.Palm, "palm"),
+        };
+        if (growth != null)
+        {
+            foreach (var sp in speciesShots)
+            {
+                growth.SetSpecies(sp.s);
+                growth.SnapToMatureForScreenshot();
+                Canvas.ForceUpdateCanvases();
+                CaptureFrame(cam, w, h, Path.Combine("Screenshots", $"crystalviz-species-{sp.name}.png"));
+                Debug.Log($"CrystalVizScreenshot: {sp.name} species at full maturity.");
+            }
+        }
+        Debug.Log("CrystalVizScreenshot: saved Screenshots/crystalviz.png + crystalviz-night.png + crystalviz-inventory.png + crystalviz-species-*.png (6)");
     }
 
     /// <summary>
