@@ -8,6 +8,16 @@ using UnityEngine;
 /// toggles them per species, and runs the fog-swell transition when the
 /// player picks a new tree.
 ///
+/// v1.0.63: five bespoke environments join the lakeside — oak's ancient
+/// meadow (mushroom fairy ring + golden wildflower drifts), pine's alpine
+/// clearing (peak silhouettes + falling snow), birch's grove (white trunks
+/// + fern floor), cherry's sakura garden (stone lantern + still pond +
+/// drifting petals), palm's tropical shore (turquoise shallows + wave lines
+/// + shells). Every species' props are built once at startup into their own
+/// container and toggled per profile. The transition is now Tyler's cloudy
+/// fog: a full-cover billowing cloud bank (never a flat whiteout) that
+/// rolls in, holds while the world swaps underneath, then parts.
+///
 /// The active profile is static so the day/night lighting funnel
 /// (CrystalVizBootstrap.ApplyTimeOfDayLighting) can read it without a
 /// reference chain. Defaults to the grassland profile so anything that
@@ -26,21 +36,43 @@ public class EnvironmentManager : MonoBehaviour
     public static readonly Vector3 PondCenter = new Vector3(0f, 0f, -4.5f);
     public const float PondRadius = 3.5f;
     public const float PondWaterY = 0.04f;
-    // Grass/flower blades are suppressed inside this radius for willow only
-    // (see CrystalVizBootstrap); the rim band lets the shore fade out.
+    // Willow pond clear radius (legacy constant; the generalized per-
+    // profile value is EnvironmentProfiles.PondClearRadius). The rim band
+    // lets the shore fade out.
     public const float PondGrassClearRadius = 3.7f;
     public static float PondGrassClearRadiusSq =>
         PondGrassClearRadius * PondGrassClearRadius;
 
     CrystalVizBootstrap bootstrap;
-    GameObject willowProps;
+    readonly Dictionary<ParametricTree.TreeSpecies, GameObject> propSets =
+        new Dictionary<ParametricTree.TreeSpecies, GameObject>();
     Coroutine activeTransition;
     bool initialized;
 
-    // Mist drift state (play mode only).
-    readonly List<Transform> mistQuads = new List<Transform>();
-    readonly List<float> mistBaseX = new List<float>();
-    readonly List<float> mistPhase = new List<float>();
+    // v1.0.63: unified drifter system. Mist sways laterally (kind 0);
+    // petals (kind 1) and snow (kind 2) fall and wrap, petals tumbling.
+    // Positions derive from Time.time, so edit-mode captures (no Update)
+    // show the build-time scatter.
+    struct Drifter
+    {
+        public Transform tr;
+        public Vector3 basePos;
+        public float phase;
+        public int kind;
+        public float fallSpeed;
+        public float swayAmp;
+        public float swaySpeed;
+        public float spinSpeed;
+        public float topY;
+        public float rangeY;
+    }
+    readonly List<Drifter> drifters = new List<Drifter>();
+
+    // v1.0.63: cloudy transition overlay — a fullscreen quad childed to the
+    // main camera, wearing the TransitionFog shader. Built lazily on the
+    // first play-mode transition; never exists in the CI edit-mode path.
+    GameObject transitionOverlay;
+    Material transitionFogMat;
 
     public void Initialize(CrystalVizBootstrap boot)
     {
@@ -48,15 +80,27 @@ public class EnvironmentManager : MonoBehaviour
         initialized = true;
         Instance = this;
         bootstrap = boot;
-        BuildWillowProps();
+        BuildAllPropSets();
+        RefreshActiveProfile();
+    }
+
+    /// <summary>
+    /// v1.0.63: re-applies the persisted species' profile. Called by
+    /// Initialize and again by the bootstrap after BuildDiorama, because
+    /// the ground/grass/wildflower materials only exist after the diorama
+    /// builds — the second pass is what actually re-tints the surfaces.
+    /// </summary>
+    public void RefreshActiveProfile()
+    {
         var species = (ParametricTree.TreeSpecies)Mathf.Clamp(
             PlayerPrefs.GetInt(TreeGrowthController.SpeciesKey, 0), 0, 5);
         ApplyProfileInstant(species);
     }
 
     /// <summary>
-    /// Applies a species' profile instantly: fog, ambient, props, then
-    /// re-runs the day/night lighting funnel at the current time of day.
+    /// Applies a species' profile instantly: fog, ambient, props, material
+    /// tints, then re-runs the day/night lighting funnel at the current
+    /// time of day.
     /// </summary>
     public void ApplyProfileInstant(ParametricTree.TreeSpecies s)
     {
@@ -67,13 +111,16 @@ public class EnvironmentManager : MonoBehaviour
         RenderSettings.fogStartDistance = p.fogStart;
         RenderSettings.fogEndDistance = p.fogEnd;
         RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
-        if (willowProps != null) willowProps.SetActive(p.waterEnabled);
+        foreach (var kv in propSets) kv.Value.SetActive(kv.Key == s);
         if (bootstrap != null)
         {
             // Flatten the pond grass/flowers via the shader clip so a
             // species picked after launch still gets open water (the
             // build-time tuft skip only covers the persisted species).
-            bootstrap.SetPondClip(p.waterEnabled);
+            // v1.0.63: generalized — cherry's pond and palm's shallows use
+            // the same path with their own center/radius.
+            bootstrap.SetPondClip(p.pondEnabled);
+            bootstrap.ApplyEnvironmentTint();
             var orbit = Object.FindFirstObjectByType<SunOrbitControl>();
             float v = orbit != null ? orbit.CurrentSnappedValue : 0f;
             bootstrap.ApplyTimeOfDayLighting(SunOrbitControl.NightFactor(v));
@@ -81,10 +128,11 @@ public class EnvironmentManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Species change entry point. In play mode this runs the fog-swell:
-    /// the fog rolls in thick, the environment swaps underneath it, then
-    /// the fog lifts — ~1.5s total. In edit mode (CI screenshots) there is
-    /// no Update loop, so the swap is instant.
+    /// Species change entry point. In play mode this runs the cloudy-fog
+    /// transition: a dense billowing cloud bank rolls in to full cover, the
+    /// environment swaps underneath while it holds, then the clouds part —
+    /// ~2.6s total. In edit mode (CI screenshots) there is no Update loop,
+    /// so the swap is instant and no overlay is ever built.
     /// </summary>
     public void TransitionTo(ParametricTree.TreeSpecies s)
     {
@@ -95,110 +143,253 @@ public class EnvironmentManager : MonoBehaviour
             return;
         }
         if (activeTransition != null) StopCoroutine(activeTransition);
-        activeTransition = StartCoroutine(FogSwellRoutine(s));
+        activeTransition = StartCoroutine(CloudFogRoutine(s));
     }
 
-    IEnumerator FogSwellRoutine(ParametricTree.TreeSpecies s)
+    IEnumerator CloudFogRoutine(ParametricTree.TreeSpecies s)
     {
-        var target = EnvironmentProfiles.ForSpecies(s);
-        float startStart = RenderSettings.fogStartDistance;
-        float startEnd = RenderSettings.fogEndDistance;
+        EnsureTransitionOverlay();
+        if (transitionFogMat == null)
+        {
+            // Shader missing: fall back to the instant swap (never magenta,
+            // never stuck).
+            ApplyProfileInstant(s);
+            activeTransition = null;
+            yield break;
+        }
 
-        // Phase 1: the fog swells in (~0.6s).
+        // Tint the cloud bank to the world it's about to cover.
+        transitionFogMat.SetColor("_FogColor", RenderSettings.fogColor);
+        transitionOverlay.SetActive(true);
+
+        // Phase 1: the cloud bank rolls in to full cover (~0.8s).
         float t = 0f;
         while (t < 1f)
         {
-            t += Time.deltaTime / 0.6f;
-            float k = Smooth01(Mathf.Clamp01(t));
-            RenderSettings.fogStartDistance = Mathf.Lerp(startStart, 0f, k);
-            RenderSettings.fogEndDistance = Mathf.Lerp(startEnd, 6f, k);
+            t += Time.deltaTime / 0.8f;
+            transitionFogMat.SetFloat("_Cover", Smooth01(Mathf.Clamp01(t)));
             yield return null;
         }
+        transitionFogMat.SetFloat("_Cover", 1f);
 
-        // Phase 2: swap the world under the white-out.
+        // Phase 2: swap the world under full cover, then hold a beat while
+        // the new environment settles (the swap itself is instant — props
+        // are pre-built — the hold is the visual breath before the reveal).
         ApplyProfileInstant(s);
+        // Re-tint the bank to the new world's fog so the reveal feels lit
+        // by the environment it's uncovering.
+        transitionFogMat.SetColor("_FogColor", RenderSettings.fogColor);
+        yield return new WaitForSeconds(0.6f);
 
-        // Phase 3: the fog lifts onto the new profile (~0.9s).
+        // Phase 3: the clouds part and drift away (~1.2s).
         t = 0f;
         while (t < 1f)
         {
-            t += Time.deltaTime / 0.9f;
-            float k = Smooth01(Mathf.Clamp01(t));
-            RenderSettings.fogStartDistance = Mathf.Lerp(0f, target.fogStart, k);
-            RenderSettings.fogEndDistance = Mathf.Lerp(6f, target.fogEnd, k);
+            t += Time.deltaTime / 1.2f;
+            transitionFogMat.SetFloat("_Cover", 1f - Smooth01(Mathf.Clamp01(t)));
             yield return null;
         }
-        RenderSettings.fogStartDistance = target.fogStart;
-        RenderSettings.fogEndDistance = target.fogEnd;
+        transitionFogMat.SetFloat("_Cover", 0f);
+        transitionOverlay.SetActive(false);
         activeTransition = null;
     }
 
     static float Smooth01(float x) { return x * x * (3f - 2f * x); }
 
+    /// <summary>
+    /// v1.0.63: builds (once) the camera-child fullscreen quad for the
+    /// cloudy transition. Sized from the camera frustum so it covers the
+    /// whole frame on any aspect.
+    /// </summary>
+    void EnsureTransitionOverlay()
+    {
+        if (transitionOverlay != null) return;
+        var cam = Camera.main;
+        if (cam == null) return;
+        var fogShader = Shader.Find("CrystalViz/TransitionFog");
+        if (fogShader == null)
+        {
+            Debug.LogWarning("EnvironmentManager: 'CrystalViz/TransitionFog' not found; " +
+                             "species transitions will swap instantly.");
+            return;
+        }
+        transitionFogMat = new Material(fogShader);
+        transitionFogMat.SetFloat("_Cover", 0f);
+        transitionFogMat.SetFloat("_Seed", 3.7f);
+
+        transitionOverlay = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        transitionOverlay.name = "TransitionFog";
+        Object.Destroy(transitionOverlay.GetComponent<Collider>());
+        transitionOverlay.transform.SetParent(cam.transform, false);
+        float dist = 0.6f;
+        float h = 2f * dist * Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);
+        float w = h * cam.aspect;
+        // Camera looks down its local -z; the quad sits just ahead of the
+        // near plane. Cull is off in the shader, so facing doesn't matter.
+        transitionOverlay.transform.localPosition = new Vector3(0f, 0f, -dist);
+        transitionOverlay.transform.localScale = new Vector3(w * 1.05f, h * 1.05f, 1f);
+        var mr = transitionOverlay.GetComponent<MeshRenderer>();
+        mr.material = transitionFogMat;
+        mr.material.renderQueue = 4000;
+        mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        mr.receiveShadows = false;
+        transitionOverlay.SetActive(false);
+    }
+
     void Update()
     {
-        // Mist drifts only while the lakeside is live, in play mode.
-        if (willowProps == null || !willowProps.activeSelf) return;
-        if (mistQuads.Count == 0) return;
+        if (drifters.Count == 0) return;
         float t = Time.time;
-        for (int i = 0; i < mistQuads.Count; i++)
+        foreach (var d in drifters)
         {
-            var tr = mistQuads[i];
-            if (tr == null) continue;
-            var pos = tr.position;
-            pos.x = mistBaseX[i] + Mathf.Sin(t * 0.12f + mistPhase[i]) * 0.5f;
-            tr.position = pos;
+            if (d.tr == null || !d.tr.gameObject.activeInHierarchy) continue;
+            var pos = d.basePos;
+            if (d.kind == 0)
+            {
+                pos.x += Mathf.Sin(t * d.swaySpeed + d.phase) * d.swayAmp;
+            }
+            else
+            {
+                float fall = Mathf.Repeat(t * d.fallSpeed + d.phase * d.rangeY, d.rangeY);
+                pos.y = d.topY - fall;
+                pos.x += Mathf.Sin(t * d.swaySpeed + d.phase) * d.swayAmp;
+                pos.z += Mathf.Cos(t * d.swaySpeed * 0.7f + d.phase * 1.3f) * d.swayAmp * 0.5f;
+            }
+            d.tr.position = pos;
+            if (d.kind == 1)
+            {
+                d.tr.rotation = Quaternion.Euler(
+                    t * d.spinSpeed + d.phase * 57f,
+                    d.phase * 90f,
+                    t * d.spinSpeed * 0.6f);
+            }
         }
     }
 
     // ------------------------------------------------------------------
-    // Willow prop construction (all procedural, built once, toggled).
+    // Prop-set construction (all procedural, built once, toggled).
     // ------------------------------------------------------------------
 
-    void BuildWillowProps()
+    void BuildAllPropSets()
     {
-        willowProps = new GameObject("WillowLakeside");
-        willowProps.SetActive(false);
-
         var waterShader = Shader.Find("CrystalViz/LakesideWater");
-        if (waterShader == null)
-        {
-            Debug.LogWarning("EnvironmentManager: 'CrystalViz/LakesideWater' not found; " +
-                             "willow pond and mist will be skipped (never magenta).");
-        }
-        else
-        {
-            BuildPond(waterShader);
-            BuildMist(waterShader);
-        }
-
         var grassShader = Shader.Find("CrystalViz/StylizedGrass");
+        var litShader = Shader.Find("Universal Render Pipeline/Lit");
+        if (waterShader == null)
+            Debug.LogWarning("EnvironmentManager: 'CrystalViz/LakesideWater' not found; " +
+                             "ponds, mist, petals and snow will be skipped (never magenta).");
         if (grassShader == null)
-        {
             Debug.LogWarning("EnvironmentManager: 'CrystalViz/StylizedGrass' not found; " +
-                             "willow reeds will be skipped.");
-        }
-        else
+                             "reeds and ferns will be skipped.");
+        if (litShader == null)
+            Debug.LogWarning("EnvironmentManager: 'Universal Render Pipeline/Lit' not found; " +
+                             "solid props (lantern, peaks, trunks, shells) will be skipped.");
+
+        BuildWillowProps(waterShader, grassShader);
+        BuildOakProps(litShader);
+        BuildPineProps(waterShader, litShader);
+        BuildBirchProps(grassShader, litShader);
+        BuildCherryProps(waterShader, litShader);
+        BuildPalmProps(waterShader, litShader);
+    }
+
+    GameObject NewPropSet(ParametricTree.TreeSpecies s, string name)
+    {
+        var go = new GameObject(name);
+        go.SetActive(false);
+        propSets[s] = go;
+        return go;
+    }
+
+    static void StripCollider(GameObject go)
+    {
+        var c = go.GetComponent<Collider>();
+        if (c != null)
         {
-            BuildReeds(grassShader);
+            if (Application.isPlaying) Object.Destroy(c);
+            else Object.DestroyImmediate(c);
         }
     }
 
-    void BuildPond(Shader waterShader)
+    static Material NewLit(Color c)
+    {
+        var sh = Shader.Find("Universal Render Pipeline/Lit");
+        if (sh == null) return null;
+        var m = new Material(sh);
+        m.color = c;
+        return m;
+    }
+
+    static GameObject Primitive(PrimitiveType type, GameObject parent, string name,
+        Vector3 pos, Vector3 scale, Material mat)
+    {
+        var go = GameObject.CreatePrimitive(type);
+        go.name = name;
+        StripCollider(go);
+        go.transform.SetParent(parent.transform, false);
+        go.transform.position = pos;
+        go.transform.localScale = scale;
+        if (mat != null)
+        {
+            var mr = go.GetComponent<MeshRenderer>();
+            mr.material = mat;
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            mr.receiveShadows = false;
+        }
+        return go;
+    }
+
+    /// <summary>
+    /// v1.0.63: simple cone mesh (peaks, lantern roof, mushroom caps use
+    /// spheres instead). Apex at +height/2, base at -height/2.
+    /// </summary>
+    static Mesh MakeCone(float radius, float height, int segments)
+    {
+        var verts = new List<Vector3>();
+        var uvs = new List<Vector2>();
+        var idx = new List<int>();
+        verts.Add(new Vector3(0f, height * 0.5f, 0f));
+        uvs.Add(new Vector2(0.5f, 1f));
+        for (int i = 0; i < segments; i++)
+        {
+            float a = (float)i / segments * Mathf.PI * 2f;
+            verts.Add(new Vector3(Mathf.Cos(a) * radius, -height * 0.5f, Mathf.Sin(a) * radius));
+            uvs.Add(new Vector2((float)i / segments, 0f));
+        }
+        for (int i = 0; i < segments; i++)
+        {
+            idx.Add(0);
+            idx.Add(1 + i);
+            idx.Add(1 + (i + 1) % segments);
+        }
+        var mesh = new Mesh();
+        mesh.SetVertices(verts);
+        mesh.SetUVs(0, uvs);
+        mesh.SetTriangles(idx, 0);
+        mesh.RecalculateNormals();
+        return mesh;
+    }
+
+    /// <summary>
+    /// v1.0.63: flat water disc, generalized from the willow pond. UVs are
+    /// radial so the LakesideWater shore fade melts the rim.
+    /// </summary>
+    static GameObject BuildWaterDisc(GameObject parent, Shader waterShader,
+        Vector3 center, float radius, Color color, float alpha, string name)
     {
         const int segments = 28;
         var verts = new List<Vector3>(segments + 1);
         var uvs = new List<Vector2>(segments + 1);
         var idx = new List<int>(segments * 3);
-        verts.Add(new Vector3(PondCenter.x, PondWaterY, PondCenter.z));
+        verts.Add(new Vector3(center.x, PondWaterY, center.z));
         uvs.Add(new Vector2(0.5f, 0.5f));
         for (int i = 0; i < segments; i++)
         {
             float a = (float)i / segments * Mathf.PI * 2f;
-            float x = Mathf.Cos(a) * PondRadius;
-            float z = Mathf.Sin(a) * PondRadius;
-            verts.Add(new Vector3(PondCenter.x + x, PondWaterY, PondCenter.z + z));
-            uvs.Add(new Vector2(0.5f + x / (PondRadius * 2f), 0.5f + z / (PondRadius * 2f)));
+            float x = Mathf.Cos(a) * radius;
+            float z = Mathf.Sin(a) * radius;
+            verts.Add(new Vector3(center.x + x, PondWaterY, center.z + z));
+            uvs.Add(new Vector2(0.5f + x / (radius * 2f), 0.5f + z / (radius * 2f)));
         }
         for (int i = 0; i < segments; i++)
         {
@@ -206,27 +397,90 @@ public class EnvironmentManager : MonoBehaviour
             idx.Add(1 + (i + 1) % segments);
             idx.Add(1 + i);
         }
-        var mesh = new Mesh { name = "WillowPond" };
+        var mesh = new Mesh { name = name };
         mesh.SetVertices(verts);
         mesh.SetUVs(0, uvs);
         mesh.SetTriangles(idx, 0);
         mesh.RecalculateNormals();
 
         var mat = new Material(waterShader);
-        mat.SetColor("_Color", new Color(0.16f, 0.35f, 0.45f, 1f));
-        mat.SetFloat("_Alpha", 0.82f);
+        mat.SetColor("_Color", color);
+        mat.SetFloat("_Alpha", alpha);
         mat.SetFloat("_Mode", 0f);
 
-        var go = new GameObject("Pond");
-        go.transform.SetParent(willowProps.transform, false);
+        var go = new GameObject(name);
+        go.transform.SetParent(parent.transform, false);
         go.AddComponent<MeshFilter>().mesh = mesh;
         var mr = go.AddComponent<MeshRenderer>();
         mr.material = mat;
         mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         mr.receiveShadows = false;
+        return go;
     }
 
-    void BuildMist(Shader waterShader)
+    /// <summary>
+    /// v1.0.63: registers a soft billboard quad (mist/petal/snow via the
+    /// LakesideWater mist mode) with the drifter system.
+    /// kind: 0 = mist (lateral sway), 1 = petal (fall + tumble),
+    /// 2 = snow (fall, gentle sway).
+    /// </summary>
+    void AddDrifter(GameObject parent, Shader waterShader, Vector3 pos, Vector2 size,
+        Color color, float alpha, int kind, float seedPhase,
+        float fallSpeed = 0f, float swayAmp = 0.5f, float swaySpeed = 0.12f,
+        float topY = 0f, float rangeY = 1f)
+    {
+        var mat = new Material(waterShader);
+        mat.SetColor("_Color", color);
+        mat.SetFloat("_Alpha", alpha);
+        mat.SetFloat("_Mode", 1f);
+
+        var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        go.name = "Drifter" + kind + "_" + drifters.Count;
+        StripCollider(go);
+        go.transform.SetParent(parent.transform, false);
+        go.transform.position = pos;
+        go.transform.localScale = new Vector3(size.x, size.y, 1f);
+        var mr = go.GetComponent<MeshRenderer>();
+        mr.material = mat;
+        mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        mr.receiveShadows = false;
+
+        drifters.Add(new Drifter
+        {
+            tr = go.transform,
+            basePos = pos,
+            phase = seedPhase * Mathf.PI * 2f,
+            kind = kind,
+            fallSpeed = fallSpeed,
+            swayAmp = swayAmp,
+            swaySpeed = swaySpeed,
+            spinSpeed = 40f + seedPhase * 50f,
+            topY = topY,
+            rangeY = rangeY,
+        });
+    }
+
+    // ------------------------------------------------------------------
+    // Willow: lakeside (pond, reeds, mist). Unchanged since v1.0.62 except
+    // the reed material no-op cleanup (v1.0.63): _WindFrequency,
+    // _GustFrequency and _PhaseJitter were never real StylizedGrass
+    // properties (the real ones are _WindSpeed and _GustFreq), so setting
+    // them did nothing — removed.
+    // ------------------------------------------------------------------
+
+    void BuildWillowProps(Shader waterShader, Shader grassShader)
+    {
+        var set = NewPropSet(ParametricTree.TreeSpecies.Willow, "WillowLakeside");
+        if (waterShader != null)
+        {
+            BuildWaterDisc(set, waterShader, PondCenter, PondRadius,
+                new Color(0.16f, 0.35f, 0.45f, 1f), 0.82f, "Pond");
+            BuildWillowMist(set, waterShader);
+        }
+        if (grassShader != null) BuildReeds(set, grassShader);
+    }
+
+    void BuildWillowMist(GameObject set, Shader waterShader)
     {
         var defs = new (Vector3 pos, Vector2 size)[]
         {
@@ -241,29 +495,13 @@ public class EnvironmentManager : MonoBehaviour
         var rng = new System.Random(777);
         for (int i = 0; i < defs.Length; i++)
         {
-            var mat = new Material(waterShader);
-            mat.SetColor("_Color", mistColor);
-            mat.SetFloat("_Alpha", mistAlpha);
-            mat.SetFloat("_Mode", 1f);
-
-            var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            go.name = "Mist" + i;
-            Object.DestroyImmediate(go.GetComponent<Collider>());
-            go.transform.SetParent(willowProps.transform, false);
-            go.transform.position = defs[i].pos;
-            go.transform.localScale = new Vector3(defs[i].size.x, defs[i].size.y, 1f);
-            var mr = go.GetComponent<MeshRenderer>();
-            mr.material = mat;
-            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-            mr.receiveShadows = false;
-
-            mistQuads.Add(go.transform);
-            mistBaseX.Add(defs[i].pos.x);
-            mistPhase.Add((float)rng.NextDouble() * Mathf.PI * 2f);
+            AddDrifter(set, waterShader, defs[i].pos, defs[i].size,
+                mistColor, mistAlpha, 0, (float)rng.NextDouble(),
+                swayAmp: 0.5f, swaySpeed: 0.12f);
         }
     }
 
-    void BuildReeds(Shader grassShader)
+    void BuildReeds(GameObject set, Shader grassShader)
     {
         // Reed clusters along the near-shore arc facing the tree/camera,
         // standing in the shallows. Tapered blades like the meadow grass
@@ -318,14 +556,16 @@ public class EnvironmentManager : MonoBehaviour
         mat.SetColor("_RootColor", new Color(0.16f, 0.28f, 0.08f, 1f));
         mat.SetColor("_TipColor", new Color(0.45f, 0.55f, 0.20f, 1f));
         mat.SetFloat("_WindStrength", 0.045f);
-        mat.SetFloat("_WindFrequency", 1.7f);
+        mat.SetFloat("_WindSpeed", 1.7f);
         mat.SetFloat("_GustStrength", 0.12f);
-        mat.SetFloat("_GustFrequency", 1.8f);
-        mat.SetFloat("_GustSpeed", 0.18f);
-        mat.SetFloat("_PhaseJitter", 0.28f);
+        mat.SetFloat("_GustSpeed", 1.8f);
+        mat.SetFloat("_GustFreq", 0.18f);
+        mat.SetFloat("_GustLighten", 0.28f);
+        // v1.0.63: removed the no-op _WindFrequency / _GustFrequency /
+        // _PhaseJitter sets — those were never StylizedGrass properties.
 
         var go = new GameObject("Reeds");
-        go.transform.SetParent(willowProps.transform, false);
+        go.transform.SetParent(set.transform, false);
         go.AddComponent<MeshFilter>().mesh = mesh;
         var mr = go.AddComponent<MeshRenderer>();
         mr.material = mat;
@@ -352,5 +592,446 @@ public class EnvironmentManager : MonoBehaviour
         idx.Add(s); idx.Add(s + 1); idx.Add(s + 2);
         idx.Add(s + 1); idx.Add(s + 3); idx.Add(s + 2);
         idx.Add(s + 2); idx.Add(s + 3); idx.Add(s + 4);
+    }
+
+    // ------------------------------------------------------------------
+    // Oak: ancient meadow — mushroom fairy ring + golden wildflower drifts
+    // in warm late-afternoon light.
+    // ------------------------------------------------------------------
+
+    void BuildOakProps(Shader litShader)
+    {
+        var set = NewPropSet(ParametricTree.TreeSpecies.Broadleaf, "OakMeadow");
+        if (litShader == null) return;
+
+        // Fairy ring of mushrooms at the meadow's edge: cream stems, warm
+        // brown caps. Deterministic placement, kept clear of the trunk and
+        // the camera corridor.
+        var stemMat = NewLit(new Color(0.88f, 0.84f, 0.76f, 1f));
+        var capMat = NewLit(new Color(0.58f, 0.34f, 0.18f, 1f));
+        var rng = new System.Random(60606);
+        for (int i = 0; i < 8; i++)
+        {
+            float a = (35f + i * 38f) * Mathf.Deg2Rad;
+            float r = 5.2f + (float)rng.NextDouble() * 1.4f;
+            float bx = Mathf.Cos(a) * r;
+            float bz = Mathf.Sin(a) * r;
+            if (bx * bx + bz * bz < 4f) continue;
+            float cdz = bz - 7.4f;
+            if (bx * bx + cdz * cdz < 9f) continue;
+            float h = 0.20f + (float)rng.NextDouble() * 0.12f;
+            Primitive(PrimitiveType.Cylinder, set, "ShroomStem" + i,
+                new Vector3(bx, h * 0.5f, bz), new Vector3(0.09f, h, 0.09f), stemMat);
+            Primitive(PrimitiveType.Sphere, set, "ShroomCap" + i,
+                new Vector3(bx, h + 0.03f, bz), new Vector3(0.30f, 0.16f, 0.30f), capMat);
+        }
+
+        BuildOakDrift(set);
+    }
+
+    /// <summary>
+    /// v1.0.63: golden wildflower drifts for the oak meadow — three dense
+    /// arc bands of warm-toned blossoms, built with the bootstrap's real
+    /// wildflower geometry (blossom atlas included) so they match the
+    /// meadow's flowers exactly.
+    /// </summary>
+    void BuildOakDrift(GameObject set)
+    {
+        var flowerShader = Shader.Find("CrystalViz/Wildflower");
+        if (flowerShader == null) return;
+        var mat = new Material(flowerShader);
+        mat.SetColor("_RootColor", new Color(0.14f, 0.30f, 0.10f, 1f));
+        mat.SetColor("_TipColor", new Color(0.40f, 0.62f, 0.20f, 1f));
+        mat.SetTexture("_BlossomMap", CrystalVizBootstrap.MakeBlossomAtlas());
+        mat.SetFloat("_WindStrength", 0.06f);
+        mat.SetFloat("_WindSpeed", 1.7f);
+        mat.SetFloat("_GustStrength", 0.12f);
+        mat.SetFloat("_GustSpeed", 1.8f);
+        mat.SetFloat("_GustFreq", 0.18f);
+        mat.SetFloat("_GustLighten", 0.28f);
+
+        var palette = new[]
+        {
+            new Color(0.99f, 0.80f, 0.30f, 1f), // gold
+            new Color(0.99f, 0.66f, 0.25f, 1f), // amber
+            new Color(0.97f, 0.93f, 0.70f, 1f), // cream
+            new Color(0.95f, 0.55f, 0.35f, 1f), // poppy
+        };
+        var rng = new System.Random(70707);
+        var verts = new List<Vector3>();
+        var normals = new List<Vector3>();
+        var uvs = new List<Vector2>();
+        var uvs2 = new List<Vector2>();
+        var colors = new List<Color>();
+        var tris = new List<int>();
+
+        float[] bandAngles = { 100f, 140f, 180f, 220f, 260f, 300f };
+        foreach (float deg in bandAngles)
+        {
+            float a = deg * Mathf.Deg2Rad;
+            for (int i = 0; i < 130; i++)
+            {
+                float rr = 3.0f + (float)rng.NextDouble() * 4.0f;
+                float aa = a + ((float)rng.NextDouble() - 0.5f) * 0.35f;
+                float px = Mathf.Cos(aa) * rr;
+                float pz = Mathf.Sin(aa) * rr;
+                if (px * px + pz * pz < 0.81f) continue;
+                float cdx = px, cdz = pz - 7.4f;
+                if (cdx * cdx + cdz * cdz < 9f) continue;
+                var mtx = Matrix4x4.TRS(
+                    new Vector3(px, 0f, pz),
+                    Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f),
+                    Vector3.one * (0.9f + (float)rng.NextDouble() * 0.6f));
+                var petal = palette[rng.Next(palette.Length)];
+                float j = 0.88f + (float)rng.NextDouble() * 0.18f;
+                petal = new Color(petal.r * j, petal.g * j, petal.b * j, 1f);
+                CrystalVizBootstrap.AppendWildflower(verts, normals, uvs, uvs2,
+                    colors, tris, mtx, rng, petal, rng.Next(4), out _);
+            }
+        }
+
+        var mesh = new Mesh { name = "OakDrift" };
+        mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
+        mesh.SetVertices(verts);
+        mesh.SetNormals(normals);
+        mesh.SetUVs(0, uvs);
+        mesh.SetUVs(1, uvs2);
+        mesh.SetColors(colors);
+        mesh.SetTriangles(tris, 0);
+        mesh.RecalculateBounds();
+
+        var go = new GameObject("OakDrift");
+        go.transform.SetParent(set.transform, false);
+        go.AddComponent<MeshFilter>().sharedMesh = mesh;
+        var mr = go.AddComponent<MeshRenderer>();
+        mr.sharedMaterial = mat;
+        mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        mr.receiveShadows = true;
+    }
+
+    // ------------------------------------------------------------------
+    // Pine: alpine clearing — distant peak silhouettes + gentle snowfall.
+    // ------------------------------------------------------------------
+
+    void BuildPineProps(Shader waterShader, Shader litShader)
+    {
+        var set = NewPropSet(ParametricTree.TreeSpecies.Pine, "PineAlpine");
+        var rng = new System.Random(80808);
+
+        if (litShader != null)
+        {
+            // Distant peak silhouettes: big soft cones on the horizon ring,
+            // blue-gray so the linear fog melts them into the distance.
+            // Snow-capped: a smaller white cone rides each summit.
+            var rockMat = NewLit(new Color(0.42f, 0.50f, 0.64f, 1f));
+            var snowMat = NewLit(new Color(0.88f, 0.92f, 0.96f, 1f));
+            for (int i = 0; i < 7; i++)
+            {
+                float a = (float)i / 7f * Mathf.PI * 2f + 0.35f;
+                float r = 58f + (float)rng.NextDouble() * 24f;
+                float w = 16f + (float)rng.NextDouble() * 14f;
+                float h = 20f + (float)rng.NextDouble() * 14f;
+                float px = Mathf.Cos(a) * r;
+                float pz = Mathf.Sin(a) * r;
+                var peak = new GameObject("Peak" + i);
+                peak.transform.SetParent(set.transform, false);
+                peak.transform.position = new Vector3(px, h * 0.5f - 3f, pz);
+                peak.AddComponent<MeshFilter>().mesh = MakeCone(w * 0.5f, h, 7);
+                var pmr = peak.AddComponent<MeshRenderer>();
+                pmr.material = rockMat;
+                pmr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                pmr.receiveShadows = false;
+
+                var cap = new GameObject("PeakCap" + i);
+                cap.transform.SetParent(set.transform, false);
+                cap.transform.position = new Vector3(px, h - 3f - h * 0.16f, pz);
+                cap.AddComponent<MeshFilter>().mesh = MakeCone(w * 0.5f * 0.42f, h * 0.34f, 7);
+                var cmr = cap.AddComponent<MeshRenderer>();
+                cmr.material = snowMat;
+                cmr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                cmr.receiveShadows = false;
+            }
+        }
+
+        if (waterShader != null)
+        {
+            // Gentle snowfall: soft white motes drifting down around the
+            // clearing, wrapping seamlessly.
+            var snowColor = new Color(0.95f, 0.97f, 1f, 1f);
+            for (int i = 0; i < 55; i++)
+            {
+                float px = ((float)rng.NextDouble() - 0.5f) * 20f;
+                float pz = -8f + (float)rng.NextDouble() * 14f;
+                float py = (float)rng.NextDouble() * 8f;
+                float s = 0.10f + (float)rng.NextDouble() * 0.08f;
+                AddDrifter(set, waterShader, new Vector3(px, py, pz),
+                    new Vector2(s, s), snowColor, 0.75f, 2,
+                    (float)rng.NextDouble(),
+                    fallSpeed: 0.5f + (float)rng.NextDouble() * 0.4f,
+                    swayAmp: 0.25f, swaySpeed: 0.5f,
+                    topY: 8f, rangeY: 8.5f);
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Birch: slender white grove — pale trunks with dark lenticels, soft
+    // yellow-green canopies, a fern floor.
+    // ------------------------------------------------------------------
+
+    void BuildBirchProps(Shader grassShader, Shader litShader)
+    {
+        var set = NewPropSet(ParametricTree.TreeSpecies.Birch, "BirchGrove");
+        var rng = new System.Random(90909);
+
+        if (litShader != null)
+        {
+            // Nine slender white trunks ringing the clearing — sides and
+            // back only, so the portrait corridor to the main tree stays
+            // open and the camera never stares down a trunk.
+            var trunkPos = new (float x, float z)[]
+            {
+                (-6.5f, -4f), (-9.5f, -1f), (-7f, 3f),
+                (6.5f, -5f), (9.5f, -2f), (7f, 2.5f),
+                (-3.5f, -8.5f), (3.5f, -9f), (0.5f, -11.5f),
+            };
+            var barkMat = NewLit(new Color(0.92f, 0.90f, 0.86f, 1f));
+            var lenticelMat = NewLit(new Color(0.16f, 0.15f, 0.14f, 1f));
+            var canopyMat = NewLit(new Color(0.55f, 0.68f, 0.30f, 1f));
+            for (int i = 0; i < trunkPos.Length; i++)
+            {
+                float bx = trunkPos[i].x + ((float)rng.NextDouble() - 0.5f) * 1.2f;
+                float bz = trunkPos[i].z + ((float)rng.NextDouble() - 0.5f) * 1.2f;
+                float h = 5f + (float)rng.NextDouble() * 2f;
+                float tr = 0.10f + (float)rng.NextDouble() * 0.04f;
+                Primitive(PrimitiveType.Cylinder, set, "BirchTrunk" + i,
+                    new Vector3(bx, h * 0.5f, bz), new Vector3(tr * 2f, h, tr * 2f), barkMat);
+                // Dark lenticel bands: thin dark rings up the white bark.
+                int bands = 4 + rng.Next(3);
+                for (int b = 0; b < bands; b++)
+                {
+                    float by = h * (0.15f + 0.75f * (float)rng.NextDouble());
+                    Primitive(PrimitiveType.Cylinder, set, $"BirchBand{i}_{b}",
+                        new Vector3(bx, by, bz),
+                        new Vector3(tr * 2f + 0.012f, 0.035f, tr * 2f + 0.012f), lenticelMat);
+                }
+                // Soft canopy blob: a squashed ellipsoid in yellow-green.
+                float cw = 1.1f + (float)rng.NextDouble() * 0.7f;
+                Primitive(PrimitiveType.Sphere, set, "BirchCanopy" + i,
+                    new Vector3(bx, h + 0.4f, bz),
+                    new Vector3(cw * 2f, cw * 1.15f, cw * 2f), canopyMat);
+            }
+        }
+
+        if (grassShader != null)
+        {
+            // Fern floor: low drooping tufts in deep green, clustered near
+            // the background trunks.
+            var verts = new List<Vector3>();
+            var uvs = new List<Vector2>();
+            var idx = new List<int>();
+            var frng = new System.Random(91919);
+            for (int i = 0; i < 70; i++)
+            {
+                float a = (float)frng.NextDouble() * Mathf.PI * 2f;
+                float rr = 4f + (float)frng.NextDouble() * 9f;
+                float bx = Mathf.Cos(a) * rr;
+                float bz = Mathf.Sin(a) * rr;
+                if (bx * bx + bz * bz < 1.2f) continue;
+                float cdx = bx, cdz = bz - 7.4f;
+                if (cdx * cdx + cdz * cdz < 9f) continue;
+                float yaw = (float)frng.NextDouble() * Mathf.PI * 2f;
+                int blades = 4 + frng.Next(3);
+                for (int b = 0; b < blades; b++)
+                {
+                    float h = 0.22f + (float)frng.NextDouble() * 0.18f;
+                    float w = 0.030f + (float)frng.NextDouble() * 0.014f;
+                    float lean = ((float)frng.NextDouble() - 0.5f) * 0.9f;
+                    AppendReedBlade(verts, uvs, idx,
+                        new Vector3(bx, 0f, bz), yaw + lean * 0.3f, h, w);
+                }
+            }
+            var mesh = new Mesh { name = "BirchFerns" };
+            mesh.SetVertices(verts);
+            mesh.SetUVs(0, uvs);
+            mesh.SetTriangles(idx, 0);
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+
+            var mat = new Material(grassShader);
+            mat.SetColor("_RootColor", new Color(0.10f, 0.25f, 0.08f, 1f));
+            mat.SetColor("_TipColor", new Color(0.30f, 0.50f, 0.16f, 1f));
+            mat.SetFloat("_WindStrength", 0.03f);
+            mat.SetFloat("_WindSpeed", 1.4f);
+            mat.SetFloat("_GustStrength", 0.08f);
+            mat.SetFloat("_GustSpeed", 1.8f);
+            mat.SetFloat("_GustFreq", 0.18f);
+            mat.SetFloat("_GustLighten", 0.28f);
+
+            var go = new GameObject("Ferns");
+            go.transform.SetParent(set.transform, false);
+            go.AddComponent<MeshFilter>().mesh = mesh;
+            var mr = go.AddComponent<MeshRenderer>();
+            mr.material = mat;
+            mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            mr.receiveShadows = false;
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Cherry: sakura garden — stone lantern, still pond, stepping stones,
+    // petals always on the breeze.
+    // ------------------------------------------------------------------
+
+    void BuildCherryProps(Shader waterShader, Shader litShader)
+    {
+        var set = NewPropSet(ParametricTree.TreeSpecies.Cherry, "CherryGarden");
+        var prof = EnvironmentProfiles.ForSpecies(ParametricTree.TreeSpecies.Cherry);
+        var rng = new System.Random(11111);
+
+        if (waterShader != null)
+        {
+            // Still garden pond: darker and calmer-reading than the willow
+            // lake (deep reflective tint, high alpha).
+            BuildWaterDisc(set, waterShader, prof.pondCenter, prof.pondRadius,
+                new Color(0.14f, 0.22f, 0.30f, 1f), 0.88f, "GardenPond");
+
+            // Drifting sakura petals: soft pink-white motes tumbling down
+            // through the whole garden air.
+            var petalColor = new Color(0.97f, 0.78f, 0.84f, 1f);
+            for (int i = 0; i < 70; i++)
+            {
+                float px = ((float)rng.NextDouble() - 0.5f) * 16f;
+                float pz = -7f + (float)rng.NextDouble() * 12f;
+                float py = (float)rng.NextDouble() * 6.5f;
+                float s = 0.06f + (float)rng.NextDouble() * 0.05f;
+                AddDrifter(set, waterShader, new Vector3(px, py, pz),
+                    new Vector2(s, s), petalColor, 0.9f, 1,
+                    (float)rng.NextDouble(),
+                    fallSpeed: 0.35f + (float)rng.NextDouble() * 0.25f,
+                    swayAmp: 0.4f + (float)rng.NextDouble() * 0.4f,
+                    swaySpeed: 0.9f + (float)rng.NextDouble() * 0.5f,
+                    topY: 6.5f, rangeY: 7f);
+            }
+        }
+
+        if (litShader == null) return;
+
+        var stoneMat = NewLit(new Color(0.55f, 0.55f, 0.58f, 1f));
+        var darkStoneMat = NewLit(new Color(0.35f, 0.35f, 0.38f, 1f));
+
+        // Stone lantern (tōrō), facing the camera, left of the pond.
+        var lx = -2.3f; var lz = -2.4f;
+        Primitive(PrimitiveType.Cube, set, "LanternBase",
+            new Vector3(lx, 0.09f, lz), new Vector3(0.55f, 0.18f, 0.55f), stoneMat);
+        Primitive(PrimitiveType.Cylinder, set, "LanternPillar",
+            new Vector3(lx, 0.45f, lz), new Vector3(0.20f, 0.55f, 0.20f), stoneMat);
+        Primitive(PrimitiveType.Cube, set, "LanternPlatform",
+            new Vector3(lx, 0.77f, lz), new Vector3(0.45f, 0.10f, 0.45f), stoneMat);
+        Primitive(PrimitiveType.Cube, set, "LanternFirebox",
+            new Vector3(lx, 0.98f, lz), new Vector3(0.36f, 0.32f, 0.36f), stoneMat);
+        // Warm glowing windows on the firebox faces.
+        var glowMat = NewLit(new Color(1f, 0.72f, 0.42f, 1f));
+        var glow = glowMat;
+        if (glow != null && glow.HasProperty("_EmissionColor"))
+        {
+            glow = new Material(glow);
+            glow.SetColor("_EmissionColor", new Color(1f, 0.55f, 0.25f, 1f) * 1.6f);
+            glow.EnableKeyword("_EMISSION");
+        }
+        Primitive(PrimitiveType.Quad, set, "LanternGlowF",
+            new Vector3(lx, 0.98f, lz + 0.185f), new Vector3(0.16f, 0.16f, 1f), glow);
+        Primitive(PrimitiveType.Quad, set, "LanternGlowB",
+            new Vector3(lx, 0.98f, lz - 0.185f), new Vector3(0.16f, 0.16f, 1f), glow)
+            .transform.rotation = Quaternion.Euler(0f, 180f, 0f);
+        // Pyramid roof + jewel.
+        var roof = new GameObject("LanternRoof");
+        roof.transform.SetParent(set.transform, false);
+        roof.transform.position = new Vector3(lx, 1.27f, lz);
+        roof.transform.rotation = Quaternion.Euler(0f, 45f, 0f);
+        roof.AddComponent<MeshFilter>().mesh = MakeCone(0.34f, 0.28f, 4);
+        var rmr = roof.AddComponent<MeshRenderer>();
+        rmr.material = stoneMat;
+        rmr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        rmr.receiveShadows = false;
+        Primitive(PrimitiveType.Sphere, set, "LanternJewel",
+            new Vector3(lx, 1.45f, lz), new Vector3(0.13f, 0.13f, 0.13f), stoneMat);
+
+        // Stepping stones curving from the foreground toward the pond.
+        var stonePath = new (float x, float z)[]
+        {
+            (-1.0f, 0.8f), (-0.2f, -0.1f), (0.7f, -0.9f), (1.5f, -1.6f),
+        };
+        for (int i = 0; i < stonePath.Length; i++)
+        {
+            Primitive(PrimitiveType.Cylinder, set, "StepStone" + i,
+                new Vector3(stonePath[i].x, 0.035f, stonePath[i].z),
+                new Vector3(0.60f, 0.07f, 0.60f), darkStoneMat)
+                .transform.rotation = Quaternion.Euler(0f, (float)rng.NextDouble() * 60f, 0f);
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Palm: tropical shore — turquoise shallows, wave lines, shells.
+    // ------------------------------------------------------------------
+
+    void BuildPalmProps(Shader waterShader, Shader litShader)
+    {
+        var set = NewPropSet(ParametricTree.TreeSpecies.Palm, "PalmShore");
+        var prof = EnvironmentProfiles.ForSpecies(ParametricTree.TreeSpecies.Palm);
+        var rng = new System.Random(22222);
+
+        if (waterShader != null)
+        {
+            // Turquoise shallows lapping in from the frame's right edge.
+            BuildWaterDisc(set, waterShader, prof.pondCenter, prof.pondRadius,
+                new Color(0.18f, 0.62f, 0.66f, 1f), 0.80f, "Shallows");
+
+            // Gentle wave lines: long soft white billboards along the
+            // shallows' near edge, breathing almost imperceptibly.
+            var waveColor = new Color(0.95f, 0.98f, 1f, 1f);
+            var waveDefs = new (Vector3 pos, float len)[]
+            {
+                (new Vector3(1.6f, 0.06f, -1.4f), 4.2f),
+                (new Vector3(2.6f, 0.06f, -2.6f), 5.2f),
+                (new Vector3(3.4f, 0.06f, -3.9f), 5.8f),
+            };
+            for (int i = 0; i < waveDefs.Length; i++)
+            {
+                var mat = new Material(waterShader);
+                mat.SetColor("_Color", waveColor);
+                mat.SetFloat("_Alpha", 0.30f);
+                mat.SetFloat("_Mode", 1f);
+                var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+                go.name = "WaveLine" + i;
+                StripCollider(go);
+                go.transform.SetParent(set.transform, false);
+                go.transform.position = waveDefs[i].pos;
+                go.transform.rotation = Quaternion.Euler(65f, 0f, -18f - i * 6f);
+                go.transform.localScale = new Vector3(waveDefs[i].len, 0.16f, 1f);
+                var mr = go.GetComponent<MeshRenderer>();
+                mr.material = mat;
+                mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                mr.receiveShadows = false;
+            }
+        }
+
+        if (litShader == null) return;
+
+        // Scattered shells on the sand near the waterline.
+        var shellMatA = NewLit(new Color(0.95f, 0.90f, 0.86f, 1f));
+        var shellMatB = NewLit(new Color(0.93f, 0.78f, 0.74f, 1f));
+        for (int i = 0; i < 6; i++)
+        {
+            float a = (200f + i * 22f) * Mathf.Deg2Rad;
+            float rr = prof.pondRadius - 0.9f + (float)rng.NextDouble() * 0.7f;
+            float sx = prof.pondCenter.x + Mathf.Cos(a) * rr;
+            float sz = prof.pondCenter.z + Mathf.Sin(a) * rr;
+            float sr = 0.06f + (float)rng.NextDouble() * 0.035f;
+            Primitive(PrimitiveType.Sphere, set, "Shell" + i,
+                new Vector3(sx, sr * 0.4f, sz),
+                new Vector3(sr * 2f, sr * 0.9f, sr * 2f),
+                i % 2 == 0 ? shellMatA : shellMatB);
+        }
     }
 }

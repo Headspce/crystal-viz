@@ -165,25 +165,28 @@ public static class CrystalVizScreenshot
                 Debug.Log($"CrystalVizScreenshot: {sp.name} species at full maturity.");
             }
 
-            // v1.0.62: the willow lakeside at night — the money shot:
-            // mature willow + pond + reeds + drifting mist under night
-            // lighting, with the firefly preview squad back in the air.
-            // SetSpecies swaps the environment instantly in edit mode.
-            growth.SetSpecies(ParametricTree.TreeSpecies.Willow);
-            growth.SnapToMatureForScreenshot();
-            if (orbit != null) orbit.SetTimeOfDay(0.8f); // ~9:36 PM -> hard night switch
-            var menu6 = Object.FindFirstObjectByType<TreeResetButton>();
-            if (menu6 != null) menu6.SyncDayNightGlyphForScreenshot();
-            if (beeCtl != null)
+            // v1.0.63: every environment at night — the money-shot loop.
+            // Mature tree + its full environment under night lighting,
+            // with the firefly preview squad back in the air. SetSpecies
+            // swaps the environment instantly in edit mode.
+            foreach (var sp in speciesShots)
             {
-                beeCtl.gameObject.SetActive(true);
-                beeCtl.BuildPreview(); // idempotent: re-seeds the firefly squad
+                growth.SetSpecies(sp.s);
+                growth.SnapToMatureForScreenshot();
+                if (orbit != null) orbit.SetTimeOfDay(0.8f); // ~9:36 PM -> hard night switch
+                var menuN = Object.FindFirstObjectByType<TreeResetButton>();
+                if (menuN != null) menuN.SyncDayNightGlyphForScreenshot();
+                if (beeCtl != null)
+                {
+                    beeCtl.gameObject.SetActive(true);
+                    beeCtl.BuildPreview(); // idempotent: re-seeds the firefly squad
+                }
+                Canvas.ForceUpdateCanvases();
+                CaptureFrame(cam, w, h, Path.Combine("Screenshots", $"crystalviz-species-{sp.name}-night.png"));
+                Debug.Log($"CrystalVizScreenshot: {sp.name} environment at night with fireflies.");
             }
-            Canvas.ForceUpdateCanvases();
-            CaptureFrame(cam, w, h, Path.Combine("Screenshots", "crystalviz-willow-night.png"));
-            Debug.Log("CrystalVizScreenshot: willow lakeside at night with fireflies.");
         }
-        Debug.Log("CrystalVizScreenshot: saved Screenshots/crystalviz.png + crystalviz-night.png + crystalviz-inventory.png + crystalviz-species-*.png (6) + crystalviz-willow-night.png");
+        Debug.Log("CrystalVizScreenshot: saved Screenshots/crystalviz.png + crystalviz-night.png + crystalviz-inventory.png + crystalviz-species-*.png (6 day) + crystalviz-species-*-night.png (6 night)");
     }
 
     /// <summary>

@@ -76,6 +76,10 @@ public class CrystalVizBootstrap : MonoBehaviour
         BuildHorizonHills();
         BuildSun();
         BuildDiorama();
+        // v1.0.63: the ground/grass/wildflower materials only exist after
+        // BuildDiorama, so re-apply the active profile now — this pass is
+        // what re-tints the shared surfaces for the species' environment.
+        envManager.RefreshActiveProfile();
         // Time-of-day engine (v1.0.55: the right-edge slider is gone by player
         // request — the corner menu's day/night button is the only time
         // control now). SunOrbitControl builds no UI anymore; Start() never
@@ -171,7 +175,11 @@ public class CrystalVizBootstrap : MonoBehaviour
         if (meadowShader != null)
         {
             var gmat = new Material(meadowShader);
-            gmat.color = new Color(0.24f, 0.45f, 0.17f, 1f); // dark shadowed moss: gaps read as depth under the grass, not neon
+            // v1.0.63: stashed + explicit _BaseColor (was Material.color,
+            // which MeadowGround doesn't define) so per-species ground
+            // tints apply without rebuilding.
+            groundMat = gmat;
+            gmat.SetColor("_BaseColor", new Color(0.24f, 0.45f, 0.17f, 1f)); // dark shadowed moss: gaps read as depth under the grass, not neon
             var dirtTex = Resources.Load<Texture2D>("Textures/brown_mud_leaves_01_1k");
             if (dirtTex != null) gmat.SetTexture("_DirtTex", dirtTex);
             ground.GetComponent<Renderer>().material = gmat;
@@ -206,6 +214,7 @@ public class CrystalVizBootstrap : MonoBehaviour
     EnvironmentManager envManager; // v1.0.62: per-species environment (willow lakeside)
     Material grassFieldMat;     // v1.0.62: stashed so the pond clip can toggle at runtime
     Material wildflowerMat;     // v1.0.62: stashed so the pond clip can toggle at runtime
+    Material groundMat;         // v1.0.63: stashed so environments can re-tint the ground
 
     /// <summary>
     /// Sky backdrop: a giant inverted sphere (radius 200, inside the 250 far
@@ -657,30 +666,33 @@ public class CrystalVizBootstrap : MonoBehaviour
     // ------------------------------------------------------------------ diorama
 
     /// <summary>
-    /// v1.0.62: applies the willow pond clip uniforms to a vegetation
-    /// material from the active profile (build-time path — the manager has
-    /// already set ActiveProfile before the diorama builds).
+    /// <summary>
+    /// v1.0.62: applies the pond clip uniforms to a vegetation material
+    /// from the active profile (build-time path — the manager has already
+    /// set ActiveProfile before the diorama builds). v1.0.63: generalized
+    /// per profile (willow/cherry/palm ponds); profiles without a pond
+    /// get a zero radius, i.e. no clipping.
     /// </summary>
     void ApplyPondClipTo(Material m)
     {
-        bool on = EnvironmentManager.ActiveProfile.waterEnabled;
-        m.SetVector("_ClipCenter", new Vector4(EnvironmentManager.PondCenter.x, 0f,
-                                               EnvironmentManager.PondCenter.z, 0f));
-        m.SetFloat("_ClipRadius", on ? EnvironmentManager.PondGrassClearRadius : 0f);
+        var p = EnvironmentManager.ActiveProfile;
+        m.SetVector("_ClipCenter", new Vector4(p.pondCenter.x, 0f, p.pondCenter.z, 0f));
+        m.SetFloat("_ClipRadius", EnvironmentProfiles.PondClearRadius(p));
     }
 
     /// <summary>
-    /// v1.0.62: enables/disables the willow pond clip on the grass and
-    /// wildflower materials (runtime species-switch path, e.g. picking
-    /// willow from the inventory after launch). The reed material is a
-    /// separate instance with the clip left disabled, so reeds still
-    /// stand in the shallows.
+    /// v1.0.62: enables/disables the pond clip on the grass and wildflower
+    /// materials (runtime species-switch path, e.g. picking willow from the
+    /// inventory after launch). The reed material is a separate instance
+    /// with the clip left disabled, so reeds still stand in the shallows.
+    /// v1.0.63: generalized per profile — cherry's garden pond and palm's
+    /// shallows use the same path with their own center/radius.
     /// </summary>
     public void SetPondClip(bool enabled)
     {
-        float r = enabled ? EnvironmentManager.PondGrassClearRadius : 0f;
-        var c = new Vector4(EnvironmentManager.PondCenter.x, 0f,
-                            EnvironmentManager.PondCenter.z, 0f);
+        var p = EnvironmentManager.ActiveProfile;
+        float r = enabled ? EnvironmentProfiles.PondClearRadius(p) : 0f;
+        var c = new Vector4(p.pondCenter.x, 0f, p.pondCenter.z, 0f);
         if (grassFieldMat != null)
         {
             grassFieldMat.SetVector("_ClipCenter", c);
@@ -690,6 +702,25 @@ public class CrystalVizBootstrap : MonoBehaviour
         {
             wildflowerMat.SetVector("_ClipCenter", c);
             wildflowerMat.SetFloat("_ClipRadius", r);
+        }
+    }
+
+    /// <summary>
+    /// v1.0.63: re-tints the shared surfaces for the active profile's
+    /// environment — ground base color and the grass gradient — without
+    /// rebuilding any meshes. Wildflower stems keep their legacy tones
+    /// (their blossom colors carry the species look); reed/fern materials
+    /// are per-environment instances with their own palettes.
+    /// </summary>
+    public void ApplyEnvironmentTint()
+    {
+        var p = EnvironmentManager.ActiveProfile;
+        if (groundMat != null && groundMat.HasProperty("_BaseColor"))
+            groundMat.SetColor("_BaseColor", p.groundColor);
+        if (grassFieldMat != null)
+        {
+            grassFieldMat.SetColor("_RootColor", p.grassRootColor);
+            grassFieldMat.SetColor("_TipColor", p.grassTipColor);
         }
     }
 
@@ -824,15 +855,17 @@ public class CrystalVizBootstrap : MonoBehaviour
             float cdx = px - 0f;
             float cdz = pz - 7.4f;
             if (cdx * cdx + cdz * cdz < 9.0f) continue; // 3^2
-            // v1.0.62: the willow pond — no grass blades under the water
-            // (reeds and open water take their place). The grassland
-            // profile has waterEnabled == false, so every other species
-            // keeps the exact legacy meadow.
-            if (EnvironmentManager.ActiveProfile.waterEnabled)
+            // v1.0.62: no grass blades under the pond — reeds and open
+            // water take their place. v1.0.63: generalized per profile
+            // (willow/cherry/palm ponds); profiles without a pond skip
+            // nothing, keeping the exact legacy meadow.
+            var grassPond = EnvironmentManager.ActiveProfile;
+            if (grassPond.pondEnabled)
             {
-                float wdx = px - EnvironmentManager.PondCenter.x;
-                float wdz = pz - EnvironmentManager.PondCenter.z;
-                if (wdx * wdx + wdz * wdz < EnvironmentManager.PondGrassClearRadiusSq) continue;
+                float wdx = px - grassPond.pondCenter.x;
+                float wdz = pz - grassPond.pondCenter.z;
+                float pcr = EnvironmentProfiles.PondClearRadius(grassPond);
+                if (wdx * wdx + wdz * wdz < pcr * pcr) continue;
             }
             var mtx = Matrix4x4.TRS(
                 new Vector3(px, 0f, pz),
@@ -995,13 +1028,15 @@ public class CrystalVizBootstrap : MonoBehaviour
             float fdx = Mathf.Cos(a) * r - 0f;
             float fdz = Mathf.Sin(a) * r - 7.4f;
             if (fdx * fdx + fdz * fdz < 9.0f) continue; // 3^2
-            // v1.0.62: no wildflowers under the willow pond either
-            // (grassland species: waterEnabled is false, untouched).
-            if (EnvironmentManager.ActiveProfile.waterEnabled)
+            // v1.0.62: no wildflowers under the pond either.
+            // v1.0.63: generalized per profile (willow/cherry/palm).
+            var flowerPond = EnvironmentManager.ActiveProfile;
+            if (flowerPond.pondEnabled)
             {
-                float wfx = Mathf.Cos(a) * r - EnvironmentManager.PondCenter.x;
-                float wfz = Mathf.Sin(a) * r - EnvironmentManager.PondCenter.z;
-                if (wfx * wfx + wfz * wfz < EnvironmentManager.PondGrassClearRadiusSq) continue;
+                float wfx = Mathf.Cos(a) * r - flowerPond.pondCenter.x;
+                float wfz = Mathf.Sin(a) * r - flowerPond.pondCenter.z;
+                float pcr = EnvironmentProfiles.PondClearRadius(flowerPond);
+                if (wfx * wfx + wfz * wfz < pcr * pcr) continue;
             }
             var mtx = Matrix4x4.TRS(
                 new Vector3(Mathf.Cos(a) * r, 0f, Mathf.Sin(a) * r),
@@ -1046,7 +1081,9 @@ public class CrystalVizBootstrap : MonoBehaviour
     /// atlas (uv1 is mapped into that cell), and the blossom's proportions
     /// vary per flower for natural shape variety.
     /// </summary>
-    static void AppendWildflower(
+    /// v1.0.63: public so EnvironmentManager can build the oak meadow's
+    /// wildflower drifts with identical blossom geometry and atlas.
+    public static void AppendWildflower(
         System.Collections.Generic.List<Vector3> verts,
         System.Collections.Generic.List<Vector3> normals,
         System.Collections.Generic.List<Vector2> uvs,
@@ -1120,7 +1157,9 @@ public class CrystalVizBootstrap : MonoBehaviour
     /// wildflower, 12-petal aster, 6-petal coneflower. Near-white so the
     /// per-flower petal vertex color defines the hue.
     /// </summary>
-    static Texture2D MakeBlossomAtlas()
+    /// v1.0.63: public so EnvironmentManager can texture the oak
+    /// wildflower drifts with the same blossom atlas.
+    public static Texture2D MakeBlossomAtlas()
     {
         const int S = 128; // 2x2 cells of 64px
         const int C = 64;

@@ -269,6 +269,21 @@ public static class CrystalVizBuild
             Debug.LogWarning("CrystalVizBuild: 'CrystalViz/LakesideWater' not found; willow pond and mist will be skipped at runtime.");
         }
 
+        // v1.0.63: the cloudy species-transition fog shader is created at
+        // runtime via Shader.Find by the EnvironmentManager; pin its
+        // (single, keyword-free) variant so it survives stripping. A
+        // missing shader here is fine — transitions fall back to the
+        // instant swap (never magenta, never stuck).
+        var transitionFogShader = Shader.Find("CrystalViz/TransitionFog");
+        if (transitionFogShader != null)
+        {
+            PinVariants(transitionFogShader);
+        }
+        else
+        {
+            Debug.LogWarning("CrystalVizBuild: 'CrystalViz/TransitionFog' not found; species transitions will swap instantly.");
+        }
+
         // The paper-sprite bee shader is created at runtime via Shader.Find;
         // pin its (single, keyword-free) variant so it survives stripping.
         // v1.0.35: the v1.0.34 sprite material used URP/Lit with
