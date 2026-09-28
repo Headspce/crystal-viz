@@ -49,6 +49,7 @@ public class ParametricTree : MonoBehaviour
     Material leafMat;
     Texture2D broadleafTex;
     Texture2D needleTex;
+    Texture2D blossomTex; // v1.0.61b: pale-petal base so cherry vertex pinks survive the multiply
 
     float lastBuiltG = -1f;
     float currentG; // last growth value fed to SetGrowth (for species rebuilds)
@@ -282,6 +283,7 @@ public class ParametricTree : MonoBehaviour
             broadleafTex = Resources.Load<Texture2D>("Textures/foliage_47_leaf");
             if (broadleafTex == null) broadleafTex = MakeLeafTexture();
             needleTex = MakeNeedleTexture();
+            blossomTex = MakeBlossomTexture();
             this.leafMat = leafMat;
             SyncLeafTexture();
             leafMat.SetFloat("_WindStrength", 0.025f);
@@ -312,13 +314,12 @@ public class ParametricTree : MonoBehaviour
         frondFilter.mesh = frondMesh;
         if (leafShader != null)
         {
-            var whiteTex = new Texture2D(4, 4, TextureFormat.RGBA32, false);
-            var whitePx = new Color[16];
-            for (int i = 0; i < 16; i++) whitePx[i] = Color.white;
-            whiteTex.SetPixels(whitePx);
-            whiteTex.Apply();
+            // v1.0.61b: feathered frond albedo — central rachis with
+            // alpha-cut chevron leaflets, so the crown reads as palm
+            // fronds instead of flat ribbons. Pale base; the per-frond
+            // vertex green carries the color.
             frondMat = new Material(leafShader);
-            frondMat.SetTexture("_BaseMap", whiteTex);
+            frondMat.SetTexture("_BaseMap", MakeFrondTexture());
             frondMat.SetFloat("_WindStrength", 0.035f);
             frondMat.SetFloat("_WindSpeed", 1.7f);
             frondMat.SetFloat("_GustStrength", 0.08f);
@@ -345,8 +346,11 @@ public class ParametricTree : MonoBehaviour
     void SyncLeafTexture()
     {
         if (leafMat == null) return;
+        // v1.0.61b: cherry gets the pale-petal blossom texture — the green
+        // broadleaf PNG would swallow its pink vertex tint in the multiply.
         leafMat.SetTexture("_BaseMap",
-            species == TreeSpecies.Pine ? needleTex : broadleafTex);
+            species == TreeSpecies.Pine ? needleTex :
+            species == TreeSpecies.Cherry ? blossomTex : broadleafTex);
     }
 
     /// <summary>
@@ -559,6 +563,88 @@ public class ParametricTree : MonoBehaviour
                 // Lighter yellow-green vein, darker rim for shape.
                 Color c = baseGreen * (1f - 0.22f * rim) + new Color(0.10f, 0.12f, 0.02f) * vein;
                 tex.SetPixel(x, y, new Color(c.r, c.g, c.b, 1f));
+            }
+        }
+        tex.Apply();
+        return tex;
+    }
+
+    /// <summary>
+    /// v1.0.61b: blossom-petal albedo for the cherry species — same
+    /// pointed-oval silhouette, vein, and rim as the leaf, but on a pale
+    /// pink-white base. The leaf shader multiplies texture by the pink
+    /// vertex tint; a green base would swallow it (that's why the first
+    /// cherry render came out green).
+    /// </summary>
+    static Texture2D MakeBlossomTexture()
+    {
+        const int S = 64;
+        var tex = new Texture2D(S, S, TextureFormat.RGBA32, false);
+        tex.wrapMode = TextureWrapMode.Clamp;
+        tex.filterMode = FilterMode.Bilinear;
+        Color basePetal = new Color(0.97f, 0.82f, 0.86f);
+        for (int y = 0; y < S; y++)
+        {
+            for (int x = 0; x < S; x++)
+            {
+                float u = (float)x / (S - 1); // 0..1 across
+                float v = (float)y / (S - 1); // 0 stem .. 1 tip
+                float w = Mathf.Pow(Mathf.Sin(Mathf.PI * Mathf.Pow(1f - v, 0.75f)), 0.8f) * 0.5f;
+                float d = Mathf.Abs(u - 0.5f);
+                if (d >= w)
+                {
+                    tex.SetPixel(x, y, new Color(0f, 0f, 0f, 0f));
+                    continue;
+                }
+                float vein = 1f - Mathf.SmoothStep(0f, 0.035f + (1f - v) * 0.02f, d);
+                float rim = Mathf.SmoothStep(w * 0.72f, w, d);
+                // Deeper pink rim, near-white vein highlight.
+                Color c = basePetal * (1f - 0.18f * rim) + new Color(0.06f, 0.02f, 0.03f) * vein;
+                tex.SetPixel(x, y, new Color(c.r, c.g, c.b, 1f));
+            }
+        }
+        tex.Apply();
+        return tex;
+    }
+
+    /// <summary>
+    /// v1.0.61b: feathered palm-frond albedo — a central rachis rib with
+    /// alpha-cut chevron leaflets angling toward the tip. The ribbon
+    /// geometry's UVs run u along the frond, v across; the half-width
+    /// profile here mirrors AppendFrond's taper so the texture and the
+    /// mesh agree. Pale green-white base; the per-frond vertex color
+    /// carries the actual green through the multiply.
+    /// </summary>
+    static Texture2D MakeFrondTexture()
+    {
+        const int W = 128; // along frond
+        const int H = 64;  // across frond
+        var tex = new Texture2D(W, H, TextureFormat.RGBA32, false);
+        tex.wrapMode = TextureWrapMode.Clamp;
+        tex.filterMode = FilterMode.Bilinear;
+        for (int y = 0; y < H; y++)
+        {
+            for (int x = 0; x < W; x++)
+            {
+                float u = (float)x / (W - 1); // 0 stem .. 1 tip
+                float v = (float)y / (H - 1); // 0..1 across, 0.5 = rachis
+                float across = Mathf.Abs(v - 0.5f) * 2f; // 0 center .. 1 edge
+                float halfW = Mathf.Sin(Mathf.PI * Mathf.Clamp01(0.12f + u * 0.88f));
+                if (across >= halfW || halfW < 0.02f)
+                {
+                    tex.SetPixel(x, y, new Color(0f, 0f, 0f, 0f));
+                    continue;
+                }
+                // Solid central rib, warm pale green.
+                float rachis = 1f - Mathf.SmoothStep(0.02f, 0.09f, across);
+                // Chevron leaflets: solid bands with thin transparent slits
+                // between them, angling from the rib toward the tip.
+                float chev = u * 9f - across * 2.2f;
+                float leaf = Mathf.SmoothStep(-0.25f, 0.15f, Mathf.Sin(chev * Mathf.PI * 2f));
+                float tipFade = Mathf.SmoothStep(1f, 0.92f, u) * Mathf.SmoothStep(0f, 0.06f, u);
+                float a = Mathf.Max(rachis, leaf * tipFade);
+                Color c = new Color(0.78f, 0.90f, 0.72f) * (0.85f + 0.15f * rachis);
+                tex.SetPixel(x, y, new Color(c.r, c.g, c.b, a));
             }
         }
         tex.Apply();
@@ -927,9 +1013,12 @@ public class ParametricTree : MonoBehaviour
         Vector3 side2 = Vector3.Cross(dir, side).normalized;
 
         float wob = length * 0.07f;
-        float lift0 = Mathf.Lerp(0.05f, -0.12f, droop);
-        float lift1 = Mathf.Lerp(0.14f, -0.32f, droop);
-        float lift2 = Mathf.Lerp(0.30f, -0.60f, droop);
+        // v1.0.61b: the trunk itself stays upright — a weeping willow is a
+        // tall tree with curtains, not a bush. Only child branches weep.
+        float curveDroop = level == 0 ? droop * 0.12f : droop;
+        float lift0 = Mathf.Lerp(0.05f, -0.12f, curveDroop);
+        float lift1 = Mathf.Lerp(0.14f, -0.32f, curveDroop);
+        float lift2 = Mathf.Lerp(0.30f, -0.60f, curveDroop);
         Vector3 p0 = origin;
         Vector3 p1 = origin + dir * (length * 0.33f) + RandPerp(rng, side, side2, wob) + up * (length * lift0);
         Vector3 p2 = origin + dir * (length * 0.66f) + RandPerp(rng, side, side2, wob) + up * (length * lift1);
