@@ -114,10 +114,13 @@ Shader "CrystalViz/TransitionFog"
                 float lum = 0.86 + 0.30 * fbm(q * 1.7 + float2(t * 0.03, t * 0.02) + 4.7);
                 half3 col = _FogColor.rgb * lum;
 
-                // Coverage: a high uniform base (nothing behind stays
-                // readable at full cover) modulated by the billow so the
-                // surface keeps soft cloudy structure instead of going flat.
+                // Coverage: at full cover the bank is completely opaque —
+                // nothing behind may stay readable while the swap happens.
+                // The cloudy structure lives in the luminance variation
+                // above, so full opacity still reads as cloud, not a panel.
+                // During roll-in/out the alpha keeps soft billowy edges.
                 float a = _Cover * (0.90 + 0.10 * smoothstep(0.25, 0.75, cloud));
+                a = max(a, smoothstep(0.92, 1.0, _Cover));
                 return half4(col, a);
             }
             ENDHLSL

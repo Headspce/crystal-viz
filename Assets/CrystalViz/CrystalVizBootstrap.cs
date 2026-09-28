@@ -215,6 +215,7 @@ public class CrystalVizBootstrap : MonoBehaviour
     Material grassFieldMat;     // v1.0.62: stashed so the pond clip can toggle at runtime
     Material wildflowerMat;     // v1.0.62: stashed so the pond clip can toggle at runtime
     Material groundMat;         // v1.0.63: stashed so environments can re-tint the ground
+    Material hillMat;           // v1.0.63: stashed so environments can re-tint the horizon hills
 
     /// <summary>
     /// Sky backdrop: a giant inverted sphere (radius 200, inside the 250 far
@@ -391,6 +392,7 @@ public class CrystalVizBootstrap : MonoBehaviour
             return;
         }
         var mat = new Material(grassShader);
+        hillMat = mat; // v1.0.63: stashed for per-species hill tinting
         mat.SetColor("_RootColor", new Color(0.11f, 0.29f, 0.10f, 1f));
         mat.SetColor("_TipColor", new Color(0.46f, 0.68f, 0.22f, 1f));
         mat.SetFloat("_WindStrength", 0f);   // hills don't sway
@@ -721,6 +723,11 @@ public class CrystalVizBootstrap : MonoBehaviour
         {
             grassFieldMat.SetColor("_RootColor", p.grassRootColor);
             grassFieldMat.SetColor("_TipColor", p.grassTipColor);
+        }
+        if (hillMat != null)
+        {
+            hillMat.SetColor("_RootColor", p.hillRootColor);
+            hillMat.SetColor("_TipColor", p.hillTipColor);
         }
     }
 

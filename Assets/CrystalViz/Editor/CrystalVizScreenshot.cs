@@ -187,6 +187,62 @@ public static class CrystalVizScreenshot
             }
         }
         Debug.Log("CrystalVizScreenshot: saved Screenshots/crystalviz.png + crystalviz-night.png + crystalviz-inventory.png + crystalviz-species-*.png (6 day) + crystalviz-species-*-night.png (6 night)");
+
+        // v1.0.63: transition-fog proof. Edit mode has no Update loop, so
+        // the play-mode CloudFogRoutine can't run here — instead this drives
+        // the real TransitionFog shader directly on a camera-child quad:
+        // partial cover (clouds rolling in), full cover (must fully obscure
+        // the frame), then quad removed (clean reveal). Deterministic proof
+        // the swap is hidden behind cloud, not a flat whiteout.
+        CaptureTransitionProof(cam, w, h);
+    }
+
+    /// <summary>
+    /// v1.0.63: renders the TransitionFog shader at partial and full cover
+    /// over the live diorama. Uses a camera-child quad (the play-mode path
+    /// uses a sortingOrder-999 overlay canvas instead, which edit-mode
+    /// cam.Render() can't exercise — the shader under test is identical).
+    /// </summary>
+    static void CaptureTransitionProof(Camera cam, int w, int h)
+    {
+        var fogShader = Shader.Find("CrystalViz/TransitionFog");
+        if (fogShader == null)
+        {
+            Debug.LogWarning("CrystalVizScreenshot: TransitionFog shader missing; skipping transition proof.");
+            return;
+        }
+        var fogMat = new Material(fogShader);
+        fogMat.SetFloat("_Seed", 3.7f);
+        fogMat.SetColor("_FogColor", RenderSettings.fogColor);
+
+        var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        quad.name = "TransitionProofQuad";
+        Object.DestroyImmediate(quad.GetComponent<Collider>());
+        quad.transform.SetParent(cam.transform, false);
+        float dist = 0.6f;
+        float qh = 2f * dist * Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);
+        float qw = qh * cam.aspect;
+        quad.transform.localPosition = new Vector3(0f, 0f, -dist);
+        quad.transform.localScale = new Vector3(qw * 1.05f, qh * 1.05f, 1f);
+        var mr = quad.GetComponent<MeshRenderer>();
+        mr.material = fogMat;
+        mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        mr.receiveShadows = false;
+
+        fogMat.SetFloat("_Cover", 0.55f);
+        Canvas.ForceUpdateCanvases();
+        CaptureFrame(cam, w, h, Path.Combine("Screenshots", "crystalviz-transition-rollin.png"));
+        Debug.Log("CrystalVizScreenshot: transition roll-in (cover 0.55).");
+
+        fogMat.SetFloat("_Cover", 1f);
+        Canvas.ForceUpdateCanvases();
+        CaptureFrame(cam, w, h, Path.Combine("Screenshots", "crystalviz-transition-cover.png"));
+        Debug.Log("CrystalVizScreenshot: transition full cover (cover 1.0).");
+
+        Object.DestroyImmediate(quad);
+        Canvas.ForceUpdateCanvases();
+        CaptureFrame(cam, w, h, Path.Combine("Screenshots", "crystalviz-transition-reveal.png"));
+        Debug.Log("CrystalVizScreenshot: transition reveal (overlay removed).");
     }
 
     /// <summary>

@@ -68,9 +68,13 @@ public class EnvironmentManager : MonoBehaviour
     }
     readonly List<Drifter> drifters = new List<Drifter>();
 
-    // v1.0.63: cloudy transition overlay — a fullscreen quad childed to the
-    // main camera, wearing the TransitionFog shader. Built lazily on the
-    // first play-mode transition; never exists in the CI edit-mode path.
+    // v1.0.63: cloudy transition overlay — a ScreenSpaceOverlay canvas at
+    // sorting order 999 (above the bee counter at 100 and the inventory
+    // menu at 110) with a full-screen Image wearing the TransitionFog
+    // shader. The camera-child quad approach couldn't cover overlay UI;
+    // this guarantees the whole screen — 3D and UI alike — is obscured at
+    // full cover. Built lazily on the first play-mode transition; never
+    // exists in the CI edit-mode path.
     GameObject transitionOverlay;
     Material transitionFogMat;
 
@@ -197,15 +201,14 @@ public class EnvironmentManager : MonoBehaviour
     static float Smooth01(float x) { return x * x * (3f - 2f * x); }
 
     /// <summary>
-    /// v1.0.63: builds (once) the camera-child fullscreen quad for the
-    /// cloudy transition. Sized from the camera frustum so it covers the
-    /// whole frame on any aspect.
+    /// v1.0.63: builds (once) the transition overlay: a ScreenSpaceOverlay
+    /// canvas at sorting order 999 with a full-rect Image wearing the
+    /// TransitionFog shader. Covers the entire screen including overlay UI
+    /// (menu 110, counter 100). raycastTarget is off so it never eats taps.
     /// </summary>
     void EnsureTransitionOverlay()
     {
         if (transitionOverlay != null) return;
-        var cam = Camera.main;
-        if (cam == null) return;
         var fogShader = Shader.Find("CrystalViz/TransitionFog");
         if (fogShader == null)
         {
@@ -217,23 +220,26 @@ public class EnvironmentManager : MonoBehaviour
         transitionFogMat.SetFloat("_Cover", 0f);
         transitionFogMat.SetFloat("_Seed", 3.7f);
 
-        transitionOverlay = GameObject.CreatePrimitive(PrimitiveType.Quad);
-        transitionOverlay.name = "TransitionFog";
-        Object.Destroy(transitionOverlay.GetComponent<Collider>());
-        transitionOverlay.transform.SetParent(cam.transform, false);
-        float dist = 0.6f;
-        float h = 2f * dist * Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);
-        float w = h * cam.aspect;
-        // Camera looks down its local -z; the quad sits just ahead of the
-        // near plane. Cull is off in the shader, so facing doesn't matter.
-        transitionOverlay.transform.localPosition = new Vector3(0f, 0f, -dist);
-        transitionOverlay.transform.localScale = new Vector3(w * 1.05f, h * 1.05f, 1f);
-        var mr = transitionOverlay.GetComponent<MeshRenderer>();
-        mr.material = transitionFogMat;
-        mr.material.renderQueue = 4000;
-        mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        mr.receiveShadows = false;
+        transitionOverlay = new GameObject("TransitionFogCanvas");
+        var canvas = transitionOverlay.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = 999;
+        // No GraphicRaycaster: the overlay never interacts.
+
+        var imgGO = new GameObject("TransitionFogImage");
+        imgGO.transform.SetParent(transitionOverlay.transform, false);
+        var rt = imgGO.AddComponent<RectTransform>();
+        rt.anchorMin = Vector2.zero;
+        rt.anchorMax = Vector2.one;
+        rt.offsetMin = Vector2.zero;
+        rt.offsetMax = Vector2.zero;
+        var img = imgGO.AddComponent<UnityEngine.UI.Image>();
+        img.material = transitionFogMat;
+        img.raycastTarget = false;
+        img.color = Color.white;
+
         transitionOverlay.SetActive(false);
+        Object.DontDestroyOnLoad(transitionOverlay);
     }
 
     void Update()
@@ -609,16 +615,18 @@ public class EnvironmentManager : MonoBehaviour
         // the camera corridor.
         var stemMat = NewLit(new Color(0.88f, 0.84f, 0.76f, 1f));
         var capMat = NewLit(new Color(0.58f, 0.34f, 0.18f, 1f));
-        var rng = new System.Random(60606);
-        for (int i = 0; i < 8; i++)
+        // Fairy ring of mushrooms: cream stems, warm brown caps. Explicit
+        // on-frame arc in the mid-ground (all z<0, |x| inside the portrait
+        // corridor at their depth) — the old radial ring put half the ring
+        // behind the camera and the rest off-frame, so it never read.
+        var shroomSpots = new (float x, float z)[]
         {
-            float a = (35f + i * 38f) * Mathf.Deg2Rad;
-            float r = 5.2f + (float)rng.NextDouble() * 1.4f;
-            float bx = Mathf.Cos(a) * r;
-            float bz = Mathf.Sin(a) * r;
-            if (bx * bx + bz * bz < 4f) continue;
-            float cdz = bz - 7.4f;
-            if (bx * bx + cdz * cdz < 9f) continue;
+            (1.4f, -2.3f), (0.6f, -2.9f), (-0.4f, -2.6f), (-1.2f, -3.1f),
+            (1.0f, -3.8f), (-0.6f, -4.0f), (0.2f, -4.6f), (-1.5f, -4.4f),
+        };
+        for (int i = 0; i < shroomSpots.Length; i++)
+        {
+            float bx = shroomSpots[i].x, bz = shroomSpots[i].z;
             float h = 0.20f + (float)rng.NextDouble() * 0.12f;
             Primitive(PrimitiveType.Cylinder, set, "ShroomStem" + i,
                 new Vector3(bx, h * 0.5f, bz), new Vector3(0.09f, h, 0.09f), stemMat);
@@ -725,14 +733,21 @@ public class EnvironmentManager : MonoBehaviour
             // Snow-capped: a smaller white cone rides each summit.
             var rockMat = NewLit(new Color(0.42f, 0.50f, 0.64f, 1f));
             var snowMat = NewLit(new Color(0.88f, 0.92f, 0.96f, 1f));
-            for (int i = 0; i < 7; i++)
+            // v1.0.63: explicit forward placement — every peak sits at z<0
+            // and clear of x≈0 so none can loom beside/behind the camera as
+            // the giant dark wedge the old radial ring produced (one peak
+            // landed at small +x / far -z, i.e. huge and near frame-center).
+            var peakDefs = new (float x, float z, float w, float h)[]
             {
-                float a = (float)i / 7f * Mathf.PI * 2f + 0.35f;
-                float r = 58f + (float)rng.NextDouble() * 24f;
-                float w = 16f + (float)rng.NextDouble() * 14f;
-                float h = 20f + (float)rng.NextDouble() * 14f;
-                float px = Mathf.Cos(a) * r;
-                float pz = Mathf.Sin(a) * r;
+                (-11f, -62f, 22f, 26f), (-5.5f, -72f, 18f, 31f),
+                (3f, -60f, 20f, 24f),   (8.5f, -70f, 22f, 29f),
+                (14f, -64f, 24f, 27f),  (-17f, -78f, 26f, 34f),
+                (19f, -76f, 26f, 33f),
+            };
+            for (int i = 0; i < peakDefs.Length; i++)
+            {
+                float px = peakDefs[i].x, pz = peakDefs[i].z;
+                float w = peakDefs[i].w, h = peakDefs[i].h;
                 var peak = new GameObject("Peak" + i);
                 peak.transform.SetParent(set.transform, false);
                 peak.transform.position = new Vector3(px, h * 0.5f - 3f, pz);
@@ -786,14 +801,17 @@ public class EnvironmentManager : MonoBehaviour
 
         if (litShader != null)
         {
-            // Nine slender white trunks ringing the clearing — sides and
-            // back only, so the portrait corridor to the main tree stays
-            // open and the camera never stares down a trunk.
+            // Nine slender white trunks ringing the clearing — the two nearest
+            // fully frame the portrait shot at the left/right edges (|x|>=1.9
+            // keeps the corridor to the main tree open); the rest peek in
+            // from the edges or fill wide screens. Screen-right is -x for
+            // this camera's LookAt basis, so +x entries appear on the left.
             var trunkPos = new (float x, float z)[]
             {
-                (-6.5f, -4f), (-9.5f, -1f), (-7f, 3f),
-                (6.5f, -5f), (9.5f, -2f), (7f, 2.5f),
-                (-3.5f, -8.5f), (3.5f, -9f), (0.5f, -11.5f),
+                (1.9f, -6.5f), (-1.9f, -7.5f),
+                (3.4f, -4.5f), (-3.4f, -5f),
+                (5.5f, -8f), (-5.5f, -8.5f),
+                (2.6f, -11f), (-2.6f, -11.5f),
             };
             var barkMat = NewLit(new Color(0.92f, 0.90f, 0.86f, 1f));
             var lenticelMat = NewLit(new Color(0.16f, 0.15f, 0.14f, 1f));
@@ -802,7 +820,7 @@ public class EnvironmentManager : MonoBehaviour
             {
                 float bx = trunkPos[i].x + ((float)rng.NextDouble() - 0.5f) * 1.2f;
                 float bz = trunkPos[i].z + ((float)rng.NextDouble() - 0.5f) * 1.2f;
-                float h = 5f + (float)rng.NextDouble() * 2f;
+                float h = 4f + (float)rng.NextDouble() * 1.5f;
                 float tr = 0.10f + (float)rng.NextDouble() * 0.04f;
                 Primitive(PrimitiveType.Cylinder, set, "BirchTrunk" + i,
                     new Vector3(bx, h * 0.5f, bz), new Vector3(tr * 2f, h, tr * 2f), barkMat);
@@ -815,8 +833,9 @@ public class EnvironmentManager : MonoBehaviour
                         new Vector3(bx, by, bz),
                         new Vector3(tr * 2f + 0.012f, 0.035f, tr * 2f + 0.012f), lenticelMat);
                 }
-                // Soft canopy blob: a squashed ellipsoid in yellow-green.
-                float cw = 1.1f + (float)rng.NextDouble() * 0.7f;
+                // Soft canopy blob: a squashed ellipsoid in yellow-green,
+                // kept modest so the trunks read as trunks, not bushes.
+                float cw = 0.8f + (float)rng.NextDouble() * 0.5f;
                 Primitive(PrimitiveType.Sphere, set, "BirchCanopy" + i,
                     new Vector3(bx, h + 0.4f, bz),
                     new Vector3(cw * 2f, cw * 1.15f, cw * 2f), canopyMat);
@@ -918,10 +937,11 @@ public class EnvironmentManager : MonoBehaviour
         if (litShader == null) return;
 
         var stoneMat = NewLit(new Color(0.55f, 0.55f, 0.58f, 1f));
-        var darkStoneMat = NewLit(new Color(0.35f, 0.35f, 0.38f, 1f));
 
-        // Stone lantern (tōrō), facing the camera, left of the pond.
-        var lx = -2.3f; var lz = -2.4f;
+        // Stone lantern (tōrō), facing the camera. Screen-right is -x for
+        // this camera's LookAt basis, so +x puts it on the frame's left,
+        // balancing the pond on the right.
+        var lx = 1.0f; var lz = -2.6f;
         Primitive(PrimitiveType.Cube, set, "LanternBase",
             new Vector3(lx, 0.09f, lz), new Vector3(0.55f, 0.18f, 0.55f), stoneMat);
         Primitive(PrimitiveType.Cylinder, set, "LanternPillar",
@@ -957,16 +977,20 @@ public class EnvironmentManager : MonoBehaviour
         Primitive(PrimitiveType.Sphere, set, "LanternJewel",
             new Vector3(lx, 1.45f, lz), new Vector3(0.13f, 0.13f, 0.13f), stoneMat);
 
-        // Stepping stones curving from the foreground toward the pond.
+        // Stepping stones curving from the foreground toward the pond
+        // (screen-right is -x, so -x leads right toward the water's edge).
+        // Smaller and lighter than v1.0.63a — the old ones read as black
+        // holes in the grass.
+        var stepMat = NewLit(new Color(0.50f, 0.50f, 0.54f, 1f));
         var stonePath = new (float x, float z)[]
         {
-            (-1.0f, 0.8f), (-0.2f, -0.1f), (0.7f, -0.9f), (1.5f, -1.6f),
+            (-0.35f, 1.0f), (-0.75f, -0.1f), (-1.05f, -1.1f), (-1.25f, -2.0f),
         };
         for (int i = 0; i < stonePath.Length; i++)
         {
             Primitive(PrimitiveType.Cylinder, set, "StepStone" + i,
                 new Vector3(stonePath[i].x, 0.035f, stonePath[i].z),
-                new Vector3(0.60f, 0.07f, 0.60f), darkStoneMat)
+                new Vector3(0.44f, 0.07f, 0.44f), stepMat)
                 .transform.rotation = Quaternion.Euler(0f, (float)rng.NextDouble() * 60f, 0f);
         }
     }
@@ -983,7 +1007,8 @@ public class EnvironmentManager : MonoBehaviour
 
         if (waterShader != null)
         {
-            // Turquoise shallows lapping in from the frame's right edge.
+            // Turquoise shallows lapping in from the frame's edge (+x reads
+            // on the frame's left for this camera's LookAt basis).
             BuildWaterDisc(set, waterShader, prof.pondCenter, prof.pondRadius,
                 new Color(0.18f, 0.62f, 0.66f, 1f), 0.80f, "Shallows");
 

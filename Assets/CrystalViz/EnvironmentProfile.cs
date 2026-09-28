@@ -43,6 +43,8 @@ public struct EnvironmentProfile
     public Color groundColor;     // MeadowGround _BaseColor
     public Color grassRootColor;  // StylizedGrass _RootColor
     public Color grassTipColor;   // StylizedGrass _TipColor
+    public Color hillRootColor;   // horizon-hill StylizedGrass _RootColor
+    public Color hillTipColor;    // horizon-hill StylizedGrass _TipColor
 }
 
 /// <summary>
@@ -84,6 +86,8 @@ public static class EnvironmentProfiles
             groundColor = new Color(0.24f, 0.45f, 0.17f, 1f),
             grassRootColor = new Color(0.15f, 0.34f, 0.11f, 1f),
             grassTipColor = new Color(0.58f, 0.82f, 0.26f, 1f),
+            hillRootColor = new Color(0.11f, 0.29f, 0.10f, 1f),
+            hillTipColor = new Color(0.46f, 0.68f, 0.22f, 1f),
         };
 
         switch (species)
@@ -112,8 +116,10 @@ public static class EnvironmentProfiles
                 p.sunColorDay = new Color(0.92f, 0.96f, 1f, 1f);
                 p.sunIntensityDay = 1.9f;
                 p.groundColor = new Color(0.42f, 0.47f, 0.50f, 1f);
-                p.grassRootColor = new Color(0.18f, 0.28f, 0.26f, 1f);
-                p.grassTipColor = new Color(0.72f, 0.80f, 0.82f, 1f);
+                p.grassRootColor = new Color(0.20f, 0.30f, 0.26f, 1f);
+                p.grassTipColor = new Color(0.62f, 0.70f, 0.64f, 1f);
+                p.hillRootColor = new Color(0.20f, 0.30f, 0.32f, 1f);
+                p.hillTipColor = new Color(0.68f, 0.74f, 0.78f, 1f);
                 break;
 
             case ParametricTree.TreeSpecies.Birch:
@@ -127,6 +133,8 @@ public static class EnvironmentProfiles
                 p.groundColor = new Color(0.26f, 0.44f, 0.20f, 1f);
                 p.grassRootColor = new Color(0.16f, 0.36f, 0.14f, 1f);
                 p.grassTipColor = new Color(0.60f, 0.80f, 0.30f, 1f);
+                p.hillRootColor = new Color(0.14f, 0.32f, 0.12f, 1f);
+                p.hillTipColor = new Color(0.50f, 0.68f, 0.26f, 1f);
                 break;
 
             case ParametricTree.TreeSpecies.Willow:
@@ -155,11 +163,13 @@ public static class EnvironmentProfiles
                 p.sunIntensityDay = 2.0f;
                 p.ambientDay = new Color(0.44f, 0.42f, 0.46f, 1f);
                 p.pondEnabled = true;
-                p.pondCenter = new Vector3(2.6f, 0f, -3.2f);
-                p.pondRadius = 1.9f;
+                p.pondCenter = new Vector3(-1.4f, 0f, -3.0f);
+                p.pondRadius = 1.6f;
                 p.groundColor = new Color(0.22f, 0.40f, 0.18f, 1f);
                 p.grassRootColor = new Color(0.14f, 0.32f, 0.12f, 1f);
                 p.grassTipColor = new Color(0.55f, 0.76f, 0.28f, 1f);
+                p.hillRootColor = new Color(0.13f, 0.30f, 0.11f, 1f);
+                p.hillTipColor = new Color(0.48f, 0.66f, 0.24f, 1f);
                 break;
 
             case ParametricTree.TreeSpecies.Palm:
@@ -176,6 +186,8 @@ public static class EnvironmentProfiles
                 p.groundColor = new Color(0.52f, 0.46f, 0.30f, 1f);
                 p.grassRootColor = new Color(0.30f, 0.34f, 0.16f, 1f);
                 p.grassTipColor = new Color(0.62f, 0.64f, 0.34f, 1f);
+                p.hillRootColor = new Color(0.32f, 0.34f, 0.20f, 1f);
+                p.hillTipColor = new Color(0.58f, 0.58f, 0.34f, 1f);
                 break;
         }
 
