@@ -247,6 +247,28 @@ public static class CrystalVizBuild
             Debug.LogWarning("CrystalVizBuild: 'CrystalViz/HorizonHaze' not found; horizon haze will be skipped at runtime.");
         }
 
+        // v1.0.62: the willow lakeside water/mist shader is created at
+        // runtime via Shader.Find; pin its (single, keyword-free) variant so
+        // it survives stripping. A missing shader here is fine — the
+        // EnvironmentManager skips the pond and mist (never magenta).
+        var waterShader = Shader.Find("CrystalViz/LakesideWater");
+        if (waterShader != null)
+        {
+            foreach (var pt in passTypes)
+            {
+                try
+                {
+                    var v = new ShaderVariantCollection.ShaderVariant(waterShader, pt, new string[0]);
+                    if (svc.Add(v)) added++;
+                }
+                catch (ArgumentException) { skipped++; }
+            }
+        }
+        else
+        {
+            Debug.LogWarning("CrystalVizBuild: 'CrystalViz/LakesideWater' not found; willow pond and mist will be skipped at runtime.");
+        }
+
         // The paper-sprite bee shader is created at runtime via Shader.Find;
         // pin its (single, keyword-free) variant so it survives stripping.
         // v1.0.35: the v1.0.34 sprite material used URP/Lit with
@@ -305,7 +327,7 @@ public static class CrystalVizBuild
         PlayerSettings.companyName = "Headspce";
         PlayerSettings.productName = "Crystal Viz";
         PlayerSettings.SetApplicationIdentifier(UnityEditor.Build.NamedBuildTarget.Android, "com.headspce.crystalviz");
-        PlayerSettings.bundleVersion = "1.0.61";
+        PlayerSettings.bundleVersion = "1.0.62";
         PlayerSettings.defaultInterfaceOrientation = UIOrientation.Portrait;
 
         var runNumber = Environment.GetEnvironmentVariable("GITHUB_RUN_NUMBER");

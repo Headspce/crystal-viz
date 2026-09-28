@@ -332,6 +332,11 @@ public class TreeGrowthController : MonoBehaviour
         PlayerPrefs.SetInt(SpeciesKey, (int)s);
         PlayerPrefs.Save();
         ResetToSprout();
+        // v1.0.62: the environment follows the species — willow brings the
+        // lakeside, every other species keeps the grassland. In play mode
+        // this runs the fog-swell transition; in edit mode (CI screenshots)
+        // the swap is instant.
+        if (EnvironmentManager.Instance != null) EnvironmentManager.Instance.TransitionTo(s);
         // v1.0.61: all six species are selectable — name the chosen one.
         string[] names = { "Oak", "Pine", "Birch", "Willow", "Cherry", "Palm" };
         string nm = names[Mathf.Clamp((int)s, 0, 5)];

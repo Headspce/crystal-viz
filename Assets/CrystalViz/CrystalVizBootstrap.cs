@@ -64,6 +64,13 @@ public class CrystalVizBootstrap : MonoBehaviour
         Random.InitState(1234); // deterministic branches every run
         BuildCamera();
         BuildEnvironment();
+        // v1.0.62: per-species environment, created right after the base
+        // environment so the active profile (and the willow lakeside props)
+        // exist before the sun/time engine applies lighting. Applies the
+        // persisted species' profile instantly — a saved willow reloads
+        // straight into the lakeside.
+        envManager = gameObject.AddComponent<EnvironmentManager>();
+        envManager.Initialize(this);
         BuildSkyDome();
         BuildHorizonHaze();
         BuildHorizonHills();
@@ -196,6 +203,7 @@ public class CrystalVizBootstrap : MonoBehaviour
     Material skyDomeMat;
     Light fillLight;            // v1.0.46: kept so day/night can dim the fill
     Material horizonHazeMat;    // v1.0.46: kept so day/night can tint the haze
+    EnvironmentManager envManager; // v1.0.62: per-species environment (willow lakeside)
 
     /// <summary>
     /// Sky backdrop: a giant inverted sphere (radius 200, inside the 250 far
@@ -594,20 +602,24 @@ public class CrystalVizBootstrap : MonoBehaviour
     public void ApplyTimeOfDayLighting(float night)
     {
         night = Mathf.Clamp01(night);
+        // v1.0.62: colors come from the active environment profile. The
+        // grassland profile holds the exact legacy constants, so every
+        // non-willow species renders exactly as before; the willow
+        // lakeside profile only changes fog (denser, cooler) while sharing
+        // the same sun/fill/ambient/sky rig.
+        var prof = EnvironmentManager.ActiveProfile;
         if (sun != null)
         {
-            sun.color = Color.Lerp(new Color(1f, 0.95f, 0.88f, 1f),
-                                   new Color(0.55f, 0.68f, 1.0f, 1f), night);
-            sun.intensity = Mathf.Lerp(2.0f, 0.75f, night);
+            sun.color = Color.Lerp(prof.sunColorDay, prof.sunColorNight, night);
+            sun.intensity = Mathf.Lerp(prof.sunIntensityDay, prof.sunIntensityNight, night);
         }
-        RenderSettings.ambientLight = Color.Lerp(new Color(0.42f, 0.43f, 0.46f, 1f),
-                                                new Color(0.15f, 0.18f, 0.27f, 1f), night);
-        Color fogDay = new Color(0.611f, 0.672f, 0.824f, 1f);
-        Color fogNight = new Color(0.09f, 0.12f, 0.22f, 1f);
+        RenderSettings.ambientLight = Color.Lerp(prof.ambientDay, prof.ambientNight, night);
+        Color fogDay = prof.fogColorDay;
+        Color fogNight = prof.fogColorNight;
         RenderSettings.fogColor = Color.Lerp(fogDay, fogNight, night);
         var cam = Camera.main;
         if (cam != null) cam.backgroundColor = RenderSettings.fogColor;
-        if (fillLight != null) fillLight.intensity = Mathf.Lerp(0.35f, 0.2f, night);
+        if (fillLight != null) fillLight.intensity = Mathf.Lerp(prof.fillIntensityDay, prof.fillIntensityNight, night);
         if (horizonHazeMat != null && horizonHazeMat.HasProperty("_HazeColor"))
             horizonHazeMat.SetColor("_HazeColor", RenderSettings.fogColor);
         if (skyDomeMat != null)
@@ -615,7 +627,7 @@ public class CrystalVizBootstrap : MonoBehaviour
             // Textured path: the v1.0.46 _Tint darkens/cools the painting.
             if (skyDomeMat.HasProperty("_Tint"))
                 skyDomeMat.SetColor("_Tint",
-                    Color.Lerp(Color.white, new Color(0.28f, 0.34f, 0.58f, 1f), night));
+                    Color.Lerp(Color.white, prof.skyTintNight, night));
             // Procedural fallback path: sink its painted colors too.
             if (skyDomeMat.HasProperty("_HorizonColor"))
                 skyDomeMat.SetColor("_HorizonColor", Color.Lerp(fogDay, fogNight, night));
@@ -770,6 +782,16 @@ public class CrystalVizBootstrap : MonoBehaviour
             float cdx = px - 0f;
             float cdz = pz - 7.4f;
             if (cdx * cdx + cdz * cdz < 9.0f) continue; // 3^2
+            // v1.0.62: the willow pond — no grass blades under the water
+            // (reeds and open water take their place). The grassland
+            // profile has waterEnabled == false, so every other species
+            // keeps the exact legacy meadow.
+            if (EnvironmentManager.ActiveProfile.waterEnabled)
+            {
+                float wdx = px - EnvironmentManager.PondCenter.x;
+                float wdz = pz - EnvironmentManager.PondCenter.z;
+                if (wdx * wdx + wdz * wdz < EnvironmentManager.PondGrassClearRadiusSq) continue;
+            }
             var mtx = Matrix4x4.TRS(
                 new Vector3(px, 0f, pz),
                 Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f),
@@ -928,6 +950,14 @@ public class CrystalVizBootstrap : MonoBehaviour
             float fdx = Mathf.Cos(a) * r - 0f;
             float fdz = Mathf.Sin(a) * r - 7.4f;
             if (fdx * fdx + fdz * fdz < 9.0f) continue; // 3^2
+            // v1.0.62: no wildflowers under the willow pond either
+            // (grassland species: waterEnabled is false, untouched).
+            if (EnvironmentManager.ActiveProfile.waterEnabled)
+            {
+                float wfx = Mathf.Cos(a) * r - EnvironmentManager.PondCenter.x;
+                float wfz = Mathf.Sin(a) * r - EnvironmentManager.PondCenter.z;
+                if (wfx * wfx + wfz * wfz < EnvironmentManager.PondGrassClearRadiusSq) continue;
+            }
             var mtx = Matrix4x4.TRS(
                 new Vector3(Mathf.Cos(a) * r, 0f, Mathf.Sin(a) * r),
                 Quaternion.Euler(0f, (float)rng.NextDouble() * 360f, 0f),
