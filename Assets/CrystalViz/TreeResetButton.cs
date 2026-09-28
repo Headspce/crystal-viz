@@ -76,6 +76,7 @@ public class TreeResetButton : MonoBehaviour
     float arrowPunch;
     float arrowAngle = 180f; // v1.0.46: collapsed = SW (180°); expanded = NE (0°)
     GameObject menuCanvasGO; // v1.0.55: stored so BuildInventory can parent to it
+    Canvas menuCanvas; // v1.0.60: stored so SetInventoryOpen can raise the sort order above the bee counter while the menu is open
 
     // v1.0.55: the day/night button's glyph re-renders on state flips so it
     // always reads the current lighting (bright sun by day, bright moon by
@@ -491,7 +492,8 @@ public class TreeResetButton : MonoBehaviour
         menuCanvasGO = canvasGO;
         var canvas = canvasGO.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvas.sortingOrder = 90; // below the stage avatar canvas (100); different corner anyway
+        canvas.sortingOrder = 90; // corner buttons sit below the stage avatar canvas (100); different corner anyway — v1.0.60: raised to 110 while the inventory is open so the bee counter never ghosts through the tree list
+        menuCanvas = canvas;
         var scaler = canvasGO.AddComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1080f, 1920f);
@@ -796,6 +798,7 @@ public class TreeResetButton : MonoBehaviour
         {
             if (InventoryOpen && inventoryDir == 0f) return;
             InventoryOpen = true;
+            if (menuCanvas != null) menuCanvas.sortingOrder = 110; // v1.0.60: menu above the bee counter (100) while open
             if (inventoryFrostImg != null) inventoryFrostImg.raycastTarget = true;
             inventoryPanelRt.localScale = new Vector3(0.001f, 0.001f, 1f);
             inventoryT = 0f;
@@ -805,6 +808,7 @@ public class TreeResetButton : MonoBehaviour
         {
             if (!InventoryOpen && inventoryDir == 0f) return;
             InventoryOpen = false;
+            if (menuCanvas != null) menuCanvas.sortingOrder = 90; // v1.0.60: back below the stage avatar canvas when closed
             inventoryDir = -1f;
         }
     }
@@ -819,6 +823,7 @@ public class TreeResetButton : MonoBehaviour
         if (inventoryRoot == null) BuildInventory();
         if (inventoryRoot == null) return;
         InventoryOpen = true;
+        if (menuCanvas != null) menuCanvas.sortingOrder = 110; // v1.0.60: menu above the bee counter (100) while open
         inventoryT = 1f;
         inventoryDir = 0f;
         inventoryPanelRt.localScale = Vector3.one;
@@ -842,6 +847,7 @@ public class TreeResetButton : MonoBehaviour
         if (inventoryRoot == null) BuildInventory();
         if (inventoryRoot == null) return;
         InventoryOpen = false;
+        if (menuCanvas != null) menuCanvas.sortingOrder = 90; // v1.0.60: back below the stage avatar canvas when closed
         inventoryT = 0f;
         inventoryDir = 0f;
         inventoryPanelRt.localScale = new Vector3(0.001f, 0.001f, 1f);
