@@ -26,8 +26,10 @@ public class ParametricTree : MonoBehaviour
     /// v1.0.57: selectable tree species. Broadleaf is the original
     /// oak-style tree; Pine is a procedural conifer (straight trunk,
     /// whorled tier branches, needle foliage) grown by the same engine.
+    /// v1.0.61: six selectable species — the inventory rows map 1:1 to these
+    /// values (Oak=0 … Palm=5), so keep this order in sync with the row labels.
     /// </summary>
-    public enum TreeSpecies { Broadleaf = 0, Pine = 1 }
+    public enum TreeSpecies { Broadleaf = 0, Pine = 1, Birch = 2, Willow = 3, Cherry = 4, Palm = 5 }
     public TreeSpecies species = TreeSpecies.Broadleaf;
 
     const int Seed = 12345;
@@ -66,7 +68,64 @@ public class ParametricTree : MonoBehaviour
     readonly List<int> btList = new List<int>();
     readonly List<Vector3> tips = new List<Vector3>(); // leaf anchors: branch tips + points along the outer branches
 
+    // v1.0.61: palm fronds live on their own mesh (opaque wind-blown ribbon,
+    // not the alpha-cutout leaf), with dedicated scratch buffers.
+    MeshFilter frondFilter;
+    MeshRenderer frondRenderer;
+    Mesh frondMesh;
+    Material frondMat;
+    readonly List<Vector3> fvList = new List<Vector3>();
+    readonly List<Vector3> fnList = new List<Vector3>();
+    readonly List<Vector2> fuvList = new List<Vector2>();
+    readonly List<Color> fcList = new List<Color>();
+    readonly List<int> ftList = new List<int>();
+
+    // v1.0.61: bark materials promoted to fields so SyncBarkMaterials can
+    // swap the birch's pale bark in/out when the species changes.
+    Material trunkMat;
+    Material branchMat;
+    Material birchTrunkMat;
+    Material birchBranchMat;
+
     bool initialized;
+
+    /// <summary>
+    /// v1.0.61: per-species recipe for the broadleaf-family engine (oak,
+    /// birch, willow, cherry). Pine and palm have bespoke builders.
+    /// </summary>
+    struct SpeciesRecipe
+    {
+        public float trunkLen;   // full-growth trunk length
+        public float trunkRad;   // full-growth trunk radius
+        public Color leafColor;  // base foliage tint (graded by per-leaf variation)
+        public float leafCount;  // full-growth leaf quad count
+        public float leafSize;   // base quad half-size
+        public float leafSpread; // random sphere radius around each anchor
+        public float droop;      // 0 = phototropic upward; 1 = fully pendulous
+    }
+
+    static SpeciesRecipe GetRecipe(TreeSpecies s)
+    {
+        switch (s)
+        {
+            case TreeSpecies.Birch: // tall, slim, paper-white bark, airy light canopy
+                return new SpeciesRecipe { trunkLen = 5.4f, trunkRad = 0.20f,
+                    leafColor = new Color(0.38f, 0.56f, 0.20f, 1f), leafCount = 9000f,
+                    leafSize = 0.036f, leafSpread = 0.55f, droop = 0f };
+            case TreeSpecies.Willow: // stout trunk, weeping curtains
+                return new SpeciesRecipe { trunkLen = 4.2f, trunkRad = 0.30f,
+                    leafColor = new Color(0.32f, 0.52f, 0.16f, 1f), leafCount = 14000f,
+                    leafSize = 0.032f, leafSpread = 0.65f, droop = 1f };
+            case TreeSpecies.Cherry: // blossom canopy, gentle outward drape
+                return new SpeciesRecipe { trunkLen = 4.0f, trunkRad = 0.26f,
+                    leafColor = new Color(0.95f, 0.55f, 0.66f, 1f), leafCount = 11000f,
+                    leafSize = 0.042f, leafSpread = 0.55f, droop = 0.15f };
+            default: // Broadleaf (oak): the original recipe, unchanged
+                return new SpeciesRecipe { trunkLen = 4.6f, trunkRad = 0.28f,
+                    leafColor = new Color(0.16f, 0.42f, 0.12f, 1f), leafCount = 12000f,
+                    leafSize = 0.04f, leafSpread = 0.5f, droop = 0f };
+        }
+    }
 
     void Awake()
     {
@@ -129,7 +188,7 @@ public class ParametricTree : MonoBehaviour
             var polyBark = Resources.Load<Texture2D>("Textures/pine_bark_1k");
             var polyBarkNormal = Resources.Load<Texture2D>("Textures/pine_bark_1k_nor_gl");
 
-            var trunkMat = new Material(lit);
+            trunkMat = new Material(lit);
             if (polyBark != null)
             {
                 trunkMat.SetTexture("_BaseMap", polyBark);
@@ -155,7 +214,7 @@ public class ParametricTree : MonoBehaviour
             // Branches (submesh 1) wear the same bark with chunkier ridges so
             // the texture reads on thin tubes. Poly Haven bark works for both;
             // procedural fallback uses the chunkier branch ridge count.
-            var branchMat = new Material(lit);
+            branchMat = new Material(lit);
             if (polyBark != null)
             {
                 branchMat.SetTexture("_BaseMap", polyBark);
@@ -177,7 +236,26 @@ public class ParametricTree : MonoBehaviour
             branchMat.SetFloat("_Smoothness", 0.8f);
             branchMat.SetFloat("_Metallic", 0f);
             branchMat.color = Color.white;
-            trunkRenderer.materials = new Material[] { trunkMat, branchMat };
+            // v1.0.61: birch wears pale paper bark with dark lenticel dashes
+            // (procedural — no texture asset to go missing in CI).
+            float[] birchHeight;
+            var birchTex = MakeBirchBarkTexture(out birchHeight);
+            var birchBump = MakeBumpTexture(birchHeight, BarkTexSize);
+            birchTrunkMat = new Material(lit);
+            birchTrunkMat.SetTexture("_BaseMap", birchTex);
+            birchTrunkMat.SetTexture("_BumpMap", birchBump);
+            birchTrunkMat.SetFloat("_BumpScale", 0.4f);
+            birchTrunkMat.SetFloat("_Smoothness", 0.7f);
+            birchTrunkMat.SetFloat("_Metallic", 0f);
+            birchTrunkMat.color = Color.white;
+            birchBranchMat = new Material(lit);
+            birchBranchMat.SetTexture("_BaseMap", birchTex);
+            birchBranchMat.SetTexture("_BumpMap", birchBump);
+            birchBranchMat.SetFloat("_BumpScale", 0.4f);
+            birchBranchMat.SetFloat("_Smoothness", 0.7f);
+            birchBranchMat.SetFloat("_Metallic", 0f);
+            birchBranchMat.color = Color.white;
+            SyncBarkMaterials();
         }
         else
         {
@@ -222,6 +300,35 @@ public class ParametricTree : MonoBehaviour
             Debug.LogWarning("ParametricTree: 'CrystalViz/LeafWind' not found; leaves will use the default material.");
         }
 
+        // v1.0.61: palm fronds — their own mesh so they can use an opaque
+        // wind-blown material instead of the alpha-cutout leaf. Shares the
+        // leaf shader's gust uniforms so the crown sways with the canopy.
+        var frondGO = new GameObject("Fronds");
+        frondGO.transform.SetParent(transform, false);
+        frondFilter = frondGO.AddComponent<MeshFilter>();
+        frondRenderer = frondGO.AddComponent<MeshRenderer>();
+        frondMesh = new Mesh { name = "PalmFronds" };
+        frondMesh.MarkDynamic();
+        frondFilter.mesh = frondMesh;
+        if (leafShader != null)
+        {
+            var whiteTex = new Texture2D(4, 4, TextureFormat.RGBA32, false);
+            var whitePx = new Color[16];
+            for (int i = 0; i < 16; i++) whitePx[i] = Color.white;
+            whiteTex.SetPixels(whitePx);
+            whiteTex.Apply();
+            frondMat = new Material(leafShader);
+            frondMat.SetTexture("_BaseMap", whiteTex);
+            frondMat.SetFloat("_WindStrength", 0.035f);
+            frondMat.SetFloat("_WindSpeed", 1.7f);
+            frondMat.SetFloat("_GustStrength", 0.08f);
+            frondMat.SetFloat("_GustSpeed", 1.8f);
+            frondMat.SetFloat("_GustFreq", 0.18f);
+            frondMat.SetFloat("_GustLighten", 0.28f);
+            frondMat.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
+            frondRenderer.material = frondMat;
+        }
+
         trunkMesh = new Mesh { name = "ParametricTrunk" };
         trunkMesh.MarkDynamic();
         trunkFilter.mesh = trunkMesh;
@@ -243,7 +350,22 @@ public class ParametricTree : MonoBehaviour
     }
 
     /// <summary>
-    /// v1.0.57: switches the grown species and rebuilds the tree at the
+    /// v1.0.61: points the bark materials at the species' bark — birch gets
+    /// its pale paper bark, everyone else the standard furrowed bark.
+    /// No-op until Initialize has built the materials.
+    /// </summary>
+    void SyncBarkMaterials()
+    {
+        if (trunkRenderer == null) return;
+        bool birch = species == TreeSpecies.Birch;
+        if (birch && birchTrunkMat != null && birchBranchMat != null)
+            trunkRenderer.materials = new Material[] { birchTrunkMat, birchBranchMat };
+        else if (trunkMat != null && branchMat != null)
+            trunkRenderer.materials = new Material[] { trunkMat, branchMat };
+    }
+
+    /// <summary>
+    /// v1.0.61: switches the grown species and rebuilds the tree at the
     /// current growth value. Safe to call before Initialize (the species
     /// field is read when the meshes build).
     /// </summary>
@@ -251,6 +373,7 @@ public class ParametricTree : MonoBehaviour
     {
         species = s;
         SyncLeafTexture();
+        SyncBarkMaterials();
         lastBuiltG = -1f; // force a rebuild even at the same g
         if (trunkMesh != null) SetGrowth(currentG);
     }
@@ -297,6 +420,47 @@ public class ParametricTree : MonoBehaviour
                 // Crevices sink darker for extra depth.
                 float crevice = Mathf.Lerp(0.55f, 1f, Mathf.SmoothStep(0f, 0.55f, h));
                 tex.SetPixel(x, y, (Color.Lerp(valley, ridge, h) * crevice));
+            }
+        }
+        tex.Apply();
+        return tex;
+    }
+
+    /// <summary>
+    /// v1.0.61: birch paper bark — a pale, near-white base with soft vertical
+    /// tonal variation and the dark horizontal lenticel dashes that make a
+    /// birch read as a birch. Tileable in u via the same periodic lattice.
+    /// </summary>
+    static Texture2D MakeBirchBarkTexture(out float[] height)
+    {
+        int S = BarkTexSize;
+        height = new float[S * S];
+        var tex = new Texture2D(S, S, TextureFormat.RGBA32, false);
+        tex.wrapMode = TextureWrapMode.Repeat;
+        tex.filterMode = FilterMode.Bilinear;
+
+        var paper = new Color(0.87f, 0.85f, 0.80f, 1f); // sunlit paper-white
+        var shade = new Color(0.70f, 0.68f, 0.63f, 1f); // shaded paper
+        var dash = new Color(0.15f, 0.12f, 0.10f, 1f);  // dark lenticel dash
+
+        for (int y = 0; y < S; y++)
+        {
+            for (int x = 0; x < S; x++)
+            {
+                float u = (float)x / S;
+                float v = (float)y / S;
+                // Soft tonal variation stretched along the trunk.
+                float n = BarkFbm(u * 6f, v * 40f, 6);
+                // Lenticel dashes: high frequency around the trunk, low along
+                // it, thresholded into short horizontal streaks.
+                float d = BarkFbm(u * 60f, v * 9f, 60);
+                float dashMask = Mathf.SmoothStep(0.60f, 0.72f, d)
+                               * Mathf.SmoothStep(0.25f, 0.45f, n);
+                float h = Mathf.Clamp01(n * 0.6f + dashMask * 0.5f);
+                height[y * S + x] = h;
+                Color c = Color.Lerp(paper, shade, n * 0.85f);
+                c = Color.Lerp(c, dash, dashMask);
+                tex.SetPixel(x, y, c);
             }
         }
         tex.Apply();
@@ -447,6 +611,7 @@ public class ParametricTree : MonoBehaviour
             float topY = 0f;
             if (trunkMesh != null) topY = Mathf.Max(topY, trunkMesh.bounds.max.y);
             if (leafMesh != null) topY = Mathf.Max(topY, leafMesh.bounds.max.y);
+            if (frondMesh != null) topY = Mathf.Max(topY, frondMesh.bounds.max.y);
             return transform.TransformPoint(new Vector3(0f, topY, 0f));
         }
     }
@@ -469,6 +634,9 @@ public class ParametricTree : MonoBehaviour
         lastBuiltG = g;
 
         var rng = new System.Random(Seed);
+        // v1.0.61: fronds only exist on the palm — clear any crown left over
+        // from a previous palm before another species builds.
+        ClearFrondMesh();
         if (species == TreeSpecies.Pine)
         {
             // v1.0.57: conifer path — straight trunk, whorled tiers,
@@ -478,17 +646,28 @@ public class ParametricTree : MonoBehaviour
             BuildPineMeshes(pineLen, pineRad, g, rng);
             return;
         }
+        // v1.0.61: palm path — curving trunk with a crown of arching fronds.
+        if (species == TreeSpecies.Palm)
+        {
+            float palmLen = Mathf.Lerp(0.3f, 4.4f, g);
+            float palmRad = Mathf.Lerp(0.03f, 0.24f, g);
+            BuildPalmMeshes(palmLen, palmRad, g, rng);
+            return;
+        }
 
-        float trunkLen = Mathf.Lerp(0.3f, 4.6f, g);
-        float trunkRad = Mathf.Lerp(0.03f, 0.28f, g);
+        // Broadleaf family (oak, birch, willow, cherry): the same engine,
+        // driven by the species recipe (size, foliage, droop).
+        SpeciesRecipe recipe = GetRecipe(species);
+        float trunkLen = Mathf.Lerp(0.3f, recipe.trunkLen, g);
+        float trunkRad = Mathf.Lerp(0.03f, recipe.trunkRad, g);
         int maxLevel = Mathf.FloorToInt(g * 3.99f); // 0..3 tiers of branches above the trunk
 
         Vector3 lean = new Vector3(
             ((float)rng.NextDouble() - 0.5f) * 0.12f, 1f,
             ((float)rng.NextDouble() - 0.5f) * 0.12f).normalized;
 
-        BuildTrunkMesh(trunkLen, trunkRad, maxLevel, g, lean, rng);
-        BuildLeafMesh(g, new System.Random(Seed + 1));
+        BuildTrunkMesh(trunkLen, trunkRad, maxLevel, g, lean, rng, recipe.droop);
+        BuildLeafMesh(g, new System.Random(Seed + 1), species);
     }
 
     // ------------------------------------------------------------ pine mesh
@@ -538,7 +717,7 @@ public class ParametricTree : MonoBehaviour
             }
         }
         AssignTrunkMesh();
-        BuildLeafMesh(g, new System.Random(Seed + 1));
+        BuildLeafMesh(g, new System.Random(Seed + 1), species);
     }
 
     /// <summary>
@@ -574,15 +753,126 @@ public class ParametricTree : MonoBehaviour
         tips.Add(p3);
     }
 
-    // ------------------------------------------------------------ trunk mesh
+    // ------------------------------------------------------------ palm mesh
 
-    void BuildTrunkMesh(float trunkLen, float trunkRad, int maxLevel, float g,
-                        Vector3 lean, System.Random rng)
+    /// <summary>
+    /// v1.0.61: builds the palm — a gently curving trunk with a crown of
+    /// arching fronds. The leaf mesh stays empty for palms; the fronds live
+    /// on their own opaque, wind-blown mesh (the Fronds child).
+    /// </summary>
+    void BuildPalmMeshes(float trunkLen, float trunkRad, float g, System.Random rng)
     {
         vList.Clear(); nList.Clear(); uvList.Clear(); cList.Clear(); tList.Clear();
         bvList.Clear(); bnList.Clear(); buvList.Clear(); bcList.Clear(); btList.Clear();
         tips.Clear();
-        GrowBranch(Vector3.zero, lean, trunkLen, trunkRad, 0, maxLevel, g, rng, rootFlare: true);
+
+        // Trunk: gentle S-curve with a fixed lean direction (palms lean).
+        float leanAmt = 0.35f + (float)rng.NextDouble() * 0.2f;
+        float leanAz = (float)rng.NextDouble() * Mathf.PI * 2f;
+        Vector3 leanDir = new Vector3(Mathf.Cos(leanAz), 0f, Mathf.Sin(leanAz));
+        Vector3 top = leanDir * (trunkLen * leanAmt * 0.5f) + new Vector3(0f, trunkLen, 0f);
+        Vector3[] tctrl =
+        {
+            Vector3.zero, Vector3.zero,
+            leanDir * (trunkLen * leanAmt * 0.12f) + new Vector3(0f, trunkLen * 0.33f, 0f),
+            leanDir * (trunkLen * leanAmt * 0.35f) + new Vector3(0f, trunkLen * 0.66f, 0f),
+            top, top
+        };
+        int rings = Mathf.Max(6, Mathf.RoundToInt(trunkLen * 5f));
+        Vector3[] tpts = new Vector3[rings];
+        for (int i = 0; i < rings; i++)
+            tpts[i] = SampleCurve(tctrl, (float)i / (rings - 1));
+        AppendTube(tpts, trunkRad, trunkRad * 0.45f, BranchTint(rng), true, true);
+        AssignTrunkMesh();
+
+        // Empty leaf mesh (no broadleaf foliage on a palm)…
+        vList.Clear(); nList.Clear(); uvList.Clear(); cList.Clear(); tList.Clear();
+        AssignMesh(leafMesh, vList, nList, uvList, cList, tList);
+        // …and the frond crown on top.
+        BuildFrondMesh(g, top, new System.Random(Seed + 2));
+    }
+
+    /// <summary>
+    /// v1.0.61: empties the frond mesh (used when a non-palm species builds).
+    /// </summary>
+    void ClearFrondMesh()
+    {
+        if (frondMesh == null) return;
+        fvList.Clear(); fnList.Clear(); fuvList.Clear(); fcList.Clear(); ftList.Clear();
+        AssignMesh(frondMesh, fvList, fnList, fuvList, fcList, ftList);
+    }
+
+    /// <summary>
+    /// v1.0.61: the palm crown — fronds unfurl once the trunk is established,
+    /// from 4 stubby leaves at sprout to a full 12-frond crown at maturity.
+    /// </summary>
+    void BuildFrondMesh(float g, Vector3 crown, System.Random rng)
+    {
+        fvList.Clear(); fnList.Clear(); fuvList.Clear(); fcList.Clear(); ftList.Clear();
+        if (frondMesh == null) return;
+        float f = Smooth01((g - 0.3f) / 0.7f);
+        int fronds = Mathf.RoundToInt(Mathf.Lerp(4f, 12f, f));
+        float frondLen = Mathf.Lerp(0.4f, 2.3f, g);
+        float azimBase = (float)rng.NextDouble() * Mathf.PI * 2f;
+        for (int i = 0; i < fronds; i++)
+        {
+            float az = azimBase + i * GoldenAngle;
+            Vector3 dir = new Vector3(Mathf.Cos(az), 0f, Mathf.Sin(az));
+            AppendFrond(crown, dir, frondLen * (0.85f + (float)rng.NextDouble() * 0.3f), rng);
+        }
+        AssignMesh(frondMesh, fvList, fnList, fuvList, fcList, ftList);
+    }
+
+    /// <summary>
+    /// v1.0.61: one arching frond — rises off the crown, crests, then droops,
+    /// built as a tapered ribbon so it reads as a palm leaf rather than
+    /// scattered quads. Normals face up (the ribbon is near-horizontal) and
+    /// the material is double-sided so the drooping tips read from below.
+    /// </summary>
+    void AppendFrond(Vector3 crown, Vector3 dir, float len, System.Random rng)
+    {
+        const int segs = 9;
+        Vector3 side = new Vector3(-dir.z, 0f, dir.x).normalized;
+        float rise = len * 0.35f;
+        float droopAmt = len * 0.75f;
+        float width = len * 0.16f;
+        float v = 0.85f + (float)rng.NextDouble() * 0.3f; // per-frond green variation
+        Color frondGreen = new Color(0.14f * v, 0.38f * v, 0.12f * v, 1f);
+        int baseIdx = fvList.Count;
+        for (int sIdx = 0; sIdx <= segs; sIdx++)
+        {
+            float t = (float)sIdx / segs;
+            Vector3 center = crown
+                + dir * (t * len)
+                + Vector3.up * (Mathf.Sin(t * Mathf.PI * 0.62f) * rise - t * t * droopAmt);
+            // Narrow at the stem, widest just past the middle, pointed tip.
+            float w = width * Mathf.Sin(Mathf.PI * Mathf.Clamp01(0.12f + t * 0.88f));
+            fvList.Add(center - side * w * 0.5f);
+            fvList.Add(center + side * w * 0.5f);
+            fnList.Add(Vector3.up);
+            fnList.Add(Vector3.up);
+            fuvList.Add(new Vector2(t, 0f));
+            fuvList.Add(new Vector2(t, 1f));
+            fcList.Add(frondGreen);
+            fcList.Add(frondGreen);
+        }
+        for (int sIdx = 0; sIdx < segs; sIdx++)
+        {
+            int a = baseIdx + sIdx * 2;
+            ftList.Add(a); ftList.Add(a + 1); ftList.Add(a + 2);
+            ftList.Add(a + 1); ftList.Add(a + 3); ftList.Add(a + 2);
+        }
+    }
+
+    // ------------------------------------------------------------ trunk mesh
+
+    void BuildTrunkMesh(float trunkLen, float trunkRad, int maxLevel, float g,
+                        Vector3 lean, System.Random rng, float droop = 0f)
+    {
+        vList.Clear(); nList.Clear(); uvList.Clear(); cList.Clear(); tList.Clear();
+        bvList.Clear(); bnList.Clear(); buvList.Clear(); bcList.Clear(); btList.Clear();
+        tips.Clear();
+        GrowBranch(Vector3.zero, lean, trunkLen, trunkRad, 0, maxLevel, g, rng, rootFlare: true, droop: droop);
         AssignTrunkMesh();
     }
 
@@ -622,22 +912,28 @@ public class ParametricTree : MonoBehaviour
     /// for leaf placement.
     /// </summary>
     void GrowBranch(Vector3 origin, Vector3 dir, float length, float baseRadius,
-                    int level, int maxLevel, float g, System.Random rng, bool rootFlare = false)
+                    int level, int maxLevel, float g, System.Random rng, bool rootFlare = false,
+                    float droop = 0f)
     {
         dir.Normalize();
 
         // Curved control points: gentle random wobble plus an upward bend so
         // tips reach skyward like real phototropic growth.
+        // v1.0.61: droop flips the lift downward for weeping species
+        // (willow) — 0 = tips reach skyward, 1 = branches arc down in curtains.
         Vector3 up = Vector3.up;
         Vector3 side = Vector3.Cross(dir, up);
         if (side.sqrMagnitude < 1e-6f) side = Vector3.right; else side.Normalize();
         Vector3 side2 = Vector3.Cross(dir, side).normalized;
 
         float wob = length * 0.07f;
+        float lift0 = Mathf.Lerp(0.05f, -0.12f, droop);
+        float lift1 = Mathf.Lerp(0.14f, -0.32f, droop);
+        float lift2 = Mathf.Lerp(0.30f, -0.60f, droop);
         Vector3 p0 = origin;
-        Vector3 p1 = origin + dir * (length * 0.33f) + RandPerp(rng, side, side2, wob) + up * (length * 0.05f);
-        Vector3 p2 = origin + dir * (length * 0.66f) + RandPerp(rng, side, side2, wob) + up * (length * 0.14f);
-        Vector3 p3 = origin + dir * length + up * (length * 0.30f);
+        Vector3 p1 = origin + dir * (length * 0.33f) + RandPerp(rng, side, side2, wob) + up * (length * lift0);
+        Vector3 p2 = origin + dir * (length * 0.66f) + RandPerp(rng, side, side2, wob) + up * (length * lift1);
+        Vector3 p3 = origin + dir * length + up * (length * lift2);
         // Doubled endpoints make the Catmull-Rom spline pass through p0/p3.
         Vector3[] ctrl = { p0, p0, p1, p2, p3, p3 };
 
@@ -687,12 +983,15 @@ public class ParametricTree : MonoBehaviour
             Vector3 refB = Vector3.Cross(tan, refA).normalized;
             float az = azim0 + c * GoldenAngle;
             float elev = 0.55f + (float)rng.NextDouble() * 0.4f;
+            // v1.0.61: weeping children tilt outward-down instead of
+            // outward-up, so the curtains compound down the generations.
+            elev = Mathf.Lerp(elev, 1.15f + (float)rng.NextDouble() * 0.35f, droop);
             Vector3 childDir = (tan * Mathf.Cos(elev)
                 + (refA * Mathf.Cos(az) + refB * Mathf.Sin(az)) * Mathf.Sin(elev)).normalized;
 
             float parentR = Mathf.Lerp(baseRadius, tipRadius, t);
             float childLen = length * (0.55f + (float)rng.NextDouble() * 0.2f) * (level == 0 ? 1f : 0.85f);
-            GrowBranch(pos, childDir, childLen, parentR * 0.55f, level + 1, maxLevel, g, rng);
+            GrowBranch(pos, childDir, childLen, parentR * 0.55f, level + 1, maxLevel, g, rng, droop: droop);
         }
     }
 
@@ -763,7 +1062,7 @@ public class ParametricTree : MonoBehaviour
 
     // ------------------------------------------------------------- leaf mesh
 
-    void BuildLeafMesh(float g, System.Random rng)
+    void BuildLeafMesh(float g, System.Random rng, TreeSpecies sp)
     {
         vList.Clear(); nList.Clear(); uvList.Clear(); cList.Clear(); tList.Clear();
 
@@ -772,9 +1071,12 @@ public class ParametricTree : MonoBehaviour
         // field made from 10k to 150k tufts), each leaf a third of its old
         // size, so the canopy reads as one dense lush mass.
         // v1.0.57: pines get 14,000 smaller needles in deep blue-green.
-        bool pine = species == TreeSpecies.Pine;
+        // v1.0.61: density comes from the species recipe (willow densest,
+        // birch airiest).
+        bool pine = sp == TreeSpecies.Pine;
         float f = Smooth01((g - 0.25f) / 0.75f);
-        int total = Mathf.RoundToInt((pine ? 14000f : 12000f) * f);
+        float fullCount = pine ? 14000f : GetRecipe(sp).leafCount;
+        int total = Mathf.RoundToInt(fullCount * f);
         if (total > 0 && tips.Count > 0)
         {
             int per = total / tips.Count;
@@ -783,18 +1085,22 @@ public class ParametricTree : MonoBehaviour
             {
                 int count = per + (i < rem ? 1 : 0);
                 for (int k = 0; k < count; k++)
-                    AppendLeaf(tips[i], rng, pine);
+                    AppendLeaf(tips[i], rng, sp);
             }
         }
         AssignMesh(leafMesh, vList, nList, uvList, cList, tList);
     }
 
-    void AppendLeaf(Vector3 tip, System.Random rng, bool pine)
+    void AppendLeaf(Vector3 tip, System.Random rng, TreeSpecies sp)
     {
         // v1.0.57: needles cluster tighter and run smaller than broad leaves.
-        Vector3 center = tip + RandomInSphere(rng, pine ? 0.50f : 0.5f);
+        // v1.0.61: size, spread, and tint come from the species recipe —
+        // cherry blooms pink, birch glows light, willow hangs fine and bright.
+        bool pine = sp == TreeSpecies.Pine;
+        SpeciesRecipe recipe = GetRecipe(sp);
+        Vector3 center = tip + RandomInSphere(rng, pine ? 0.50f : recipe.leafSpread);
         float s = pine ? 0.028f + (float)rng.NextDouble() * 0.024f
-                       : 0.04f + (float)rng.NextDouble() * 0.043f;
+                       : recipe.leafSize + (float)rng.NextDouble() * (recipe.leafSize * 1.07f);
         Quaternion q = RandomQuat(rng);
         Vector3 n = q * Vector3.forward;
         Vector3[] corners =
@@ -812,9 +1118,9 @@ public class ParametricTree : MonoBehaviour
         uvList.Add(new Vector2(1f, 1f)); uvList.Add(new Vector2(0f, 1f));
         float v = 0.8f + (float)rng.NextDouble() * 0.5f; // per-leaf green variation
         // v1.0.57: pine needles grade deep blue-green; broad leaves keep
-        // the original green.
-        Color gc = pine ? new Color(0.10f * v, 0.30f * v, 0.17f * v, 1f)
-                        : new Color(0.16f * v, 0.42f * v, 0.12f * v, 1f);
+        // the original green. v1.0.61: the recipe tints each species.
+        Color tintBase = pine ? new Color(0.10f, 0.30f, 0.17f, 1f) : recipe.leafColor;
+        Color gc = new Color(tintBase.r * v, tintBase.g * v, tintBase.b * v, 1f);
         for (int i = 0; i < 4; i++) cList.Add(gc);
         tList.Add(b); tList.Add(b + 1); tList.Add(b + 2);
         tList.Add(b); tList.Add(b + 2); tList.Add(b + 3);

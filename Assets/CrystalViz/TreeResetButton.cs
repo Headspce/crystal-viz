@@ -96,8 +96,9 @@ public class TreeResetButton : MonoBehaviour
     Image inventoryFrostImg;
     float inventoryT;   // 0 = closed, 1 = open
     float inventoryDir; // +1 opening, -1 closing, 0 idle
-    // v1.0.57: the six tree-type slots are tappable — oak and pine switch
-    // the grown species, the rest are coming soon.
+    // v1.0.57: the six tree-type slots are tappable — each switches the
+    // grown species. v1.0.61: all six species are modeled (oak, pine,
+    // birch, willow, cherry, palm), so every row is live.
     // v1.0.60: the slots became a vertical text-button list (GameFoundation
     // Starter pattern) — slotRows are the row backgrounds, slotLabels the
     // tree names; the selected row highlights in warm gold.
@@ -654,8 +655,8 @@ public class TreeResetButton : MonoBehaviour
     /// 3x2 grid. Starts closed.
     /// v1.0.60: the slot grid became a vertical list of text buttons
     /// (GameFoundation Starter pattern) under a "Choose your tree" title —
-    /// selected species highlights in warm gold, coming-soon rows dim but
-    /// stay tappable. Same overlay behavior otherwise.
+    /// the selected species highlights in warm gold. v1.0.61: all six rows
+    /// are live species buttons. Same overlay behavior otherwise.
     /// </summary>
     void BuildInventory()
     {
@@ -699,11 +700,11 @@ public class TreeResetButton : MonoBehaviour
 
         // v1.0.60: the six tree types are a vertical list of text buttons
         // (GameFoundation Starter pattern) — the selected species renders
-        // highlighted in warm gold, available-but-unselected rows stay
-        // neutral meadow glass, and coming-soon rows are dimmed while still
-        // tappable for their toast. Text uses the same LegacyRuntime font
-        // as the toast (proven on device and in CI captures); TMP is not in
-        // the project, so legacy Text keeps the menu identical in both.
+        // highlighted in warm gold, unselected rows stay neutral meadow
+        // glass. v1.0.61: every row selects a real species. Text uses the
+        // same LegacyRuntime font as the toast (proven on device and in CI
+        // captures); TMP is not in the project, so legacy Text keeps the
+        // menu identical in both.
         var titleGO = new GameObject("MenuTitle", typeof(RectTransform), typeof(Text));
         titleGO.transform.SetParent(panelGO.transform, false);
         var titleRt = titleGO.GetComponent<RectTransform>();
@@ -772,9 +773,10 @@ public class TreeResetButton : MonoBehaviour
         }
 
         // v1.0.57: reflect the persisted species on the slots.
+        // v1.0.61: row index maps 1:1 to TreeSpecies (six live rows).
         if (growthCtl == null) growthCtl = FindObjectOfType<TreeGrowthController>();
-        selectedTreeIndex = (growthCtl != null && growthCtl.tree != null &&
-            growthCtl.tree.species == ParametricTree.TreeSpecies.Pine) ? 1 : 0;
+        selectedTreeIndex = (growthCtl != null && growthCtl.tree != null)
+            ? Mathf.Clamp((int)growthCtl.tree.species, 0, 5) : 0;
         RefreshSlotSelection();
 
         inventoryRoot.SetActive(true);
@@ -863,33 +865,25 @@ public class TreeResetButton : MonoBehaviour
     /// <summary>
     /// v1.0.60: GameFoundation Starter pattern — the selected species row
     /// renders highlighted in warm gold with dark text; the other
-    /// available species stay neutral meadow glass with warm-white text;
-    /// coming-soon rows dim to grey while remaining tappable for toasts.
+    /// species stay neutral meadow glass with warm-white text.
+    /// v1.0.61: all six rows are selectable (no more coming-soon dimming).
     /// </summary>
     void RefreshSlotSelection()
     {
         if (slotRows == null || slotLabels == null) return;
         var darkInk = new Color(0.10f, 0.20f, 0.12f, 1f);
-        var dimmed = new Color(0.62f, 0.62f, 0.62f, 1f);
-        var dimText = new Color(0.62f, 0.64f, 0.60f, 1f);
         for (int i = 0; i < 6; i++)
         {
             if (slotRows[i] == null || slotLabels[i] == null) continue;
-            bool available = (i == 0 || i == 1);
             if (i == selectedTreeIndex)
             {
                 slotRows[i].color = MeadowGlassUI.Gold;
                 slotLabels[i].color = darkInk;
             }
-            else if (available)
+            else
             {
                 slotRows[i].color = Color.white;
                 slotLabels[i].color = MeadowGlassUI.WarmWhite;
-            }
-            else
-            {
-                slotRows[i].color = dimmed;
-                slotLabels[i].color = dimText;
             }
         }
     }
@@ -898,6 +892,9 @@ public class TreeResetButton : MonoBehaviour
     /// v1.0.57: inventory slot tap — oak and pine switch the grown species
     /// (the tree restarts as a sprout); the other four tree types aren't
     /// modeled yet.
+    /// v1.0.61: all six rows are live — the row index maps 1:1 to
+    /// TreeSpecies, so every tap switches the species and restarts the
+    /// tree as a sprout. No more coming-soon rows.
     /// </summary>
     void OnTreeSlotTapped(int idx)
     {
@@ -908,22 +905,12 @@ public class TreeResetButton : MonoBehaviour
         lastSlotTapTime = Time.time;
 
         if (growthCtl == null) growthCtl = FindObjectOfType<TreeGrowthController>();
-        if (idx == 0 || idx == 1)
-        {
-            selectedTreeIndex = idx;
-            RefreshSlotSelection();
-            if (growthCtl != null)
-                growthCtl.SetSpecies(idx == 1
-                    ? ParametricTree.TreeSpecies.Pine
-                    : ParametricTree.TreeSpecies.Broadleaf);
-            // Close the inventory so the player watches the new sprout.
-            SetInventoryOpen(false);
-        }
-        else
-        {
-            string[] names = { "Oak", "Pine", "Birch", "Willow", "Cherry", "Palm" };
-            MeadowToast.Show(names[idx] + " trees are coming in a future update.");
-        }
+        selectedTreeIndex = Mathf.Clamp(idx, 0, 5);
+        RefreshSlotSelection();
+        if (growthCtl != null)
+            growthCtl.SetSpecies((ParametricTree.TreeSpecies)selectedTreeIndex);
+        // Close the inventory so the player watches the new sprout.
+        SetInventoryOpen(false);
     }
 
     /// <summary>

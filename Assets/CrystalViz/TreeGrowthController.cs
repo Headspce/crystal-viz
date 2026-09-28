@@ -128,8 +128,9 @@ public class TreeGrowthController : MonoBehaviour
         tapCredits = Mathf.Max(0, PlayerPrefs.GetInt(CreditsKey, 0));
         saplingStart = PlayerPrefs.GetInt(SaplingStartKey, 0) == 1;
         // v1.0.57: restore the player's chosen species before the first build.
+        // v1.0.61: six species now (0-5).
         if (tree != null)
-            tree.SetSpecies((ParametricTree.TreeSpecies)Mathf.Clamp(PlayerPrefs.GetInt(SpeciesKey, 0), 0, 1));
+            tree.SetSpecies((ParametricTree.TreeSpecies)Mathf.Clamp(PlayerPrefs.GetInt(SpeciesKey, 0), 0, 5));
         displayedG = GrowthTarget;
         // Build the mesh here, not just in Start(): CI screenshot captures run
         // in edit mode, where Start()/Update() never execute, leaving the
@@ -331,9 +332,10 @@ public class TreeGrowthController : MonoBehaviour
         PlayerPrefs.SetInt(SpeciesKey, (int)s);
         PlayerPrefs.Save();
         ResetToSprout();
-        MeadowToast.Show(s == ParametricTree.TreeSpecies.Pine
-            ? "Pine selected — pop bees, then tap to grow it."
-            : "Oak selected — pop bees, then tap to grow it.");
+        // v1.0.61: all six species are selectable — name the chosen one.
+        string[] names = { "Oak", "Pine", "Birch", "Willow", "Cherry", "Palm" };
+        string nm = names[Mathf.Clamp((int)s, 0, 5)];
+        MeadowToast.Show(nm + " selected — pop bees, then tap to grow it.");
     }
 
     /// <summary>
