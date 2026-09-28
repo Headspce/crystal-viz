@@ -18,6 +18,9 @@ Shader "CrystalViz/StylizedGrass"
         _DissolvePop ("Block Pop Sharpness", Float) = 0.06
         _DissolveEdgeWidth ("Dissolve Edge Width", Float) = 0.10
         _DissolveEdgeColor ("Dissolve Edge Color", Color) = (0.45, 0.9, 1.0, 1)
+        // v1.0.62: willow pond clip — disabled by default (radius 0).
+        _ClipCenter ("Pond Clip Center", Vector) = (0, 0, 0, 0)
+        _ClipRadius ("Pond Clip Radius", Float) = 0
     }
     SubShader
     {
@@ -80,6 +83,8 @@ Shader "CrystalViz/StylizedGrass"
             float _DissolvePop;
             float _DissolveEdgeWidth;
             half4 _DissolveEdgeColor;
+            float4 _ClipCenter;   // v1.0.62: willow pond clip (0 = disabled)
+            float _ClipRadius;
 
             Varyings vert(Attributes IN)
             {
@@ -133,6 +138,16 @@ Shader "CrystalViz/StylizedGrass"
                 float patch = sin(wp.x * 0.11 + wp.z * 0.07)
                             * sin(wp.x * 0.05 - wp.z * 0.13);
                 OUT.patch = 0.85 + 0.30 * (0.5 + 0.5 * patch);
+
+                // v1.0.62: willow pond clip — blades inside the pond disc
+                // are flattened onto the ground so the open water reads.
+                // The reed material is a separate instance with the clip
+                // left disabled, so reeds still stand in the shallows.
+                // Disabled by default (_ClipRadius = 0): every other
+                // species renders pixel-identical to before.
+                float clipD = distance(wp.xz, _ClipCenter.xz);
+                float clipF = (1.0 - step(_ClipRadius, clipD)) * step(0.001, _ClipRadius);
+                wp.y *= (1.0 - clipF);
 
                 OUT.positionWS = wp;
                 OUT.positionHCS = TransformWorldToHClip(wp);

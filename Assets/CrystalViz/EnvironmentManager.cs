@@ -70,6 +70,10 @@ public class EnvironmentManager : MonoBehaviour
         if (willowProps != null) willowProps.SetActive(p.waterEnabled);
         if (bootstrap != null)
         {
+            // Flatten the pond grass/flowers via the shader clip so a
+            // species picked after launch still gets open water (the
+            // build-time tuft skip only covers the persisted species).
+            bootstrap.SetPondClip(p.waterEnabled);
             var orbit = Object.FindFirstObjectByType<SunOrbitControl>();
             float v = orbit != null ? orbit.CurrentSnappedValue : 0f;
             bootstrap.ApplyTimeOfDayLighting(SunOrbitControl.NightFactor(v));
@@ -273,7 +277,7 @@ public class EnvironmentManager : MonoBehaviour
         var idx = new List<int>();
         var rng = new System.Random(4242);
 
-        float[] clusterAngles = { 62f, 74f, 86f, 98f, 110f, 122f };
+        float[] clusterAngles = { 58f, 70f, 82f, 94f, 106f, 118f };
         int perCluster = Mathf.CeilToInt((float)tufts / clusterAngles.Length);
         foreach (float deg in clusterAngles)
         {
@@ -283,17 +287,18 @@ public class EnvironmentManager : MonoBehaviour
             float ccz = PondCenter.z + Mathf.Sin(a) * cr;
             for (int i = 0; i < perCluster; i++)
             {
-                float ox = ((float)rng.NextDouble() - 0.5f) * 1.1f;
-                float oz = ((float)rng.NextDouble() - 0.5f) * 1.1f;
+                // Tight clumps with open water between them (not a wall).
+                float ox = ((float)rng.NextDouble() - 0.5f) * 0.9f;
+                float oz = ((float)rng.NextDouble() - 0.5f) * 0.9f;
                 float bx = ccx + ox;
                 float bz = ccz + oz;
                 // Keep the trunk clear.
                 if (bx * bx + bz * bz < 0.81f) continue;
                 float yaw = (float)rng.NextDouble() * Mathf.PI * 2f;
-                int blades = 4 + rng.Next(3);
+                int blades = 3 + rng.Next(3);
                 for (int b = 0; b < blades; b++)
                 {
-                    float h = 0.7f + (float)rng.NextDouble() * 0.45f;
+                    float h = 0.5f + (float)rng.NextDouble() * 0.45f;
                     float w = 0.022f + (float)rng.NextDouble() * 0.012f;
                     float lean = ((float)rng.NextDouble() - 0.5f) * 0.3f;
                     AppendReedBlade(verts, uvs, idx,
@@ -310,8 +315,8 @@ public class EnvironmentManager : MonoBehaviour
         mesh.RecalculateBounds();
 
         var mat = new Material(grassShader);
-        mat.SetColor("_RootColor", new Color(0.23f, 0.20f, 0.09f, 1f));
-        mat.SetColor("_TipColor", new Color(0.58f, 0.52f, 0.26f, 1f));
+        mat.SetColor("_RootColor", new Color(0.16f, 0.28f, 0.08f, 1f));
+        mat.SetColor("_TipColor", new Color(0.45f, 0.55f, 0.20f, 1f));
         mat.SetFloat("_WindStrength", 0.045f);
         mat.SetFloat("_WindFrequency", 1.7f);
         mat.SetFloat("_GustStrength", 0.12f);

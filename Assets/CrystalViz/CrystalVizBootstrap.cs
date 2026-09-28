@@ -204,6 +204,8 @@ public class CrystalVizBootstrap : MonoBehaviour
     Light fillLight;            // v1.0.46: kept so day/night can dim the fill
     Material horizonHazeMat;    // v1.0.46: kept so day/night can tint the haze
     EnvironmentManager envManager; // v1.0.62: per-species environment (willow lakeside)
+    Material grassFieldMat;     // v1.0.62: stashed so the pond clip can toggle at runtime
+    Material wildflowerMat;     // v1.0.62: stashed so the pond clip can toggle at runtime
 
     /// <summary>
     /// Sky backdrop: a giant inverted sphere (radius 200, inside the 250 far
@@ -654,6 +656,43 @@ public class CrystalVizBootstrap : MonoBehaviour
 
     // ------------------------------------------------------------------ diorama
 
+    /// <summary>
+    /// v1.0.62: applies the willow pond clip uniforms to a vegetation
+    /// material from the active profile (build-time path — the manager has
+    /// already set ActiveProfile before the diorama builds).
+    /// </summary>
+    void ApplyPondClipTo(Material m)
+    {
+        bool on = EnvironmentManager.ActiveProfile.waterEnabled;
+        m.SetVector("_ClipCenter", new Vector4(EnvironmentManager.PondCenter.x, 0f,
+                                               EnvironmentManager.PondCenter.z, 0f));
+        m.SetFloat("_ClipRadius", on ? EnvironmentManager.PondGrassClearRadius : 0f);
+    }
+
+    /// <summary>
+    /// v1.0.62: enables/disables the willow pond clip on the grass and
+    /// wildflower materials (runtime species-switch path, e.g. picking
+    /// willow from the inventory after launch). The reed material is a
+    /// separate instance with the clip left disabled, so reeds still
+    /// stand in the shallows.
+    /// </summary>
+    public void SetPondClip(bool enabled)
+    {
+        float r = enabled ? EnvironmentManager.PondGrassClearRadius : 0f;
+        var c = new Vector4(EnvironmentManager.PondCenter.x, 0f,
+                            EnvironmentManager.PondCenter.z, 0f);
+        if (grassFieldMat != null)
+        {
+            grassFieldMat.SetVector("_ClipCenter", c);
+            grassFieldMat.SetFloat("_ClipRadius", r);
+        }
+        if (wildflowerMat != null)
+        {
+            wildflowerMat.SetVector("_ClipCenter", c);
+            wildflowerMat.SetFloat("_ClipRadius", r);
+        }
+    }
+
     void BuildDiorama()
     {
         BuildGrowingTree();
@@ -728,6 +767,9 @@ public class CrystalVizBootstrap : MonoBehaviour
             return;
         }
         var mat = new Material(grassShader);
+        // v1.0.62: stash for the willow pond clip (runtime species switches).
+        grassFieldMat = mat;
+        ApplyPondClipTo(mat);
         mat.SetColor("_RootColor", new Color(0.15f, 0.34f, 0.11f, 1f));
         mat.SetColor("_TipColor", new Color(0.58f, 0.82f, 0.26f, 1f));
         // Perpetual breeze + distinct gust fronts with calm breaks in between
@@ -900,6 +942,9 @@ public class CrystalVizBootstrap : MonoBehaviour
             return;
         }
         var mat = new Material(flowerShader);
+        // v1.0.62: stash for the willow pond clip (runtime species switches).
+        wildflowerMat = mat;
+        ApplyPondClipTo(mat);
         mat.SetColor("_RootColor", new Color(0.12f, 0.30f, 0.10f, 1f));
         mat.SetColor("_TipColor", new Color(0.38f, 0.64f, 0.20f, 1f));
         // Blossom atlas: 4 head shapes (daisy, round wildflower, aster,

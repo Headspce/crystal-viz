@@ -29,6 +29,9 @@ Shader "CrystalViz/Wildflower"
         _DissolvePop ("Block Pop Sharpness", Float) = 0.06
         _DissolveEdgeWidth ("Dissolve Edge Width", Float) = 0.10
         _DissolveEdgeColor ("Dissolve Edge Color", Color) = (0.45, 0.9, 1.0, 1)
+        // v1.0.62: willow pond clip — disabled by default (radius 0).
+        _ClipCenter ("Pond Clip Center", Vector) = (0, 0, 0, 0)
+        _ClipRadius ("Pond Clip Radius", Float) = 0
     }
     SubShader
     {
@@ -92,6 +95,8 @@ Shader "CrystalViz/Wildflower"
             float _DissolvePop;
             float _DissolveEdgeWidth;
             half4 _DissolveEdgeColor;
+            float4 _ClipCenter;   // v1.0.62: willow pond clip (0 = disabled)
+            float _ClipRadius;
 
             Varyings vert(Attributes IN)
             {
@@ -135,6 +140,14 @@ Shader "CrystalViz/Wildflower"
                 float gustAmt = gust * 0.75 + gustB * 0.25;
                 wp.xz += gustDir * (tipW * _GustStrength * gustAmt * grow);
                 OUT.gust = gustAmt;
+
+                // v1.0.62: willow pond clip — flowers inside the pond disc
+                // are flattened onto the ground so the open water reads.
+                // Disabled by default (_ClipRadius = 0): every other
+                // species renders pixel-identical to before.
+                float clipD = distance(wp.xz, _ClipCenter.xz);
+                float clipF = (1.0 - step(_ClipRadius, clipD)) * step(0.001, _ClipRadius);
+                wp.y *= (1.0 - clipF);
 
                 OUT.positionWS = wp;
                 OUT.positionHCS = TransformWorldToHClip(wp);

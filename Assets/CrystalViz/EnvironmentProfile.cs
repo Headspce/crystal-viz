@@ -73,7 +73,7 @@ public static class EnvironmentProfiles
             p.fogEnd = 55f;
             p.waterEnabled = true;
             p.reedTufts = 140;
-            p.mistAlpha = 0.16f;
+            p.mistAlpha = 0.22f;
         }
 
         return p;
