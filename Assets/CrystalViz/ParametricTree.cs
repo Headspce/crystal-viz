@@ -617,8 +617,11 @@ public class ParametricTree : MonoBehaviour
     /// </summary>
     static Texture2D MakeFrondTexture()
     {
-        const int W = 128; // along frond
-        const int H = 64;  // across frond
+        // v1.0.61c: 256x128 with WIDE slits — the first 128x64 version's
+        // thin slits got bilinear-filtered shut at screenshot scale and
+        // the fronds rendered solid. Chunky gaps survive minification.
+        const int W = 256; // along frond
+        const int H = 128; // across frond
         var tex = new Texture2D(W, H, TextureFormat.RGBA32, false);
         tex.wrapMode = TextureWrapMode.Clamp;
         tex.filterMode = FilterMode.Bilinear;
@@ -636,11 +639,11 @@ public class ParametricTree : MonoBehaviour
                     continue;
                 }
                 // Solid central rib, warm pale green.
-                float rachis = 1f - Mathf.SmoothStep(0.02f, 0.09f, across);
-                // Chevron leaflets: solid bands with thin transparent slits
-                // between them, angling from the rib toward the tip.
-                float chev = u * 9f - across * 2.2f;
-                float leaf = Mathf.SmoothStep(-0.25f, 0.15f, Mathf.Sin(chev * Mathf.PI * 2f));
+                float rachis = 1f - Mathf.SmoothStep(0.03f, 0.10f, across);
+                // Chevron leaflets: wide transparent gaps between them so
+                // the feathering survives minification + alpha test.
+                float chev = u * 7f - across * 2.0f;
+                float leaf = Mathf.SmoothStep(-0.45f, 0.25f, Mathf.Sin(chev * Mathf.PI * 2f));
                 float tipFade = Mathf.SmoothStep(1f, 0.92f, u) * Mathf.SmoothStep(0f, 0.06f, u);
                 float a = Mathf.Max(rachis, leaf * tipFade);
                 Color c = new Color(0.78f, 0.90f, 0.72f) * (0.85f + 0.15f * rachis);
@@ -1014,11 +1017,14 @@ public class ParametricTree : MonoBehaviour
 
         float wob = length * 0.07f;
         // v1.0.61b: the trunk itself stays upright — a weeping willow is a
-        // tall tree with curtains, not a bush. Only child branches weep.
-        float curveDroop = level == 0 ? droop * 0.12f : droop;
-        float lift0 = Mathf.Lerp(0.05f, -0.12f, curveDroop);
-        float lift1 = Mathf.Lerp(0.14f, -0.32f, curveDroop);
-        float lift2 = Mathf.Lerp(0.30f, -0.60f, curveDroop);
+        // tall tree with curtains, not a bush. v1.0.61c: weep compounds by
+        // level — scaffolds (level 1) ascend outward, only the outer
+        // branchlets (level 2+) dive, so curtains hang from an elevated
+        // crown instead of collapsing the whole tree to the ground.
+        float levelDroop = droop * (level == 0 ? 0.15f : level == 1 ? 0.45f : 1f);
+        float lift0 = Mathf.Lerp(0.05f, -0.12f, levelDroop);
+        float lift1 = Mathf.Lerp(0.14f, -0.32f, levelDroop);
+        float lift2 = Mathf.Lerp(0.30f, -0.60f, levelDroop);
         Vector3 p0 = origin;
         Vector3 p1 = origin + dir * (length * 0.33f) + RandPerp(rng, side, side2, wob) + up * (length * lift0);
         Vector3 p2 = origin + dir * (length * 0.66f) + RandPerp(rng, side, side2, wob) + up * (length * lift1);
@@ -1074,7 +1080,9 @@ public class ParametricTree : MonoBehaviour
             float elev = 0.55f + (float)rng.NextDouble() * 0.4f;
             // v1.0.61: weeping children tilt outward-down instead of
             // outward-up, so the curtains compound down the generations.
-            elev = Mathf.Lerp(elev, 1.15f + (float)rng.NextDouble() * 0.35f, droop);
+            // v1.0.61c: scaled by level — scaffold children of the trunk
+            // still reach outward-up; only deeper generations weep hard.
+            elev = Mathf.Lerp(elev, 1.15f + (float)rng.NextDouble() * 0.35f, levelDroop);
             Vector3 childDir = (tan * Mathf.Cos(elev)
                 + (refA * Mathf.Cos(az) + refB * Mathf.Sin(az)) * Mathf.Sin(elev)).normalized;
 
