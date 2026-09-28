@@ -32,6 +32,12 @@ using UnityEngine.UI;
 /// presses that land on the menu (via MenuHitTest) so they never also count
 /// as growth taps.
 ///
+/// v1.0.60: the inventory tree rows are real uGUI Buttons AND carry a
+/// raw-input fallback in Update() — the EventSystem route verified present
+/// yet stayed dead on the player's device in v1.0.59, so the menu answers
+/// taps through the same proven path the arrow uses. OnTreeSlotTapped
+/// dedupes the double-fire wherever both routes deliver.
+///
 /// The CI screenshot path builds the scene in edit mode, where AddComponent
 /// does NOT fire Awake(), so CrystalVizBootstrap calls Initialize()
 /// explicitly after AddComponent. Idempotent: safe to call twice.
@@ -96,6 +102,13 @@ public class TreeResetButton : MonoBehaviour
     // tree names; the selected row highlights in warm gold.
     Image[] slotRows = new Image[6];
     Text[] slotLabels = new Text[6];
+    RectTransform[] slotRowRts = new RectTransform[6];
+    // v1.0.60: per-tap dedupe — a tree row can be reached two ways (the
+    // uGUI Button's onClick via the EventSystem, plus the raw-input
+    // fallback in Update); both fire for one physical tap wherever the
+    // EventSystem route works, so the duplicate is swallowed here.
+    float lastSlotTapTime = -10f;
+    int lastSlotTapIdx = -1;
     int selectedTreeIndex = -1;
     TreeGrowthController growthCtl;
     const float InventoryPopDur = 0.26f;
@@ -241,6 +254,26 @@ public class TreeResetButton : MonoBehaviour
                         inventoryPanelRt, pos, null))
                 {
                     SetInventoryOpen(false);
+                }
+                else
+                {
+                    // v1.0.60: raw-input fallback for the tree rows — the
+                    // same proven tap path the arrow and sub-buttons use.
+                    // (The uGUI Button route needs the EventSystem, which
+                    // is verified present, yet slot taps stayed dead on the
+                    // player's device in v1.0.59 — this guarantees the menu
+                    // answers taps regardless. OnTreeSlotTapped dedupes the
+                    // double-fire wherever both routes deliver.)
+                    for (int i = 0; i < 6; i++)
+                    {
+                        if (slotRowRts[i] != null &&
+                            RectTransformUtility.RectangleContainsScreenPoint(
+                                slotRowRts[i], pos, null))
+                        {
+                            OnTreeSlotTapped(i);
+                            break;
+                        }
+                    }
                 }
             }
             // Null camera is correct: the menu lives on a ScreenSpaceOverlay canvas.
@@ -703,6 +736,7 @@ public class TreeResetButton : MonoBehaviour
             var rimg = rowGO.GetComponent<Image>();
             rimg.sprite = rowSprite;
             slotRows[i] = rimg;
+            slotRowRts[i] = rrt;
 
             var labelGO = new GameObject("Label", typeof(RectTransform), typeof(Text));
             labelGO.transform.SetParent(rowGO.transform, false);
@@ -861,6 +895,12 @@ public class TreeResetButton : MonoBehaviour
     /// </summary>
     void OnTreeSlotTapped(int idx)
     {
+        // v1.0.60: swallow the duplicate when both the uGUI Button route
+        // and the raw-input fallback deliver the same physical tap.
+        if (idx == lastSlotTapIdx && Time.time - lastSlotTapTime < 0.5f) return;
+        lastSlotTapIdx = idx;
+        lastSlotTapTime = Time.time;
+
         if (growthCtl == null) growthCtl = FindObjectOfType<TreeGrowthController>();
         if (idx == 0 || idx == 1)
         {
