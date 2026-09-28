@@ -314,12 +314,16 @@ public class ParametricTree : MonoBehaviour
         frondFilter.mesh = frondMesh;
         if (leafShader != null)
         {
-            // v1.0.61b: feathered frond albedo — central rachis with
-            // alpha-cut chevron leaflets, so the crown reads as palm
-            // fronds instead of flat ribbons. Pale base; the per-frond
-            // vertex green carries the color.
+            // v1.0.61d: fronds are real geometry now (rachis + leaflets),
+            // so the material goes back to an opaque white fill — the
+            // per-frond vertex green carries the color, no cutout needed.
+            var whiteTex = new Texture2D(4, 4, TextureFormat.RGBA32, false);
+            var whitePx = new Color[16];
+            for (int i = 0; i < 16; i++) whitePx[i] = Color.white;
+            whiteTex.SetPixels(whitePx);
+            whiteTex.Apply();
             frondMat = new Material(leafShader);
-            frondMat.SetTexture("_BaseMap", MakeFrondTexture());
+            frondMat.SetTexture("_BaseMap", whiteTex);
             frondMat.SetFloat("_WindStrength", 0.035f);
             frondMat.SetFloat("_WindSpeed", 1.7f);
             frondMat.SetFloat("_GustStrength", 0.08f);
@@ -607,53 +611,6 @@ public class ParametricTree : MonoBehaviour
         return tex;
     }
 
-    /// <summary>
-    /// v1.0.61b: feathered palm-frond albedo — a central rachis rib with
-    /// alpha-cut chevron leaflets angling toward the tip. The ribbon
-    /// geometry's UVs run u along the frond, v across; the half-width
-    /// profile here mirrors AppendFrond's taper so the texture and the
-    /// mesh agree. Pale green-white base; the per-frond vertex color
-    /// carries the actual green through the multiply.
-    /// </summary>
-    static Texture2D MakeFrondTexture()
-    {
-        // v1.0.61c: 256x128 with WIDE slits — the first 128x64 version's
-        // thin slits got bilinear-filtered shut at screenshot scale and
-        // the fronds rendered solid. Chunky gaps survive minification.
-        const int W = 256; // along frond
-        const int H = 128; // across frond
-        var tex = new Texture2D(W, H, TextureFormat.RGBA32, false);
-        tex.wrapMode = TextureWrapMode.Clamp;
-        tex.filterMode = FilterMode.Bilinear;
-        for (int y = 0; y < H; y++)
-        {
-            for (int x = 0; x < W; x++)
-            {
-                float u = (float)x / (W - 1); // 0 stem .. 1 tip
-                float v = (float)y / (H - 1); // 0..1 across, 0.5 = rachis
-                float across = Mathf.Abs(v - 0.5f) * 2f; // 0 center .. 1 edge
-                float halfW = Mathf.Sin(Mathf.PI * Mathf.Clamp01(0.12f + u * 0.88f));
-                if (across >= halfW || halfW < 0.02f)
-                {
-                    tex.SetPixel(x, y, new Color(0f, 0f, 0f, 0f));
-                    continue;
-                }
-                // Solid central rib, warm pale green.
-                float rachis = 1f - Mathf.SmoothStep(0.03f, 0.10f, across);
-                // Chevron leaflets: wide transparent gaps between them so
-                // the feathering survives minification + alpha test.
-                float chev = u * 7f - across * 2.0f;
-                float leaf = Mathf.SmoothStep(-0.45f, 0.25f, Mathf.Sin(chev * Mathf.PI * 2f));
-                float tipFade = Mathf.SmoothStep(1f, 0.92f, u) * Mathf.SmoothStep(0f, 0.06f, u);
-                float a = Mathf.Max(rachis, leaf * tipFade);
-                Color c = new Color(0.78f, 0.90f, 0.72f) * (0.85f + 0.15f * rachis);
-                tex.SetPixel(x, y, new Color(c.r, c.g, c.b, a));
-            }
-        }
-        tex.Apply();
-        return tex;
-    }
-
     /// <summary>fBm over a lattice that wraps every <paramref name="xPeriod"/> cells in x.</summary>
     static float BarkFbm(float x, float y, int xPeriod)
     {
@@ -892,8 +849,9 @@ public class ParametricTree : MonoBehaviour
     }
 
     /// <summary>
-    /// v1.0.61: the palm crown — fronds unfurl once the trunk is established,
+    /// v1.0.61d: the palm crown — fronds unfurl once the trunk is established,
     /// from 4 stubby leaves at sprout to a full 12-frond crown at maturity.
+    /// Each frond is real geometry (rachis + leaflets, see AppendFrond).
     /// </summary>
     void BuildFrondMesh(float g, Vector3 crown, System.Random rng)
     {
@@ -913,43 +871,95 @@ public class ParametricTree : MonoBehaviour
     }
 
     /// <summary>
-    /// v1.0.61: one arching frond — rises off the crown, crests, then droops,
-    /// built as a tapered ribbon so it reads as a palm leaf rather than
-    /// scattered quads. Normals face up (the ribbon is near-horizontal) and
-    /// the material is double-sided so the drooping tips read from below.
+    /// v1.0.61d: one arching frond — rises off the crown, crests, then droops.
+    /// Built as REAL geometry (a narrow rachis ribbon plus tapered leaflet
+    /// quads angling toward the tip on both sides) so the crown reads as
+    /// palm fronds instead of flat ribbons. Normals face up and the material
+    /// is double-sided so the drooping tips read from below.
     /// </summary>
     void AppendFrond(Vector3 crown, Vector3 dir, float len, System.Random rng)
     {
         const int segs = 9;
         Vector3 side = new Vector3(-dir.z, 0f, dir.x).normalized;
-        float rise = len * 0.35f;
-        float droopAmt = len * 0.75f;
-        float width = len * 0.16f;
         float v = 0.85f + (float)rng.NextDouble() * 0.3f; // per-frond green variation
         Color frondGreen = new Color(0.14f * v, 0.38f * v, 0.12f * v, 1f);
-        int baseIdx = fvList.Count;
-        for (int sIdx = 0; sIdx <= segs; sIdx++)
+        Color ribGreen = new Color(frondGreen.r * 0.7f, frondGreen.g * 0.7f, frondGreen.b * 0.7f, 1f);
+
+        // Frond centerline: rises off the crown, arcs over, then droops.
+        float rise = len * 0.35f;
+        float droopAmt = len * 0.75f;
+        Vector3[] center = new Vector3[segs + 1];
+        Vector3[] tangent = new Vector3[segs + 1];
+        for (int i = 0; i <= segs; i++)
         {
-            float t = (float)sIdx / segs;
-            Vector3 center = crown
+            float t = (float)i / segs;
+            center[i] = crown
                 + dir * (t * len)
                 + Vector3.up * (Mathf.Sin(t * Mathf.PI * 0.62f) * rise - t * t * droopAmt);
-            // Narrow at the stem, widest just past the middle, pointed tip.
-            float w = width * Mathf.Sin(Mathf.PI * Mathf.Clamp01(0.12f + t * 0.88f));
-            fvList.Add(center - side * w * 0.5f);
-            fvList.Add(center + side * w * 0.5f);
-            fnList.Add(Vector3.up);
-            fnList.Add(Vector3.up);
-            fuvList.Add(new Vector2(t, 0f));
-            fuvList.Add(new Vector2(t, 1f));
-            fcList.Add(frondGreen);
-            fcList.Add(frondGreen);
         }
-        for (int sIdx = 0; sIdx < segs; sIdx++)
+        for (int i = 0; i <= segs; i++)
         {
-            int a = baseIdx + sIdx * 2;
+            Vector3 a = center[Mathf.Max(0, i - 1)];
+            Vector3 b = center[Mathf.Min(segs, i + 1)];
+            tangent[i] = (b - a).normalized;
+        }
+
+        // Rachis: narrow solid ribbon along the centerline.
+        float ribW = len * 0.04f;
+        int rb = fvList.Count;
+        for (int i = 0; i <= segs; i++)
+        {
+            fvList.Add(center[i] - side * ribW * 0.5f);
+            fvList.Add(center[i] + side * ribW * 0.5f);
+            fnList.Add(Vector3.up); fnList.Add(Vector3.up);
+            fuvList.Add(new Vector2(0.5f, 0f)); fuvList.Add(new Vector2(0.5f, 1f));
+            fcList.Add(ribGreen); fcList.Add(ribGreen);
+        }
+        for (int i = 0; i < segs; i++)
+        {
+            int a = rb + i * 2;
             ftList.Add(a); ftList.Add(a + 1); ftList.Add(a + 2);
             ftList.Add(a + 1); ftList.Add(a + 3); ftList.Add(a + 2);
+        }
+
+        // Leaflets: tapered quads angling from the rachis toward the tip,
+        // both sides, longest just past the middle. Tips droop slightly to
+        // sell the weight of a real frond.
+        int leaflets = 9;
+        for (int li = 0; li < leaflets; li++)
+        {
+            float t = 0.10f + (float)li / (leaflets - 1) * 0.80f;
+            float ft = t * segs;
+            int i0 = Mathf.Clamp(Mathf.FloorToInt(ft), 0, segs - 1);
+            float lt = ft - i0;
+            Vector3 bp = Vector3.Lerp(center[i0], center[i0 + 1], lt);
+            Vector3 tan = Vector3.Lerp(tangent[i0], tangent[i0 + 1], lt).normalized;
+            float llen = len * (0.30f * Mathf.Sin(Mathf.PI * Mathf.Clamp01(0.12f + t * 0.88f)) + 0.03f);
+            float wb = llen * 0.20f;
+            for (int s = -1; s <= 1; s += 2)
+            {
+                Vector3 outDir = (side * (float)s * 0.8f + tan * 0.6f).normalized;
+                Vector3 wDir = Vector3.Cross(outDir, Vector3.up).normalized;
+                if (wDir.sqrMagnitude < 0.01f) wDir = side * (float)s;
+                Vector3 v0 = bp + wDir * wb;
+                Vector3 v1 = bp - wDir * wb;
+                Vector3 v2 = bp + outDir * llen * 0.92f + wDir * wb * 0.12f;
+                Vector3 v3 = bp + outDir * llen * 0.92f - wDir * wb * 0.12f;
+                v2.y -= llen * 0.10f; v3.y -= llen * 0.10f;
+                Color lc = frondGreen * (0.92f + (float)rng.NextDouble() * 0.16f);
+                lc.a = 1f;
+                int b = fvList.Count;
+                fvList.Add(v0); fvList.Add(v1); fvList.Add(v2); fvList.Add(v3);
+                fnList.Add(Vector3.up); fnList.Add(Vector3.up);
+                fnList.Add(Vector3.up); fnList.Add(Vector3.up);
+                fuvList.Add(new Vector2(0.5f, 0.5f)); fuvList.Add(new Vector2(0.5f, 0.5f));
+                fuvList.Add(new Vector2(0.5f, 0.5f)); fuvList.Add(new Vector2(0.5f, 0.5f));
+                fcList.Add(lc); fcList.Add(lc); fcList.Add(lc); fcList.Add(lc);
+                // Winding matches the rachis ribbon (up-facing); flipped
+                // for the -side leaflets so both faces point up.
+                if (s > 0) { ftList.Add(b); ftList.Add(b + 1); ftList.Add(b + 2); ftList.Add(b + 1); ftList.Add(b + 3); ftList.Add(b + 2); }
+                else { ftList.Add(b); ftList.Add(b + 2); ftList.Add(b + 1); ftList.Add(b + 1); ftList.Add(b + 2); ftList.Add(b + 3); }
+            }
         }
     }
 
