@@ -70,20 +70,15 @@ Shader "CrystalViz/TransitionFog"
 
             half4 frag(Varyings IN) : SV_Target
             {
-                // DEBUG4: red if _Cover is near zero (discard path).
-                if (_Cover < 0.001) return half4(1.0, 0.0, 0.0, 1.0);
-
+                // Start from the PROVEN working base (DEBUG): raw texture.
+                // Add fog color tint and coverage with MINIMAL math.
                 float2 sp = IN.objXY + 0.5;
-                float2 uv1 = sp * 1.5 + _Seed * 0.13;
-                float2 uv2 = sp * 2.7 + _Seed * 0.29;
-                float billow = SAMPLE_TEXTURE2D(_CloudTex, sampler_CloudTex, uv1).r;
-                float detail = SAMPLE_TEXTURE2D(_CloudTex, sampler_CloudTex, uv2).r;
-                float cloud = billow * 0.68 + detail * 0.32;
-                half3 col = _FogColor.rgb * (0.45 + 1.10 * cloud);
-                float edge = smoothstep(0.25, 0.75, cloud);
-                float a = _Cover * (0.90 + 0.10 * edge);
-                a = max(a, smoothstep(0.92, 1.0, _Cover));
-                return half4(col, a);
+                float c = SAMPLE_TEXTURE2D(_CloudTex, sampler_CloudTex, sp).r;
+                // Tint the grayscale clouds with the fog color, keeping
+                // strong visible structure: lerp from dark to light.
+                half3 col = _FogColor.rgb * (0.4 + 1.2 * c);
+                // Simple alpha: _Cover directly, no smoothstep tricks.
+                return half4(col, _Cover);
             }
             ENDHLSL
         }
