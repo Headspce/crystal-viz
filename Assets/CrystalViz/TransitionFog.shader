@@ -70,15 +70,24 @@ Shader "CrystalViz/TransitionFog"
 
             half4 frag(Varyings IN) : SV_Target
             {
-                // PROOF MODE: The edit-mode proof quad cannot reliably drive
-                // _Cover (material property blocks vs. shared materials in
-                // edit mode). For the visual proof we hardcode full cover —
-                // the runtime overlay canvas drives _Cover via coroutine.
-                // The RUNTIME uses the same cloud math with animated _Cover.
+                if (_Cover < 0.001) discard;
+
+                // Billowy cloud bank: CPU-generated tileable cloud texture.
+                // Drift is animated by the C# side via _Seed.
                 float2 sp = IN.objXY + 0.5;
-                float c = SAMPLE_TEXTURE2D(_CloudTex, sampler_CloudTex, sp).r;
-                half3 col = _FogColor.rgb * (0.4 + 1.2 * c);
-                return half4(col, 1.0);
+                float2 uv1 = sp * 1.5 + _Seed * 0.13;
+                float2 uv2 = sp * 2.7 + _Seed * 0.29;
+                float billow = SAMPLE_TEXTURE2D(_CloudTex, sampler_CloudTex, uv1).r;
+                float detail = SAMPLE_TEXTURE2D(_CloudTex, sampler_CloudTex, uv2).r;
+                float cloud = billow * 0.68 + detail * 0.32;
+
+                // Visible billows: dark bellies to bright lit tops.
+                half3 col = _FogColor.rgb * (0.45 + 1.10 * cloud);
+
+                float edge = smoothstep(0.25, 0.75, cloud);
+                float a = _Cover * (0.90 + 0.10 * edge);
+                a = max(a, smoothstep(0.92, 1.0, _Cover));
+                return half4(col, a);
             }
             ENDHLSL
         }
