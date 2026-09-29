@@ -213,8 +213,8 @@ public class EnvironmentManager : MonoBehaviour
         transitionOverlay = GameObject.Find("TransitionFogCanvas");
         if (transitionOverlay != null)
         {
-            var img = transitionOverlay.GetComponentInChildren<UnityEngine.UI.Image>();
-            if (img != null) transitionFogMat = img.material;
+            var existingImg = transitionOverlay.GetComponentInChildren<UnityEngine.UI.Image>();
+            if (existingImg != null) transitionFogMat = existingImg.material;
             return;
         }
         var fogShader = Shader.Find("CrystalViz/TransitionFog");
