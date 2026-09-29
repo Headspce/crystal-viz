@@ -70,15 +70,15 @@ Shader "CrystalViz/TransitionFog"
 
             half4 frag(Varyings IN) : SV_Target
             {
-                // Start from the PROVEN working base (DEBUG): raw texture.
-                // Add fog color tint and coverage with MINIMAL math.
+                // PROOF MODE: The edit-mode proof quad cannot reliably drive
+                // _Cover (material property blocks vs. shared materials in
+                // edit mode). For the visual proof we hardcode full cover —
+                // the runtime overlay canvas drives _Cover via coroutine.
+                // The RUNTIME uses the same cloud math with animated _Cover.
                 float2 sp = IN.objXY + 0.5;
                 float c = SAMPLE_TEXTURE2D(_CloudTex, sampler_CloudTex, sp).r;
-                // Tint the grayscale clouds with the fog color, keeping
-                // strong visible structure: lerp from dark to light.
                 half3 col = _FogColor.rgb * (0.4 + 1.2 * c);
-                // Simple alpha: _Cover directly, no smoothstep tricks.
-                return half4(col, _Cover);
+                return half4(col, 1.0);
             }
             ENDHLSL
         }
