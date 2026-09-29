@@ -209,6 +209,14 @@ public class EnvironmentManager : MonoBehaviour
     void EnsureTransitionOverlay()
     {
         if (transitionOverlay != null) return;
+        // Survive scene reloads: a previous instance may already persist.
+        transitionOverlay = GameObject.Find("TransitionFogCanvas");
+        if (transitionOverlay != null)
+        {
+            var img = transitionOverlay.GetComponentInChildren<UnityEngine.UI.Image>();
+            if (img != null) transitionFogMat = img.material;
+            return;
+        }
         var fogShader = Shader.Find("CrystalViz/TransitionFog");
         if (fogShader == null)
         {
@@ -624,6 +632,7 @@ public class EnvironmentManager : MonoBehaviour
             (1.4f, -2.3f), (0.6f, -2.9f), (-0.4f, -2.6f), (-1.2f, -3.1f),
             (1.0f, -3.8f), (-0.6f, -4.0f), (0.2f, -4.6f), (-1.5f, -4.4f),
         };
+        var rng = new System.Random(60606);
         for (int i = 0; i < shroomSpots.Length; i++)
         {
             float bx = shroomSpots[i].x, bz = shroomSpots[i].z;
