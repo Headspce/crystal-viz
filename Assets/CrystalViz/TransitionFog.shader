@@ -70,29 +70,16 @@ Shader "CrystalViz/TransitionFog"
 
             half4 frag(Varyings IN) : SV_Target
             {
-                if (_Cover < 0.001) discard;
+                // DEBUG4: red if _Cover is near zero (discard path).
+                if (_Cover < 0.001) return half4(1.0, 0.0, 0.0, 1.0);
 
-                // Billowy cloud bank: two samples of the CPU-generated
-                // tileable cloud texture at different scales for parallax.
-                // (Drift is driven by the C# side via _Seed animation;
-                // _Time.y is unreliable in edit-mode captures.)
-                float2 sp = IN.objXY + 0.5; // 0..1 across the quad
+                float2 sp = IN.objXY + 0.5;
                 float2 uv1 = sp * 1.5 + _Seed * 0.13;
                 float2 uv2 = sp * 2.7 + _Seed * 0.29;
                 float billow = SAMPLE_TEXTURE2D(_CloudTex, sampler_CloudTex, uv1).r;
                 float detail = SAMPLE_TEXTURE2D(_CloudTex, sampler_CloudTex, uv2).r;
-                float cloud = billow * 0.68 + detail * 0.32; // 0..1
-
-                // Strong luminance variation for clearly visible billows:
-                // dark bellies at 0.45x, bright lit tops at 1.55x.
-                // (The earlier 0.78–1.22 range was too subtle on dark fog.)
+                float cloud = billow * 0.68 + detail * 0.32;
                 half3 col = _FogColor.rgb * (0.45 + 1.10 * cloud);
-
-                // Coverage: at full cover the bank is completely opaque —
-                // nothing behind may stay readable while the swap happens.
-                // The cloudy structure lives in the luminance variation
-                // above, so full opacity still reads as cloud, not a panel.
-                // During roll-in/out the alpha keeps soft billowy edges.
                 float edge = smoothstep(0.25, 0.75, cloud);
                 float a = _Cover * (0.90 + 0.10 * edge);
                 a = max(a, smoothstep(0.92, 1.0, _Cover));
