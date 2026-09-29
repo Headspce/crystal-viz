@@ -67,10 +67,11 @@ Shader "CrystalViz/TransitionFog"
 
                 float t = _Time.y;
                 // Billowy cloud bank from layered domain-warped sine
-                // fields. Sines are used (instead of hash-based value
-                // noise) because they cannot collapse to a constant:
-                // the bank always shows soft internal structure.
-                float2 q = IN.uv * 3.0 + _Seed;
+                // fields, driven by SCREEN-SPACE position (guaranteed to
+                // vary across the frame). Sines cannot collapse to a
+                // constant: the bank always shows soft internal structure.
+                float2 sp = IN.positionHCS.xy / _ScreenParams.xy; // 0..1
+                float2 q = sp * 3.0 + _Seed;
                 float w1 = sin(q.x * 1.5 + t * 0.04) + sin(q.y * 1.2 - t * 0.03);
                 float w2 = sin(q.x * 1.1 - t * 0.05 + 2.0) + sin(q.y * 1.8 + t * 0.04 + 1.0);
                 float billow = sin(q.x * 2.0 + w1 * 0.8 + t * 0.05)
