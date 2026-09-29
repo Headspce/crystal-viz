@@ -214,6 +214,7 @@ public static class CrystalVizScreenshot
         var fogMat = new Material(fogShader);
         fogMat.SetFloat("_Seed", 3.7f);
         fogMat.SetColor("_FogColor", RenderSettings.fogColor);
+        fogMat.SetTexture("_CloudTex", EnvironmentManager.CloudTexture);
 
         var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
         quad.name = "TransitionProofQuad";

@@ -49,6 +49,63 @@ public class EnvironmentManager : MonoBehaviour
     Coroutine activeTransition;
     bool initialized;
 
+    // v1.0.63: procedural cloudy-noise texture for the transition fog.
+    // Generated once in C# (tileable value-noise fbm) and sampled by the
+    // TransitionFog shader. Doing the noise on the CPU sidesteps
+    // platform-specific shader-math issues; texture sampling is the most
+    // basic GPU op and always works.
+    static Texture2D cloudTexture;
+    public static Texture2D CloudTexture
+    {
+        get
+        {
+            if (cloudTexture == null) cloudTexture = GenerateCloudTexture();
+            return cloudTexture;
+        }
+    }
+
+    static Texture2D GenerateCloudTexture()
+    {
+        const int size = 256;
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        tex.wrapMode = TextureWrapMode.Repeat;
+        tex.filterMode = FilterMode.Bilinear;
+        var rng = new System.Random(12345);
+        // Value-noise grid (tileable: wrap indices).
+        const int grid = 16;
+        float[,] g = new float[grid, grid];
+        for (int y = 0; y < grid; y++)
+            for (int x = 0; x < grid; x++)
+                g[x, y] = (float)rng.NextDouble();
+        float SampleGrid(float fx, float fy)
+        {
+            int x0 = ((int)System.Math.Floor(fx) % grid + grid) % grid;
+            int y0 = ((int)System.Math.Floor(fy) % grid + grid) % grid;
+            int x1 = (x0 + 1) % grid, y1 = (y0 + 1) % grid;
+            float tx = fx - (float)System.Math.Floor(fx);
+            float ty = fy - (float)System.Math.Floor(fy);
+            float sx = tx * tx * (3f - 2f * tx), sy = ty * ty * (3f - 2f * ty);
+            float a = g[x0, y0], b = g[x1, y0], c = g[x0, y1], d = g[x1, y1];
+            return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
+        }
+        var cols = new Color[size * size];
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float u = (float)x / size * 4f, v = (float)y / size * 4f;
+                // Two octaves of value noise for billowy structure.
+                float n = SampleGrid(u, v) * 0.65f + SampleGrid(u * 2.1f + 7.3f, v * 2.1f + 3.1f) * 0.35f;
+                // Shape into soft billows: smoothstep for cloudy falloff.
+                float c = n * n * (3f - 2f * n);
+                cols[y * size + x] = new Color(c, c, c, 1f);
+            }
+        }
+        tex.SetPixels(cols);
+        tex.Apply();
+        return tex;
+    }
+
     // v1.0.63: unified drifter system. Mist sways laterally (kind 0);
     // petals (kind 1) and snow (kind 2) fall and wrap, petals tumbling.
     // Positions derive from Time.time, so edit-mode captures (no Update)
@@ -227,6 +284,7 @@ public class EnvironmentManager : MonoBehaviour
         transitionFogMat = new Material(fogShader);
         transitionFogMat.SetFloat("_Cover", 0f);
         transitionFogMat.SetFloat("_Seed", 3.7f);
+        transitionFogMat.SetTexture("_CloudTex", CloudTexture);
 
         transitionOverlay = new GameObject("TransitionFogCanvas");
         var canvas = transitionOverlay.AddComponent<Canvas>();

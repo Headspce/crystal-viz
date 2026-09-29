@@ -17,6 +17,7 @@ Shader "CrystalViz/TransitionFog"
         _FogColor ("Fog Tint", Color) = (0.75, 0.80, 0.87, 1)
         _Cover ("Cover 0-1", Range(0, 1)) = 0
         _Seed ("Seed", Float) = 0
+        _CloudTex ("Cloud Noise", 2D) = "white" {}
     }
     SubShader
     {
@@ -53,6 +54,8 @@ Shader "CrystalViz/TransitionFog"
             half4 _FogColor;
             float _Cover;
             float _Seed;
+            TEXTURE2D(_CloudTex);
+            SAMPLER(sampler_CloudTex);
 
             Varyings vert(Attributes IN)
             {
@@ -70,24 +73,20 @@ Shader "CrystalViz/TransitionFog"
                 if (_Cover < 0.001) discard;
 
                 float t = _Time.y;
-                // Billowy cloud bank from layered domain-warped sine
-                // fields, driven by the quad's object-space position
-                // (guaranteed varying). Sines cannot collapse to a
-                // constant: the bank always shows soft internal structure.
+                // Billowy cloud bank: two samples of the CPU-generated
+                // tileable cloud texture, drifting on different vectors
+                // for parallax. Texture sampling always works; the
+                // structure is baked into the texture.
                 float2 sp = IN.objXY + 0.5; // 0..1 across the quad
-                float2 q = sp * 3.0 + _Seed;
-                float w1 = sin(q.x * 1.5 + t * 0.04) + sin(q.y * 1.2 - t * 0.03);
-                float w2 = sin(q.x * 1.1 - t * 0.05 + 2.0) + sin(q.y * 1.8 + t * 0.04 + 1.0);
-                float billow = sin(q.x * 2.0 + w1 * 0.8 + t * 0.05)
-                             * sin(q.y * 2.2 + w2 * 0.8 - t * 0.04);
-                float detail = sin(q.x * 4.5 - w2 * 0.5 + t * 0.06 + 1.3)
-                             * sin(q.y * 4.0 + w1 * 0.5 - t * 0.05 + 0.7);
-                float cloud = billow * 0.65 + detail * 0.35; // ~[-1, 1]
+                float2 uv1 = sp * 1.5 + _Seed * 0.13 + float2(t * 0.008, -t * 0.005);
+                float2 uv2 = sp * 2.7 + _Seed * 0.29 + float2(-t * 0.011, t * 0.007);
+                float billow = SAMPLE_TEXTURE2D(_CloudTex, sampler_CloudTex, uv1).r;
+                float detail = SAMPLE_TEXTURE2D(_CloudTex, sampler_CloudTex, uv2).r;
+                float cloud = billow * 0.68 + detail * 0.32; // 0..1
 
-                // Subtle light variation: brighter where the light breaks
-                // through, dimmer bellies underneath. Kept pronounced
-                // enough to read as cloud, not a flat panel.
-                float lum = 0.85 + 0.30 * cloud;
+                // Light variation: brighter where light breaks through,
+                // dimmer bellies underneath.
+                float lum = 0.78 + 0.44 * cloud;
                 half3 col = _FogColor.rgb * lum;
 
                 // Coverage: at full cover the bank is completely opaque —
@@ -95,7 +94,7 @@ Shader "CrystalViz/TransitionFog"
                 // The cloudy structure lives in the luminance variation
                 // above, so full opacity still reads as cloud, not a panel.
                 // During roll-in/out the alpha keeps soft billowy edges.
-                float edge = smoothstep(-0.6, 0.6, cloud);
+                float edge = smoothstep(0.25, 0.75, cloud);
                 float a = _Cover * (0.90 + 0.10 * edge);
                 a = max(a, smoothstep(0.92, 1.0, _Cover));
                 return half4(col, a);
