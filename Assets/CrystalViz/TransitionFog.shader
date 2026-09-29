@@ -47,6 +47,7 @@ Shader "CrystalViz/TransitionFog"
             {
                 float4 positionHCS : SV_POSITION;
                 float2 uv         : TEXCOORD0;
+                float2 objXY      : TEXCOORD1;
             };
 
             half4 _FogColor;
@@ -58,6 +59,9 @@ Shader "CrystalViz/TransitionFog"
                 Varyings OUT;
                 OUT.positionHCS = TransformObjectToHClip(IN.positionOS.xyz);
                 OUT.uv = IN.uv;
+                // Object-space XY of the quad (-0.5..0.5): guaranteed to
+                // vary across the surface, independent of any uniforms.
+                OUT.objXY = IN.positionOS.xy;
                 return OUT;
             }
 
@@ -67,10 +71,10 @@ Shader "CrystalViz/TransitionFog"
 
                 float t = _Time.y;
                 // Billowy cloud bank from layered domain-warped sine
-                // fields, driven by SCREEN-SPACE position (guaranteed to
-                // vary across the frame). Sines cannot collapse to a
+                // fields, driven by the quad's object-space position
+                // (guaranteed varying). Sines cannot collapse to a
                 // constant: the bank always shows soft internal structure.
-                float2 sp = IN.positionHCS.xy / _ScreenParams.xy; // 0..1
+                float2 sp = IN.objXY + 0.5; // 0..1 across the quad
                 float2 q = sp * 3.0 + _Seed;
                 float w1 = sin(q.x * 1.5 + t * 0.04) + sin(q.y * 1.2 - t * 0.03);
                 float w2 = sin(q.x * 1.1 - t * 0.05 + 2.0) + sin(q.y * 1.8 + t * 0.04 + 1.0);
