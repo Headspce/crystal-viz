@@ -63,7 +63,7 @@ Shader "CrystalViz/TransitionFog"
             float vnoise(float2 p)
             {
                 float2 i = floor(p);
-                float2 f = fract(p);
+                float2 f = frac(p);
                 float2 u = f * f * (3.0 - 2.0 * f);
                 float a = hash21(i);
                 float b = hash21(i + float2(1.0, 0.0));
