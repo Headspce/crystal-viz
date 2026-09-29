@@ -810,17 +810,16 @@ public class EnvironmentManager : MonoBehaviour
 
         if (litShader != null)
         {
-            // Nine slender white trunks ringing the clearing — the two nearest
-            // fully frame the portrait shot at the left/right edges (|x|>=1.9
-            // keeps the corridor to the main tree open); the rest peek in
-            // from the edges or fill wide screens. Screen-right is -x for
-            // this camera's LookAt basis, so +x entries appear on the left.
+            // Eight slender white trunks pushed well back so they read as
+            // a background grove framing the shot (never giant foreground
+            // pillars). Screen-right is -x for this camera's LookAt basis,
+            // so +x entries appear on the left.
             var trunkPos = new (float x, float z)[]
             {
-                (1.9f, -6.5f), (-1.9f, -7.5f),
-                (3.4f, -4.5f), (-3.4f, -5f),
-                (5.5f, -8f), (-5.5f, -8.5f),
-                (2.6f, -11f), (-2.6f, -11.5f),
+                (2.8f, -11f), (-2.8f, -11.5f),
+                (4.5f, -10f), (-4.5f, -10.5f),
+                (6.5f, -14f), (-6.5f, -14.5f),
+                (3.5f, -16f), (-3.5f, -16.5f),
             };
             var barkMat = NewLit(new Color(0.92f, 0.90f, 0.86f, 1f));
             var lenticelMat = NewLit(new Color(0.16f, 0.15f, 0.14f, 1f));
@@ -843,8 +842,8 @@ public class EnvironmentManager : MonoBehaviour
                         new Vector3(tr * 2f + 0.012f, 0.035f, tr * 2f + 0.012f), lenticelMat);
                 }
                 // Soft canopy blob: a squashed ellipsoid in yellow-green,
-                // kept modest so the trunks read as trunks, not bushes.
-                float cw = 0.8f + (float)rng.NextDouble() * 0.5f;
+                // kept small and high so the trunks read as a grove.
+                float cw = 0.6f + (float)rng.NextDouble() * 0.3f;
                 Primitive(PrimitiveType.Sphere, set, "BirchCanopy" + i,
                     new Vector3(bx, h + 0.4f, bz),
                     new Vector3(cw * 2f, cw * 1.15f, cw * 2f), canopyMat);

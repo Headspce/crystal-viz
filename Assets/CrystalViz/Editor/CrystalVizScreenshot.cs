@@ -222,7 +222,9 @@ public static class CrystalVizScreenshot
         float dist = 0.6f;
         float qh = 2f * dist * Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);
         float qw = qh * cam.aspect;
-        quad.transform.localPosition = new Vector3(0f, 0f, -dist);
+        // The camera renders along its local +Z (LookAt convention), so the
+        // quad sits just ahead at +dist. Cull is off in the shader.
+        quad.transform.localPosition = new Vector3(0f, 0f, dist);
         quad.transform.localScale = new Vector3(qw * 1.05f, qh * 1.05f, 1f);
         var mr = quad.GetComponent<MeshRenderer>();
         mr.material = fogMat;
