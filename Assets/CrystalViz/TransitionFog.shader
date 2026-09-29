@@ -53,38 +53,6 @@ Shader "CrystalViz/TransitionFog"
             float _Cover;
             float _Seed;
 
-            float hash21(float2 p)
-            {
-                p = frac(p * float2(234.34, 435.345));
-                p += dot(p, p + 34.23);
-                return frac(p.x * p.y);
-            }
-
-            float vnoise(float2 p)
-            {
-                float2 i = floor(p);
-                float2 f = frac(p);
-                float2 u = f * f * (3.0 - 2.0 * f);
-                float a = hash21(i);
-                float b = hash21(i + float2(1.0, 0.0));
-                float c = hash21(i + float2(0.0, 1.0));
-                float d = hash21(i + float2(1.0, 1.0));
-                return lerp(lerp(a, b, u.x), lerp(c, d, u.x), u.y);
-            }
-
-            float fbm(float2 p)
-            {
-                float v = 0.0;
-                float a = 0.5;
-                for (int i = 0; i < 4; i++)
-                {
-                    v += a * vnoise(p);
-                    p = p * 2.03 + 11.7;
-                    a *= 0.5;
-                }
-                return v;
-            }
-
             Varyings vert(Attributes IN)
             {
                 Varyings OUT;
@@ -98,20 +66,23 @@ Shader "CrystalViz/TransitionFog"
                 if (_Cover < 0.001) discard;
 
                 float t = _Time.y;
-                // Two domain-warped fbm layers drifting on different
-                // vectors: the parallax keeps the bank from reading as a
-                // flat scrolling texture.
+                // Billowy cloud bank from layered domain-warped sine
+                // fields. Sines are used (instead of hash-based value
+                // noise) because they cannot collapse to a constant:
+                // the bank always shows soft internal structure.
                 float2 q = IN.uv * 3.0 + _Seed;
-                float2 warp = float2(
-                    fbm(q * 1.2 + t * 0.045),
-                    fbm(q * 1.2 - t * 0.038));
-                float billow = fbm(q + warp * 0.9 + float2(t * 0.055, -t * 0.03));
-                float detail = fbm(q * 2.3 - warp * 0.5 + float2(-t * 0.07, t * 0.05));
-                float cloud = billow * 0.72 + detail * 0.28;
+                float w1 = sin(q.x * 1.5 + t * 0.04) + sin(q.y * 1.2 - t * 0.03);
+                float w2 = sin(q.x * 1.1 - t * 0.05 + 2.0) + sin(q.y * 1.8 + t * 0.04 + 1.0);
+                float billow = sin(q.x * 2.0 + w1 * 0.8 + t * 0.05)
+                             * sin(q.y * 2.2 + w2 * 0.8 - t * 0.04);
+                float detail = sin(q.x * 4.5 - w2 * 0.5 + t * 0.06 + 1.3)
+                             * sin(q.y * 4.0 + w1 * 0.5 - t * 0.05 + 0.7);
+                float cloud = billow * 0.65 + detail * 0.35; // ~[-1, 1]
 
-                // Subtle light variation: brighter patches where the light
-                // breaks through, dimmer bellies underneath.
-                float lum = 0.86 + 0.30 * fbm(q * 1.7 + float2(t * 0.03, t * 0.02) + 4.7);
+                // Subtle light variation: brighter where the light breaks
+                // through, dimmer bellies underneath. Kept pronounced
+                // enough to read as cloud, not a flat panel.
+                float lum = 0.85 + 0.30 * cloud;
                 half3 col = _FogColor.rgb * lum;
 
                 // Coverage: at full cover the bank is completely opaque —
@@ -119,7 +90,8 @@ Shader "CrystalViz/TransitionFog"
                 // The cloudy structure lives in the luminance variation
                 // above, so full opacity still reads as cloud, not a panel.
                 // During roll-in/out the alpha keeps soft billowy edges.
-                float a = _Cover * (0.90 + 0.10 * smoothstep(0.25, 0.75, cloud));
+                float edge = smoothstep(-0.6, 0.6, cloud);
+                float a = _Cover * (0.90 + 0.10 * edge);
                 a = max(a, smoothstep(0.92, 1.0, _Cover));
                 return half4(col, a);
             }
