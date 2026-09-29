@@ -222,6 +222,9 @@ public class EnvironmentManager : MonoBehaviour
         // Tint the cloud bank to the world it's about to cover.
         transitionFogMat.SetColor("_FogColor", RenderSettings.fogColor);
         transitionOverlay.SetActive(true);
+        // Drift the cloud bank by animating _Seed (the shader offsets its
+        // two texture samples by _Seed, so this reads as billowy movement).
+        float driftSeed = 3.7f;
 
         // Phase 1: the cloud bank rolls in to full cover (~0.8s).
         float t = 0f;
@@ -229,6 +232,8 @@ public class EnvironmentManager : MonoBehaviour
         {
             t += Time.deltaTime / 0.8f;
             transitionFogMat.SetFloat("_Cover", Smooth01(Mathf.Clamp01(t)));
+            driftSeed += Time.deltaTime * 0.35f;
+            transitionFogMat.SetFloat("_Seed", driftSeed);
             yield return null;
         }
         transitionFogMat.SetFloat("_Cover", 1f);
@@ -240,7 +245,14 @@ public class EnvironmentManager : MonoBehaviour
         // Re-tint the bank to the new world's fog so the reveal feels lit
         // by the environment it's uncovering.
         transitionFogMat.SetColor("_FogColor", RenderSettings.fogColor);
-        yield return new WaitForSeconds(0.6f);
+        float holdT = 0f;
+        while (holdT < 0.6f)
+        {
+            holdT += Time.deltaTime;
+            driftSeed += Time.deltaTime * 0.35f;
+            transitionFogMat.SetFloat("_Seed", driftSeed);
+            yield return null;
+        }
 
         // Phase 3: the clouds part and drift away (~1.2s).
         t = 0f;
@@ -248,6 +260,8 @@ public class EnvironmentManager : MonoBehaviour
         {
             t += Time.deltaTime / 1.2f;
             transitionFogMat.SetFloat("_Cover", 1f - Smooth01(Mathf.Clamp01(t)));
+            driftSeed += Time.deltaTime * 0.35f;
+            transitionFogMat.SetFloat("_Seed", driftSeed);
             yield return null;
         }
         transitionFogMat.SetFloat("_Cover", 0f);
